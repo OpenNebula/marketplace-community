@@ -35,7 +35,7 @@ jobs:
       pipelineJob('TN_DESTROY') {
         parameters {
           stringParam('TN_ID', '', 'Trial Network Identifier. MANDATORY')
-          choiceParam('DEPLOYMENT_SITE', ['uma', 'athens', 'fokus', 'oulu'], 'Site where the deployment is being made. Choose between uma, athens, fokus or oulu. MANDATORY')
+          stringParam('DEPLOYMENT_SITE', '', 'Site where the deployment is being made. E.g. uma, athens, fokus, oulu... MANDATORY')
           stringParam('TNLCM_CALLBACK', 'http://tnlcm-ip:5000/tnlcm/callback/', 'URL of the TNLCM to notify the results. MANDATORY')
           stringParam('LIBRARY_URL', 'https://github.com/6G-SANDBOX/6G-Library.git', '6G-Library repository HTTPS URL. Leave it as-is unless you want to test your own fork')
           stringParam('LIBRARY_BRANCH', 'v0.2.0', 'LIBRARY_URL checkout to use. Valid inputs can be refs/heads/<branchName>, refs/tags/<tagName> or <commitId>. Leave it as-is unless you want to test alternative releases/branches/commits.')
