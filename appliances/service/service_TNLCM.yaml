@@ -1,6 +1,6 @@
 ---
 name: 6G-Sandbox TNLCM backend+frontend
-version: "020-20240705-1102"
+version: "20240705-1102"
 publisher: Telefonica Innovacion Digital
 description: |-
   This appliance installs the latest version of [TNLCM](https://github.com/6G-SANDBOX/TNLCM) and [TNLCM_FRONTEND](https://github.com/6G-SANDBOX/TNLCM_FRONTEND) from the official repositories and configures them according to the input variables. Configuration of the TNLCM can be made when instanciating the VM.
@@ -66,7 +66,7 @@ logo: tnlcm.png
 images:
   - name: 6G-Sandbox TNLCM
     url: >-
-      https://rawimages.mobilesandbox.cloud:9443/tnlcm020.qcow2
+      https://rawimages.mobilesandbox.cloud:9443/service_TNLCM.qcow2
     type: OS
     dev_prefix: vd
     driver: qcow2

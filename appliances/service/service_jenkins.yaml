@@ -1,6 +1,6 @@
 ---
 name: 6G-Sandbox Jenkins 
-version: "020-20240705-1102"
+version: "20240705-1102"
 publisher: Telefonica Innovacion Digital
 description: |-
   This appliance installs the latest version of Jenkins LTS from the official download and configures it to be ready to serve a 6G-SANDBOX site.
@@ -73,7 +73,7 @@ logo: jenkins.png
 images:
   - name: 6G-Sandbox Jenkins
     url: >-
-      https://rawimages.mobilesandbox.cloud:9443/jenkins020.qcow2
+      https://rawimages.mobilesandbox.cloud:9443/service_jenkins.qcow2
     type: OS
     dev_prefix: vd
     driver: qcow2
