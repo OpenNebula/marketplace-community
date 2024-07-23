@@ -2,14 +2,17 @@
 
 set -o errexit -o pipefail
 
-### Appliance metadata ###############################################
+# ------------------------------------------------------------------------------
+# Appliance metadata
+# ------------------------------------------------------------------------------
 
-ONE_SERVICE_NAME='Service Jenkins - KVM'
-ONE_SERVICE_VERSION='020'
+ONE_SERVICE_NAME='6G-Sandbox Jenkins'
+ONE_SERVICE_VERSION='0.2.0'   #latest
 ONE_SERVICE_BUILD=$(date +%s)
-ONE_SERVICE_SHORT_DESCRIPTION='Appliance with Jenkins preinstalled and configured for 6G-SANDBOX  for KVM hosts'
+ONE_SERVICE_SHORT_DESCRIPTION='Appliance with Jenkins preinstalled and configured to serve 6G-Sandbox sites.'
 ONE_SERVICE_DESCRIPTION=$(cat <<EOF
 This appliance installs the latest version of Jenkins LTS from the official download and configures it to be ready to serve a 6G-SANDBOX site.
+
 The image is based on an Ubuntu 22.04 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
 
 Run with default values and manually configure the credentials from Jenkins WebUI, or use contextualization variables to automate the bootstrap.
@@ -24,7 +27,9 @@ EOF
 ONE_SERVICE_RECONFIGURABLE=false
 
 
-### CONTEXT SECTION ##################################################
+# ------------------------------------------------------------------------------
+# List of contextualization parameters
+# ------------------------------------------------------------------------------
 
 ONE_SERVICE_PARAMS=(
     'JENKINS_USERNAME'              'configure'  'The username for the Jenkins admin user'                                        'O|text'
@@ -39,29 +44,29 @@ ONE_SERVICE_PARAMS=(
     'AWS_SECRET_ACCESS_KEY'         'configure'  'S3 Storage secret key. Same as used in the MinIO instance'                      'O|text'
 )
 
-# Default values for when the variable doesn't exist on the VM Template
 JENKINS_USERNAME="${JENKINS_USERNAME:-admin}"
 JENKINS_PASSWORD="${JENKINS_PASSWORD:-admin}"
 
 
-### Globals ##########################################################
+# ------------------------------------------------------------------------------
+# Global variables
+# ------------------------------------------------------------------------------
 
 DEP_PKGS="fontconfig openjdk-21-jre-headless gnupg software-properties-common gpg python3-pip"
 DEP_PIP="boto3 botocore pyone"
 ANSIBLE_COLLECTIONS="amazon.aws kubernetes.core community.general"
 CONSULT_ME_DIR="/var/lib/jenkins/consult_me/"
 
-###############################################################################
-###############################################################################
-###############################################################################
 
-#
-# service implementation
-#
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# Function Definitions
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 service_install()
 {
-
     export DEBIAN_FRONTEND=noninteractive
 
     # packages
@@ -98,6 +103,8 @@ service_install()
 
 service_configure()
 {
+    export DEBIAN_FRONTEND=noninteractive
+
     # jenkins admin user
     update_admin_user
 
@@ -118,13 +125,14 @@ service_bootstrap()
     return 0
 }
 
-###############################################################################
-###############################################################################
-###############################################################################
 
-#
-# functions
-#
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# Function Definitions
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
 
 install_pkg_deps()
 {

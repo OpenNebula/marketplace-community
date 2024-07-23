@@ -16,7 +16,7 @@ build {
 
 # A Virtual Machine is created with qemu in order to run the setup from the ISO on the CD-ROM
 # Here are the details about the VM virtual hardware
-source "qemu" "Jenkins" {
+source "qemu" "example" {
   cpus        = 2 
   memory      = 2048
   accelerator = "kvm"
@@ -56,7 +56,7 @@ source "qemu" "Jenkins" {
 # Essentially, a bunch of scripts are pulled from ./appliances and placed inside the Guest OS
 # There are shared libraries for ruby and bash. Bash is used in this example
 build {
-  sources = ["source.qemu.Jenkins"]
+  sources = ["source.qemu.example"]
 
   # revert insecure ssh options done by context start_script
   provisioner "shell" {
@@ -99,11 +99,17 @@ build {
     source      = "../one-apps/appliances/service.sh"
     destination = "/etc/one-appliance/service"
   }
-
-  # Pull your own custom logic here
+  
+  #################################################################################################
+  ###### Pull your own custom files here !!!!!!!!!!!!!!!!!!!!!!!!!!!! #############################
+  #################################################################################################
   provisioner "file" {
-    sources     = ["appliances/.example/appliance.sh"]        # location of the file in the git repo. Flexible
-    destination = "/etc/one-appliance/service.d/"             # path in the Guest OS. Strict, always the same
+    sources     = [                                   # locations of the file in the git repo. Flexible
+      "appliances/.example/appliance.sh",                   # main configuration script.
+      "appliances/.example/jenkins_plugins.txt",            # sample .txt file to import.
+      "appliances/.example/jobs.yaml",                      # sample .yaml file to import.
+      ]
+    destination = "/etc/one-appliance/service.d/"          # path in the Guest OS. Strict, always the same
   }
 
   #######################################################################

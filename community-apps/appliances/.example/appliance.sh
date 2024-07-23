@@ -5,7 +5,9 @@
 
 set -o errexit -o pipefail
 
-### Appliance metadata ###############################################
+# ------------------------------------------------------------------------------
+# Appliance metadata
+# ------------------------------------------------------------------------------
 
 # If your "service_install" function includes the "create_one_service_metadata" function
 # The same metadata as in the marketplace yaml file will be placed in /etc/one-appliance/metadata inside the appliance
@@ -23,9 +25,11 @@ EOF
 # Whether service_configure() and service_bootstrap() can run again
 ONE_SERVICE_RECONFIGURABLE=true
 
-### CONTEXT SECTION ##################################################
 
+# ------------------------------------------------------------------------------
 # List of contextualization parameters
+# ------------------------------------------------------------------------------
+
 # This is how you interact with the appliance using OpenNebula.
 # These variables are defined in the CONTEXT section of the VM Template as custom variables
 # https://docs.opennebula.io/6.8/management_and_operations/references/template.html#context-section
@@ -41,15 +45,18 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_MINIO_BUCKET'               'configure'  'Lithops storage backend MinIO existing bucket'                    'O|text'
     'ONEAPP_MINIO_ENDPOINT_CERT'        'configure'  'Lithops storage backend MinIO endpoint certificate'               'O|text64'
 )
-# Default values for when the variable doesn't exist on the VM Template
+
+# Default values for when the variable isn't defined on the VM Template
 ONEAPP_LITHOPS_BACKEND="${ONEAPP_LITHOPS_BACKEND:-localhost}"
 ONEAPP_LITHOPS_STORAGE="${ONEAPP_LITHOPS_STORAGE:-localhost}"
 
-# You can make this parameters a required step of the VM instantiation wizard by using the USER_INPUTS feature
+# You can make these parameters a required step of the VM instantiation wizard by using the USER_INPUTS feature
 # https://docs.opennebula.io/6.8/management_and_operations/vm_management/vm_templates.html?#user-inputs
 
 
-### Globals ##########################################################
+# ------------------------------------------------------------------------------
+# Global variables
+# ------------------------------------------------------------------------------
 
 # For organization purposes is good to define here variables that will be used by your bash logic
 DEP_PKGS="python3-pip"
@@ -57,17 +64,17 @@ DEP_PIP="boto3"
 LITHOPS_VERSION="3.4.0"
 DOCKER_VERSION="5:26.1.3-1~ubuntu.22.04~jammy"
 
-###############################################################################
-###############################################################################
-###############################################################################
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# Function Definitions
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 # The following functions will be called by the appliance service manager at
 # the  different stages of the appliance life cycles. They must exist
 # https://github.com/OpenNebula/one-apps/wiki/apps_intro#appliance-life-cycle
-
-#
-# Mandatory Functions
-#
 
 service_install()
 {
@@ -99,6 +106,8 @@ service_install()
 # Runs when VM is first started, and every time 
 service_configure()
 {
+    export DEBIAN_FRONTEND=noninteractive
+
     # update Lithops config file if non-default options are set
     configure_something
 
@@ -121,6 +130,8 @@ service_configure()
 
 service_bootstrap()
 {
+    export DEBIAN_FRONTEND=noninteractive
+
     update_at_bootstrap
 
     msg info "BOOTSTRAP FINISHED"
@@ -142,16 +153,17 @@ service_cleanup()
     :
 }
 
-###############################################################################
-###############################################################################
-###############################################################################
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# Function Definitions
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 # Then for modularity purposes you can define your own functions as long as their name
 # doesn't clash with the previous functions
 
-#
-# functions
-#
 
 install_deps()
 {

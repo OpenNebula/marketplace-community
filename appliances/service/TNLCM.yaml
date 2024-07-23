@@ -1,24 +1,26 @@
 ---
-name: Example
-# version + date "%Y%M%d-%h%m"
-version: "020-20240624-1835"
-publisher: 6G-SANDBOX
+name: 6G-Sandbox TNLCM backend+frontend
+version: "020-20240705-1102"
+publisher: Telefonica Innovacion Digital
 description: |-
-  Sample Appliance for KVM hosts.
+  This appliance installs the latest version of [TNLCM](https://github.com/6G-SANDBOX/TNLCM) and [TNLCM_FRONTEND](https://github.com/6G-SANDBOX/TNLCM_FRONTEND) from the official repositories and configures them according to the input variables. Configuration of the TNLCM can be made when instanciating the VM.
+
+  The image is based on an Ubuntu 22.04 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
 
   After deploying the appliance, check the status of the deployment in /etc/one-appliance/status. You chan check the appliance logs in /var/log/one-appliance/.
-  
+
+  **Note**: The TNLCM backend uses a MONGO database, so the VM needs to be virtualized with a CPU model that supports AVX instructions. The default CPU model in the template is host_passthrough, but if you are interested in VM live migration,
+   change it to a CPU model similar to your host's CPU that supports [x86-64v2 or higher](https://www.qemu.org/docs/master/system/i386/cpu.html).
+
   **Note**: Remember to add a password variable in the template in order to have access to it, or make sure that your OpenNebula user has an SSH Public key preconfigured.
   
   **Note**: Remember to update the template in order to add a network after importing it.
-
-short_description: 6G-SANDBOX TNLCM appliance for KVM
+short_description: 6G-Sandbox TNLCM backend+frontend for KVM
 tags:
   - ubuntu
   - tnlcm
 format: qcow2
-# stat -c %W <file>
-creation_time: "1719246477"
+creation_time: "1721640274"
 os-id: Ubuntu
 os-release: '22.04'
 os-arch: x86_64
@@ -34,8 +36,6 @@ opennebula_template:
     jenkins_username: "$JENKINS_USERNAME"
     jenkins_password: "$JENKINS_PASSWORD"
     jenkins_token: "$JENKINS_TOKEN"
-    jenkins_job_deploy: "$JENKINS_JOB_DEPLOY"
-    jenkins_job_destroy: "$JENKINS_JOB_DESTROY"
     ansible_vault: "$ANSIBLE_VAULT"
     mail_username: "tnlcm.uma@gmail.com"
     mail_password: "czrs rsdg ktpm rrlx"
@@ -54,28 +54,23 @@ opennebula_template:
   memory_unit_cost: 'MB'
   os:
     arch: x86_64
-  logo: images/logos/tnlcm.png
+  logo: images/logos/jenkins.png
   lxd_security_privileged: 'true'
   user_inputs:
     jenkins_host: "M|text|JENKINS_HOST: IP address of the Jenkins server used to deploy the Trial Networks| |127.0.0.1"
-    jenkins_username: "M|text|JENKINS_USERNAME: Username used to login into the Jenkins server to access and retrieve pipeline info. | |tnlcm"
-    jenkins_password: "M|text|JENKINS_PASSWORD: Password used to login into the Jenkins server to access and retrieve pipeline info. | |tnlcm"
-    jenkins_token: "M|text|JENKINS_TOKEN: Token to authenticate while sending POST requests to the Jenkins Server API| |114803bbd81a27f5eb9052ce4d3b9212d4"
-    jenkins_job_deploy: "M|text|JENKINS_JOB_DEPLOY: Name of the Jenkins pipeline used to deploy Trial Networks| |TN_DEPLOY"
-    jenkins_job_destroy: "M|text|JENKINS_JOB_DESTROY: Name of the Jenkins pipeline used to destroy Trial Networks| |TN_DESTROY"
+    jenkins_username: "M|text|JENKINS_USERNAME: Username used to login into the Jenkins server to access and retrieve pipeline info. | |admin"
+    jenkins_password: "M|text|JENKINS_PASSWORD: Password used to login into the Jenkins server to access and retrieve pipeline info. | |admin"
+    jenkins_token: "M|text|JENKINS_TOKEN: Token to authenticate while sending POST requests to the Jenkins Server API| |"
     ansible_vault: "M|text|ANSIBLE_VAULT: Password used to decrypt the contents of the 6G-Sandbox-Sites repository file| |"
 logo: tnlcm.png
 images:
-  - name: TNLCM_6GSandbox
+  - name: 6G-Sandbox TNLCM
     url: >-
       https://rawimages.mobilesandbox.cloud:9443/tnlcm020.qcow2
     type: OS
     dev_prefix: vd
     driver: qcow2
-    # qemu-img info <file> | awk '/virtual size:/ {print $5}' | sed 's/[^0-9]*//g'
     size: "7516192768"
     checksum:
-      # md5sum <file> | cut -d' ' -f1
-      md5: "85971d547fe036800fd1832fc1f13d2d"
-      # sha256sum <file> | cut -d' ' -f1
-      sha256: "c5457a1cd3f8e8a2efc2e9429960dc0e8874d1f538ed0aca4f79a102fd2a28ba"
+      md5: "490330ca6ee051cc7549cbdf80809e60"
+      sha256: "73a08181c7d6c3415c026d0854a4969ceabc1e33cc8cbd8e262cf12fa5208f2f"

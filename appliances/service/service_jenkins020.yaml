@@ -1,6 +1,5 @@
 ---
-name: 6G-SANDBOX Jenkins 
-# date +"%d-%m-%y"
+name: 6G-Sandbox Jenkins 
 version: "020-20240705-1102"
 publisher: Telefonica Innovacion Digital
 description: |-
@@ -17,19 +16,18 @@ description: |-
   **Note**: Remember to add a password variable in the template in order to have access to it, or make sure that your OpenNebula user has an SSH Public key preconfigured.
   
   **Note**: Remember to update the template in order to add a network after importing it.
-short_description: 6G-SANDBOX Jenkins for KVM
+short_description: 6G-Sandbox Jenkins for KVM
 tags:
   - ubuntu
   - jenkins
 format: qcow2
-# stat -c %W <file>
 creation_time: "1720169901"
 os-id: Ubuntu
 os-release: '22.04'
 os-arch: x86_64
 hypervisor: KVM
 opennebula_version: >-
-  6.2, 6.3, 6.4, 6.6, 6.8
+  6.2, 6.3, 6.4, 6.6, 6.8, 6.10
 opennebula_template:
   context:
     network: 'YES'
@@ -73,16 +71,13 @@ opennebula_template:
     aws_secret_access_key: "M|text|AWS_SECRET_ACCESS_KEY: S3 Storage secret key. Same as used in the MinIO instance| |" 
 logo: jenkins.png
 images:
-  - name: jenkins020
+  - name: 6G-Sandbox Jenkins
     url: >-
       https://rawimages.mobilesandbox.cloud:9443/jenkins020.qcow2
     type: OS
     dev_prefix: vd
     driver: qcow2
-    # qemu-img info <file> | awk '/virtual size:/ {print $5}' | sed 's/[^0-9]*//g'
     size: "10737418240"
     checksum:
-      # md5sum <file> | cut -d' ' -f1
       md5: "63ee6cdb02526748c93a91d000c47052"
-      # sha256sum <file> | cut -d' ' -f1
       sha256: "b70b679ccabb840f34f43e3563cdf1a9e7ca009350c5505c0502e5c307e394ce"
