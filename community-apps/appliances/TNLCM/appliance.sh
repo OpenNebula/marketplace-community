@@ -108,7 +108,7 @@ service_bootstrap()
     export DEBIAN_FRONTEND=noninteractive
 
     # raise docker compose
-    docker compose -f /opt/TNLCM/docker-compose.yaml up -d
+    docker compose -f /opt/TNLCM/docker-compose.yml up -d
 
     systemctl enable --now tnlcm-backend.service
     if [ $? -ne 0 ]; then
