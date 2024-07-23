@@ -30,7 +30,7 @@ then
 fi
 
 echo "------------------New build--------------------------" >> ${LOGFILE}
-echo APP_NAME=$–APP_NAME} >> ${LOGFILE}
+echo APP_NAME=${APP_NAME} >> ${LOGFILE}
 echo APP_VER=${APP_VER} >> ${LOGFILE}
 echo APP=${APP} >> ${LOGFILE}
 echo ORIGIN=${ORIGIN} >> ${LOGFILE}
@@ -48,7 +48,7 @@ mv ${ORIGIN} ${DESTINATION}
 if [ -n "${APP_VER}" ]; then
     VERSION=${APP_VER}-$(date +"%Y%m%d-%H%M")         # e.g. 11-290424-1016
 else
-    VERSION=${APP_VER}                                # e.g. 290424-1016
+    VERSION=$(date +"%Y%m%d-%H%M")                    # e.g. 290424-1016
 fi   
 TIMESTAMP="$(stat -c %W "${DESTINATION}")"
 SIZE="$(qemu-img info "${DESTINATION}" | awk '/virtual size:/ {print $5}' | sed 's/[^0-9]*//g')"
