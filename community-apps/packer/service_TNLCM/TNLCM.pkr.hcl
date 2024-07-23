@@ -91,7 +91,7 @@ build {
 
   provisioner "file" {
     sources     = [
-      "appliances/jenkins/appliance.sh",
+      "appliances/TNLCM/appliance.sh",
       ]
     destination = "/etc/one-appliance/service.d/"
   }

@@ -7,7 +7,8 @@ ORG=$3                                            # e.g. export/debian11-6.6.1-1
 VERSION=$DISTRO_VER-$(date +"%Y%m%d-%H%M")        # e.g. 11-290424-1016
 DST=$DIR_APPLIANCES/$DISTRO.qcow2                 # e.g. /var/lib/one/6gsandbox-marketplace/ueransim326.qcow2
 if [ -f "$DST" ]; then
-    BKUP=$DIR_APPLIANCES/backup/$DISTRO-$(stat -c %y "$DST" | awk '{print $1}' | sed 's/-//g').qcow2   # e.g. /var/lib/one/6gsandbox-marketplace/backup/ueransim326.24-04-24.qcow2
+    mkdir ${DIR_APPLIANCES}/backup/
+    BKUP=${DIR_APPLIANCES}/backup/${DISTRO}-$(stat -c %y "$DST" | awk '{print $1}' | sed 's/-//g').qcow2   # e.g. /var/lib/one/6gsandbox-marketplace/backup/ueransim326.24-04-24.qcow2
 else
     BKUP=None
 fi

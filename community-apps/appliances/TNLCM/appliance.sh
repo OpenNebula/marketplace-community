@@ -157,7 +157,7 @@ install_pkg_deps()
     msg info "Run apt-get update"
     apt-get update
 
-    msg info "Install required packages for Jenkins"
+    msg info "Install required packages for TNLCM"
     if ! apt-get install -y ${!1} ; then
         msg error "Package(s) installation failed"
         exit 1
