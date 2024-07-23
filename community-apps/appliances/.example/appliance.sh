@@ -79,6 +79,7 @@ DOCKER_VERSION="5:26.1.3-1~ubuntu.22.04~jammy"
 service_install()
 {
     export DEBIAN_FRONTEND=noninteractive
+    systemctl stop unattended-upgrades
 
     # packages
     install_deps DEP_PKGS DEP_PIP

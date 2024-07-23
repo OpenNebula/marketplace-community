@@ -68,6 +68,7 @@ CONSULT_ME_DIR="/var/lib/jenkins/consult_me/"
 service_install()
 {
     export DEBIAN_FRONTEND=noninteractive
+    systemctl stop unattended-upgrades
 
     # packages
     install_pkg_deps DEP_PKGS

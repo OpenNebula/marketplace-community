@@ -61,6 +61,7 @@ PYTHON_BIN="/usr/local/bin/python${PYTHON_VERSION%.*}"
 service_install()
 {
     export DEBIAN_FRONTEND=noninteractive
+    systemctl stop unattended-upgrades
 
     # packages
     install_pkg_deps DEP_PKGS
