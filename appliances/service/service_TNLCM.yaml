@@ -1,0 +1,76 @@
+---
+name: 6G-Sandbox TNLCM backend+frontend
+version: "20240705-1102"
+publisher: Telefonica Innovacion Digital
+description: |-
+  This appliance installs the latest version of [TNLCM](https://github.com/6G-SANDBOX/TNLCM) and [TNLCM_FRONTEND](https://github.com/6G-SANDBOX/TNLCM_FRONTEND) from the official repositories and configures them according to the input variables. Configuration of the TNLCM can be made when instanciating the VM.
+
+  The image is based on an Ubuntu 22.04 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
+
+  After deploying the appliance, check the status of the deployment in /etc/one-appliance/status. You chan check the appliance logs in /var/log/one-appliance/.
+
+  **Note**: The TNLCM backend uses a MONGO database, so the VM needs to be virtualized with a CPU model that supports AVX instructions. The default CPU model in the template is host_passthrough, but if you are interested in VM live migration,
+   change it to a CPU model similar to your host's CPU that supports [x86-64v2 or higher](https://www.qemu.org/docs/master/system/i386/cpu.html).
+
+  **Note**: Remember to add a password variable in the template in order to have access to it, or make sure that your OpenNebula user has an SSH Public key preconfigured.
+  
+  **Note**: Remember to update the template in order to add a network after importing it.
+short_description: 6G-Sandbox TNLCM backend+frontend for KVM
+tags:
+  - ubuntu
+  - tnlcm
+format: qcow2
+creation_time: "1721640274"
+os-id: Ubuntu
+os-release: '22.04'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: >-
+  6.2, 6.3, 6.4, 6.6, 6.8, 6.10
+opennebula_template:
+  context:
+    network: 'YES'
+    set_hostname: "$NAME"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    jenkins_host: "$JENKINS_HOST"
+    jenkins_username: "$JENKINS_USERNAME"
+    jenkins_password: "$JENKINS_PASSWORD"
+    jenkins_token: "$JENKINS_TOKEN"
+    ansible_vault: "$ANSIBLE_VAULT"
+    mail_username: "tnlcm.uma@gmail.com"
+    mail_password: "czrs rsdg ktpm rrlx"
+  cpu: '2'
+  vcpu: '2'
+  cpu_model:
+    model: "host-passthrough"
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  hot_resize:
+    cpu_hot_add_enabled: 'YES'
+    memory_hot_add_enabled: 'YES'
+  hypervisor: kvm
+  memory: '4096'
+  memory_unit_cost: 'MB'
+  os:
+    arch: x86_64
+  logo: images/logos/jenkins.png
+  lxd_security_privileged: 'true'
+  user_inputs:
+    jenkins_host: "M|text|JENKINS_HOST: IP address of the Jenkins server used to deploy the Trial Networks| |127.0.0.1"
+    jenkins_username: "M|text|JENKINS_USERNAME: Username used to login into the Jenkins server to access and retrieve pipeline info. | |admin"
+    jenkins_password: "M|text|JENKINS_PASSWORD: Password used to login into the Jenkins server to access and retrieve pipeline info. | |admin"
+    jenkins_token: "M|text|JENKINS_TOKEN: Token to authenticate while sending POST requests to the Jenkins Server API| |"
+    ansible_vault: "M|text|ANSIBLE_VAULT: Password used to decrypt the contents of the 6G-Sandbox-Sites repository file| |"
+logo: tnlcm.png
+images:
+  - name: 6G-Sandbox TNLCM
+    url: >-
+      https://rawimages.mobilesandbox.cloud:9443/service_TNLCM.qcow2
+    type: OS
+    dev_prefix: vd
+    driver: qcow2
+    size: "7516192768"
+    checksum:
+      md5: "490330ca6ee051cc7549cbdf80809e60"
+      sha256: "73a08181c7d6c3415c026d0854a4969ceabc1e33cc8cbd8e262cf12fa5208f2f"

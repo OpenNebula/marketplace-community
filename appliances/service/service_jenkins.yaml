@@ -1,0 +1,83 @@
+---
+name: 6G-Sandbox Jenkins 
+version: "20240705-1102"
+publisher: Telefonica Innovacion Digital
+description: |-
+  This appliance installs the latest version of Jenkins LTS from the official download and configures it to be ready to serve a 6G-SANDBOX site.
+  The image is based on an Ubuntu 22.04 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
+
+  Run with default values and manually configure the credentials from Jenkins WebUI, or use contextualization variables to automate the bootstrap.
+  Default Jenkins credentials (if JENKINS_USERNAME and JENKINS_PASSWORD are unspecified) are admin:admin
+
+  After deploying the appliance, check the status of the deployment in /etc/one-appliance/status. You chan check the appliance logs in /var/log/one-appliance/.
+
+  **WARNING: The appliance does not permit recontextualization. Modifying the context variables will not have any real efects on the running instance.**
+  
+  **Note**: Remember to add a password variable in the template in order to have access to it, or make sure that your OpenNebula user has an SSH Public key preconfigured.
+  
+  **Note**: Remember to update the template in order to add a network after importing it.
+short_description: 6G-Sandbox Jenkins for KVM
+tags:
+  - ubuntu
+  - jenkins
+format: qcow2
+creation_time: "1720169901"
+os-id: Ubuntu
+os-release: '22.04'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: >-
+  6.2, 6.3, 6.4, 6.6, 6.8, 6.10
+opennebula_template:
+  context:
+    network: 'YES'
+    set_hostname: "$NAME"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    jenkins_username: "$JENKINS_USERNAME"
+    jenkins_password: "$JENKINS_PASSWORD"
+    ansible_vault_password: "$ANSIBLE_VAULT_PASSWORD"
+    opennebula_endpoint: "$OPENNEBULA_ENDPOINT"
+    opennebula_flow_endpoint: "$OPENNEBULA_FLOW_ENDPOINT"
+    opennebula_username: "$OPENNEBULA_USERNAME"
+    opennebula_password: "$OPENNEBULA_PASSWORD"
+    opennebula_insecure: "$OPENNEBULA_INSECURE"
+    aws_access_key_id: "$AWS_ACCESS_KEY_ID"
+    aws_secret_access_key: "$AWS_SECRET_ACCESS_KEY"
+  cpu: '2'
+  vcpu: '2'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  hot_resize:
+    cpu_hot_add_enabled: 'YES'
+    memory_hot_add_enabled: 'YES'
+  hypervisor: kvm
+  memory: '4096'
+  memory_unit_cost: 'MB'
+  os:
+    arch: x86_64
+  logo: images/logos/jenkins.png
+  lxd_security_privileged: 'true'
+  user_inputs:
+    jenkins_username: "O|text|JENKINS_USERNAME: The username for the Jenkins admin user| |admin"
+    jenkins_password: "O|text|JENKINS_PASSWORD: The password for the Jenkins admin user| |admin"
+    ansible_vault_password: "M|text|ANSIBLE_VAULT_PASSWORD: Password to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault| |"
+    opennebula_endpoint: "M|text|OPENNEBULA_ENDPOINT: The URL of your OpenNebula XML-RPC Endpoint API (for example, 'http://example.com:2633/RPC2')| |"
+    opennebula_flow_endpoint: "M|text|OPENNEBULA_FLOW_ENDPOINT: The URL of your OneFlow HTTP Endpoint API (for example, 'http://example.com:2474')| |"
+    opennebula_username: "M|text|OPENNEBULA_USERNAME: The OpenNebula username used to deploy each component| |"
+    opennebula_password: "M|text|OPENNEBULA_PASSWORD: The OpenNebula password matching OPENNEBULA_USERNAME| |"
+    opennebula_insecure: "M|text|OPENNEBULA_INSECURE: Allow insecure connexion into the OpenNebula XML-RPC Endpoint API (skip TLS verification)| |true"
+    aws_access_key_id: "M|text|AWS_ACCESS_KEY_ID: S3 Storage access key. Same as used in the MinIO instance| |"
+    aws_secret_access_key: "M|text|AWS_SECRET_ACCESS_KEY: S3 Storage secret key. Same as used in the MinIO instance| |" 
+logo: jenkins.png
+images:
+  - name: 6G-Sandbox Jenkins
+    url: >-
+      https://rawimages.mobilesandbox.cloud:9443/service_jenkins.qcow2
+    type: OS
+    dev_prefix: vd
+    driver: qcow2
+    size: "10737418240"
+    checksum:
+      md5: "63ee6cdb02526748c93a91d000c47052"
+      sha256: "b70b679ccabb840f34f43e3563cdf1a9e7ca009350c5505c0502e5c307e394ce"
