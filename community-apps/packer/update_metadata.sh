@@ -7,15 +7,15 @@ if [ -n "${APP_VER}" ]; then
 else
     APP=${APP_NAME}
 fi               
-ORIGIN=${3}                                     # e.g. export/debian11-6.6.1-1.qcow2
-DESTINATION=${DIR_APPLIANCES}/${APP}.qcow2      # e.g. /var/lib/one/6gsandbox-marketplace/ueransim326.qcow2
+ORIGIN=${3}                                     # e.g. export/debian11
+DESTINATION=${DIR_APPLIANCES}/${APP}.qcow2      # e.g. /var/lib/one/6gsandbox-marketplace/debian11.qcow2
 if [ -f "${DESTINATION}" ]; then
     mkdir ${DIR_APPLIANCES}/backup/
-    BACKUP=${DIR_APPLIANCES}/backup/${APP}-$(stat -c %y "${DESTINATION}" | awk '{print $1}' | sed 's/-//g').qcow2   # e.g. /var/lib/one/6gsandbox-marketplace/backup/ueransim326.24-04-24.qcow2
+    BACKUP=${DIR_APPLIANCES}/backup/${APP}-$(stat -c %y "${DESTINATION}" | awk '{print $1}' | sed 's/-//g').qcow2   # e.g. /var/lib/one/6gsandbox-marketplace/backup/debian11-20240723.qcow2
 else
     BACKUP=None
 fi
-METADATA=${DIR_METADATA}/${APP}.yaml             # e.g. /opt/marketplace/appliances/all/tnlcm0.yaml
+METADATA=${DIR_METADATA}/${APP}.yaml             # e.g. /opt/marketplace-community/marketplace/appliances/debian11.yaml
 
 
 # Verify if yq is installed, and install it
@@ -46,9 +46,9 @@ mv ${ORIGIN} ${DESTINATION}
 
 # Calculate the values to update the appliance metadata
 if [ -n "${APP_VER}" ]; then
-    VERSION=${APP_VER}-$(date +"%Y%m%d-%H%M")         # e.g. 11-290424-1016
+    VERSION=${APP_VER}-$(date +"%Y%m%d-%H%M")         # e.g. 11-20240723-1016
 else
-    VERSION=$(date +"%Y%m%d-%H%M")                    # e.g. 290424-1016
+    VERSION=$(date +"%Y%m%d-%H%M")                    # e.g. 20240723-1016
 fi   
 TIMESTAMP="$(stat -c %W "${DESTINATION}")"
 SIZE="$(qemu-img info "${DESTINATION}" | awk '/virtual size:/ {print $5}' | sed 's/[^0-9]*//g')"
@@ -60,6 +60,7 @@ echo SIZE=${SIZE} >> ${LOGFILE}
 echo MD5=${MD5} >> ${LOGFILE}
 echo SHA256=${SHA256} >> ${LOGFILE}
 
+cp metadata/${APP}.yaml  "${METADATA}"
 cat "${METADATA}" | yq ".version = \"${VERSION}\"" | sponge "${METADATA}"
 cat "${METADATA}" | yq ".creation_time = \"${TIMESTAMP}\"" | sponge "${METADATA}"
 cat "${METADATA}" | yq ".images[0].size = \"${SIZE}\"" | sponge "${METADATA}"
