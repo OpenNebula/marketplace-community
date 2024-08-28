@@ -1,104 +1,99 @@
-# ---------------------------------------------------------------------------- #
-# Copyright 2024, OpenNebula Project, OpenNebula Systems                  #
-#                                                                              #
-# Licensed under the Apache License, Version 2.0 (the "License"); you may      #
-# not use this file except in compliance with the License. You may obtain      #
-# a copy of the License at                                                     #
-#                                                                              #
-# http://www.apache.org/licenses/LICENSE-2.0                                   #
-#                                                                              #
-# Unless required by applicable law or agreed to in writing, software          #
-# distributed under the License is distributed on an "AS IS" BASIS,            #
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.     #
-# See the License for the specific language governing permissions and          #
-# limitations under the License.                                               #
-# ---------------------------------------------------------------------------- #
+#!/usr/bin/env bash
+
+# This script contains an example implementation logic for your appliances.
+# For this example the goal will be to have a "database as a service" appliance
+
 set -o errexit -o pipefail
 
+# ------------------------------------------------------------------------------
+# Appliance metadata
+# ------------------------------------------------------------------------------
 
+# If your "service_install" function includes the "create_one_service_metadata" function
+# The same metadata as in the marketplace yaml file will be placed in /etc/one-appliance/metadata inside the appliance
+ONE_SERVICE_NAME='Service example - KVM'
+ONE_SERVICE_VERSION=''   #latest
+ONE_SERVICE_BUILD=$(date +%s)
+ONE_SERVICE_SHORT_DESCRIPTION='Sample Appliance for KVM hosts'
+ONE_SERVICE_DESCRIPTION=$(cat <<EOF
+Sample Appliance for KVM hosts.
+
+After deploying the appliance, check the status of the deployment in /etc/one-appliance/status. You chan check the appliance logs in /var/log/one-appliance/.
+EOF
+)
+
+# Whether service_configure() and service_bootstrap() can run again
+ONE_SERVICE_RECONFIGURABLE=true
+
+
+# ------------------------------------------------------------------------------
 # List of contextualization parameters
+# ------------------------------------------------------------------------------
+
+# This is how you interact with the appliance using OpenNebula.
+# These variables are defined in the CONTEXT section of the VM Template as custom variables
+# https://docs.opennebula.io/6.8/management_and_operations/references/template.html#context-section
+
+# 'name' 'type' 'description' 'input'.
+# 'type' is always 'configure', and 'input' are shown at https://docs.opennebula.io/6.8/management_and_operations/references/template.html#template-user-inputs
 ONE_SERVICE_PARAMS=(
     'ONEAPP_LITHOPS_BACKEND'            'configure'  'Lithops compute backend'                                          'O|text'
     'ONEAPP_LITHOPS_STORAGE'            'configure'  'Lithops storage backend'                                          'O|text'
     'ONEAPP_MINIO_ENDPOINT'             'configure'  'Lithops storage backend MinIO endpoint URL'                       'O|text'
     'ONEAPP_MINIO_ACCESS_KEY_ID'        'configure'  'Lithops storage backend MinIO account user access key'            'O|text'
     'ONEAPP_MINIO_SECRET_ACCESS_KEY'    'configure'  'Lithops storage backend MinIO account user secret access key'     'O|text'
-    'ONEAPP_MINIO_BUCKET'              'configure'  'Lithops storage backend MinIO existing bucket'                    'O|text'
+    'ONEAPP_MINIO_BUCKET'               'configure'  'Lithops storage backend MinIO existing bucket'                    'O|text'
     'ONEAPP_MINIO_ENDPOINT_CERT'        'configure'  'Lithops storage backend MinIO endpoint certificate'               'O|text64'
 )
 
-
-### Appliance metadata ###############################################
-
-# Appliance metadata
-ONE_SERVICE_NAME='Service Lithops - KVM'
-ONE_SERVICE_VERSION='3.4.0'   #latest
-ONE_SERVICE_BUILD=$(date +%s)
-ONE_SERVICE_SHORT_DESCRIPTION='Appliance with preinstalled Lithops for KVM hosts'
-ONE_SERVICE_DESCRIPTION=$(cat <<EOF
-Appliance with preinstalled Lithops v3.4.0.
-
-By default, it uses localhost both for Compute and Storage Backend.
-
-To configure MinIO as Storage Backend use the parameter ONEAPP_LITHOPS_STORAGE=minio
-with ONEAPP_MINIO_ENDPOINT, ONEAPP_MINIO_ACCESS_KEY_ID and ONEAPP_MINIO_SECRET_ACCESS_KEY.
-These parameters values have to point to a valid and reachable MinIO server endpoint.
-
-The parameter ONEAPP_MINIO_BUCKET and ONEAPP_MINIO_ENDPOINT_CERT are optional.
-- ONEAPP_MINIO_BUCKET points to an existing bucket in the MinIO server. If the bucket does not exist or if the
-parameter is empty, the MinIO server will generate a bucket automatically.
-- ONEAPP_MINIO_ENDPOINT_CERT is necessary when using self-signed certificates on the MinIO server. This is the
-certificate for the CA on the MinIO server. If the CA certificate exists, script will skip it,
-if one would want to update the CA certificate from context, first delete previous ca.crt file.
-EOF
-)
-ONE_SERVICE_RECONFIGURABLE=true
-
-### Contextualization defaults #######################################
-
+# Default values for when the variable isn't defined on the VM Template
 ONEAPP_LITHOPS_BACKEND="${ONEAPP_LITHOPS_BACKEND:-localhost}"
 ONEAPP_LITHOPS_STORAGE="${ONEAPP_LITHOPS_STORAGE:-localhost}"
 
-### Globals ##########################################################
+# You can make these parameters a required step of the VM instantiation wizard by using the USER_INPUTS feature
+# https://docs.opennebula.io/6.8/management_and_operations/references/template.html#template-user-inputs
 
+
+# ------------------------------------------------------------------------------
+# Global variables
+# ------------------------------------------------------------------------------
+
+# For organization purposes is good to define here variables that will be used by your bash logic
 DEP_PKGS="python3-pip"
 DEP_PIP="boto3"
 LITHOPS_VERSION="3.4.0"
 DOCKER_VERSION="5:26.1.3-1~ubuntu.22.04~jammy"
 
-###############################################################################
-###############################################################################
-###############################################################################
 
-#
-# service implementation
-#
 
-service_cleanup()
-{
-    :
-}
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# Function Definitions
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+# The following functions will be called by the appliance service manager at
+# the  different stages of the appliance life cycles. They must exist
+# https://github.com/OpenNebula/one-apps/wiki/apps_intro#appliance-life-cycle
 
 service_install()
 {
-    # ensuring that the setup directory exists
-    #TODO: move to service
-    mkdir -p "$ONE_SERVICE_SETUP_DIR"
     export DEBIAN_FRONTEND=noninteractive
+    systemctl stop unattended-upgrades
 
     # packages
-    install_deps ${DEP_PKGS} ${DEP_PIP}
+    install_deps DEP_PKGS DEP_PIP
 
     # docker
     install_docker
 
-    # Lithops
-    install_lithops
+    # whatever your appliance is about
+    install_whatever
 
     # create Lithops config file in /etc/lithops
     create_lithops_config
 
-    # service metadata
+    # service metadata. Function defined at one-apps/appliances/lib/common.sh
     create_one_service_metadata
 
     # cleanup
@@ -109,10 +104,13 @@ service_install()
     return 0
 }
 
+# Runs when VM is first started, and every time 
 service_configure()
 {
+    export DEBIAN_FRONTEND=noninteractive
+
     # update Lithops config file if non-default options are set
-    update_lithops_config
+    configure_something
 
     local_ca_folder="/usr/local/share/ca-certificates/minio"
     if [[ ! -z "${ONEAPP_MINIO_ENDPOINT_CERT}" ]] && [[ ! -f "${local_ca_folder}/ca.crt" ]]; then
@@ -133,33 +131,58 @@ service_configure()
 
 service_bootstrap()
 {
-    update_lithops_config
+    export DEBIAN_FRONTEND=noninteractive
+
+    update_at_bootstrap
+
+    msg info "BOOTSTRAP FINISHED"
     return 0
 }
 
-###############################################################################
-###############################################################################
-###############################################################################
+# This one is not really mandatory, however it is a handled function
+service_help()
+{
+    msg info "Example appliance how to use message. If missing it will default to the generic help"
 
-#
-# functions
-#
+    return 0
+}
+
+# This one is not really mandatory, however it is a handled function
+service_cleanup()
+{
+    msg info "CLEANUP logic goes here in case of install failure"
+    :
+}
+
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# Function Definitions
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+# Then for modularity purposes you can define your own functions as long as their name
+# doesn't clash with the previous functions
+
 
 install_deps()
 {
     msg info "Run apt-get update"
     apt-get update
 
-    msg info "Install required packages for Lithops"
-    if ! apt-get install -y "${1}" ; then
-        msg error "Package(s) installation failed: ${1}"
+    msg info "Install required packages for Jenkins"
+    if ! apt-get install -y ${!1} ; then
+        msg error "Package(s) installation failed"
         exit 1
     fi
 
-    msg info "Install pip dependencies"
-    if ! pip install "${2}" ; then
-        msg error "Python pip dependencies installation failed"
-        exit 1
+    if [ -n ${2} ]; then
+        msg info "Install required pip packages for Jenkins"
+        if ! pip install ${2} ; then
+            msg error "pip package(s) installation failed"
+            exit 1
+        fi
     fi
 }
 
@@ -175,7 +198,7 @@ install_docker()
     msg info "Add Docker repository to apt sources"
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
         $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-        sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        tee /etc/apt/sources.list.d/docker.list > /dev/null
     apt update
 
     msg info "Install Docker Engine"
@@ -185,7 +208,7 @@ install_docker()
     fi
 }
 
-install_lithops()
+install_whatever()
 {
     msg info "Install Lithops from pip"
     if ! pip install lithops==${LITHOPS_VERSION} ; then
@@ -213,7 +236,11 @@ lithops:
 EOF
 }
 
-update_lithops_config(){
+configure_something(){
+    :
+}
+
+update_at_bootstrap(){
     msg info "Update compute and storage backend modes"
     sed -i "s/backend: .*/backend: ${ONEAPP_LITHOPS_BACKEND}/g" /etc/lithops/config
     sed -i "s/storage: .*/storage: ${ONEAPP_LITHOPS_STORAGE}/g" /etc/lithops/config
