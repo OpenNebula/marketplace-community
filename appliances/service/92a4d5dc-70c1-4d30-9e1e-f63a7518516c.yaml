@@ -1,0 +1,51 @@
+---
+name: Service NTP Server
+version: 6.10.0-1-20240207
+publisher: Telefonica Innovacion Digital
+description: |-
+  Appliance with preinstalled NTP server and Docker.
+
+  See the dedicated [documentation](https://hub.docker.com/r/cturra/ntp).
+short_description: Appliance with preinstalled NTP server for KVM hosts
+tags:
+- ntp
+- ubuntu
+- service
+format: qcow2
+creation_time: 1719946674
+os-id: Ubuntu
+os-release: '22.04 LTS'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: >-
+  6.2, 6.3, 6.4, 6.6, 6.8, 6.10
+opennebula_template:
+  context:
+    network: 'YES'
+    oneapp_ntp_servers: "$ONEAPP_NTP_SERVERS"
+    oneapp_tz: "$ONEAPP_TZ"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+  cpu: '1'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  inputs_order: >-
+    ONEAPP_NTP_SERVERS,ONEAPP_TZ
+  memory: '512'
+  disk: 
+  os:
+    arch: x86_64
+  user_inputs:
+    oneapp_ntp_servers: "O|text|List of NTP Servers to use as Upstream| |0.es.pool.ntp.org,1.es.pool.ntp.org,2.es.pool.ntp.org,3.es.pool.ntp.org"
+    oneapp_tz: "O|text|Timezone defined by IANAA| |Europe/Madrid"
+logo: images/logos/NTP.png
+images:
+- name: service_ntp_server
+  url: https://rawimages.mobilesandbox.cloud:9443/service_ntp_server-6.10.0-1-20240207.qcow2
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 755302400
+  checksum:
+    md5: a09b81492ab5243902623b4721d5880e
+    sha256: f7a17cc30f6d11c749822a3845a515097893c4640b3031b1db692601c76eb79c
