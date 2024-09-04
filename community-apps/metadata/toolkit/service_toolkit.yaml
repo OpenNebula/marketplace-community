@@ -1,6 +1,6 @@
 ---
 name: "6G-Sandbox Toolkit"
-version: 1724418332   # date +%s
+version: 1725448126   # date +%s
 publisher: Telefonica Innovacion Digital
 description: |-
   OpenNebula Service used as part of the [toolkit-installer](https://github.com/6G-SANDBOX/toolkit-installer).
@@ -25,7 +25,7 @@ tags:
 - onegate
 type: SERVICE_TEMPLATE        # Choices are <none> (default), SERVICE_TEMPLATE and VMTEMPLATE (shown in Sunstone as IMAGE, SERVICE and VM respectively)
 format: qcow2
-creation_time: 1724418332   # date +%s
+creation_time: 1725448126   # date +%s
 os-id: Ubuntu
 os-release: 22.04 LTS
 os-arch: x86_64

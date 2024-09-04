@@ -1,6 +1,6 @@
 ---
 name: "[6G-Sandbox toolkit] MinIO"
-version: 1724418332   # date +%s
+version: 1725448126   # date +%s
 publisher: Telefonica Innovacion Digital
 description: |-
   Custom template of the [MinIO appliance](https://github.com/OpenNebula/one-apps/wiki/minio_quick) for the 6G-Sandbox toolkit.
@@ -15,7 +15,7 @@ tags:
 - ubuntu
 type: VMTEMPLATE
 format: qcow2
-creation_time: 1724418332   # date +%s
+creation_time: 1725448126   # date +%s
 os-id: Ubuntu
 os-release: 22.04 LTS
 os-arch: x86_64
