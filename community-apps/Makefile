@@ -20,7 +20,7 @@ ${DIR_EXPORT}/%.qcow2: $(patsubst %, ${DIR_ONEAPPS}/context-linux/out/%, $(LINUX
 	$(eval DISTRO_VER  := $(shell echo ${*} | sed 's/^.[^0-9]*\(.*\)/\1/'))
 	packer/build.sh "${DISTRO_NAME}" "${DISTRO_VER}" ${@}
 	packer/update_metadata.sh "${DISTRO_NAME}" "${DISTRO_VER}" ${@}
-
+	
 clean:
 	-rm -rf ${DIR_EXPORT}/*
 
