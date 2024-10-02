@@ -68,7 +68,8 @@ opennebula_template:
           NAME = "NIC0",
           NETWORK_ID = "$Public" ]
       cooldown: 120          # Cooldown period duration after a scale operation, in seconds. Default 300s
-    - name: jenkins           # letters, numbers or underscore
+      max_vms: 1
+    - name: jenkins
       parents: [minio]         # Names of the roles that must be deployed before this one.
       vm_template_contents: |
         NIC = [
@@ -77,8 +78,9 @@ opennebula_template:
         ONEAPP_JENKINS_AWS_ACCESS_KEY_ID = "${minio.template.context.oneapp_minio_root_user}"
         ONEAPP_JENKINS_AWS_SECRET_ACCESS_KEY = "${minio.template.context.oneapp_minio_root_password}"
       cooldown: 120
-    - name: tnlcm           # letters, numbers or underscore
-      parents: [jenkins]         # Names of the roles that must be deployed before this one.
+      max_vms: 1
+    - name: tnlcm
+      parents: [jenkins]
       vm_template_contents: |
         NIC = [
           NAME = "NIC0",
@@ -87,5 +89,6 @@ opennebula_template:
         ONEAPP_TNLCM_JENKINS_USERNAME = "${jenkins.template.context.oneapp_jenkins_username}"
         ONEAPP_TNLCM_JENKINS_PASSWORD = "${jenkins.template.context.oneapp_jenkins_password}"
         ONEAPP_TNLCM_ANSIBLE_VAULT    = "${jenkins.template.context.oneapp_jenkins_ansible_vault}"
-      cooldown: 120          # Cooldown period duration after a scale operation, in seconds. Default 300s
+      cooldown: 120
+      max_vms: 1
 logo: sandbox.png
