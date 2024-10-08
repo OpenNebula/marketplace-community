@@ -55,7 +55,7 @@ ONEAPP_TNLCM_ADMIN_PASSWORD="${ONEAPP_TNLCM_ADMIN_PASSWORD:-tnlcm}"
 
 DEP_PKGS="build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev pkg-config wget apt-transport-https ca-certificates curl gnupg lsb-release software-properties-common"
 
-PYTHON_VERSION="3.12.6"
+PYTHON_VERSION="3.13.0"
 PYTHON_BIN="/usr/local/bin/python${PYTHON_VERSION%.*}"
 
 
