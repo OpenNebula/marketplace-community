@@ -7,7 +7,7 @@ set -o errexit -o pipefail
 # ------------------------------------------------------------------------------
 
 ONE_SERVICE_NAME='6G-Sandbox TNLCM backend+frontend'
-ONE_SERVICE_VERSION='0.3.0'   #latest
+ONE_SERVICE_VERSION='0.3.2'   #latest
 ONE_SERVICE_BUILD=$(date +%s)
 ONE_SERVICE_SHORT_DESCRIPTION='6G-Sandbox TNLCM backend+frontend for KVM'
 ONE_SERVICE_DESCRIPTION=$(cat <<EOF
@@ -37,7 +37,7 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_TNLCM_ANSIBLE_VAULT'           'configure'  'Password used to decrypt the contents of the 6G-Sandbox-Sites repository file'          'M|password'
     'ONEAPP_TNLCM_ADMIN_USER'              'configure'  'Name of the TNLCM admin user. Default: tnlcm'                                           'O|text'
     'ONEAPP_TNLCM_ADMIN_PASSWORD'          'configure'  'Password of the TNLCM admin user. Default: tnlcm'                                       'O|password'
-    'ONEAPP_TNLCM_ADMIN_EMAIL'             'configure'  'Email of the TNLCM admin user'                                                         'M|text'
+    'ONEAPP_TNLCM_ADMIN_EMAIL'             'configure'  'Email of the TNLCM admin user'                                                          'M|text'
 )
 
 ONEAPP_TNLCM_JENKINS_HOST="${ONEAPP_TNLCM_JENKINS_HOST:-127.0.0.1}"
@@ -212,7 +212,7 @@ install_docker()
 install_tnlcm_backend()
 {
     msg info "Clone TNLCM Repository"
-    git clone https://github.com/6G-SANDBOX/TNLCM.git /opt/TNLCM
+    git clone --branch ${ONE_SERVICE_VERSION} https://github.com/6G-SANDBOX/TNLCM.git /opt/TNLCM
     cp /opt/TNLCM/.env.template /opt/TNLCM/.env
 
     msg info "Activate TNLCM python virtual environment and install requirements"
