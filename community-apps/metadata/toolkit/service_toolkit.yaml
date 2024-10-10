@@ -58,7 +58,6 @@ opennebula_template:
     oneapp_jenkins_opennebula_insecure:       "O|boolean|Allow insecure connexions into the OpenNebula XML-RPC Endpoint API (skip TLS verification)||YES"
     oneapp_tnlcm_admin_user:                  "O|text|Name of the TNLCM admin user. Default: tnlcm||tnlcm"
     oneapp_tnlcm_admin_password:              "O|password|Password of the TNLCM admin user. Default: tnlcm||tnlcm"
-    oneapp_tnlcm_admin_email:                 "M|text|Email of the TNLCM admin user"
   networks:                        # Hash of virtual networks to use in the service.
     Public: "M|network|Public||id:"
   roles:

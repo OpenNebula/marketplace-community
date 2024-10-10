@@ -37,7 +37,6 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_TNLCM_ANSIBLE_VAULT'           'configure'  'Password used to decrypt the contents of the 6G-Sandbox-Sites repository file'          'M|password'
     'ONEAPP_TNLCM_ADMIN_USER'              'configure'  'Name of the TNLCM admin user. Default: tnlcm'                                           'O|text'
     'ONEAPP_TNLCM_ADMIN_PASSWORD'          'configure'  'Password of the TNLCM admin user. Default: tnlcm'                                       'O|password'
-    'ONEAPP_TNLCM_ADMIN_EMAIL'             'configure'  'Email of the TNLCM admin user'                                                          'M|text'
 )
 
 ONEAPP_TNLCM_JENKINS_HOST="${ONEAPP_TNLCM_JENKINS_HOST:-127.0.0.1}"
@@ -277,6 +276,8 @@ update_envfiles()
         ["MAIL_USERNAME"]="ONEAPP_TNLCM_MAIL_USERNAME"
         ["MAIL_PASSWORD"]="ONEAPP_TNLCM_MAIL_PASSWORD"
         ["TNLCM_HOST"]="TNLCM_HOST"
+        ["TNLCM_ADMIN_USER"]="ONEAPP_TNLCM_ADMIN_USER"
+        ["TNLCM_ADMIN_PASSWORD"]="ONEAPP_TNLCM_ADMIN_PASSWORD"
     )
 
     msg info "Update enviromental variables with the input parameters"
