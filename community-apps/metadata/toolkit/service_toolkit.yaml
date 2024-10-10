@@ -50,7 +50,7 @@ opennebula_template:
     oneapp_minio_tls_key:        "O|text64|MinIO TLS key (.key)||"
     oneapp_jenkins_username:                  "O|text|The username for the Jenkins admin user||admin"
     oneapp_jenkins_password:                  "M|password|The password for the Jenkins admin user"
-    oneapp_jenkins_ansible_vault:             "M|password|Passphrase to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault"
+    oneapp_jenkins_sites_token:               "M|password|Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault"
     oneapp_jenkins_opennebula_endpoint:       "M|text|The URL of your OpenNebula XML-RPC Endpoint API (for example, 'http://example.com:2633/RPC2')||"
     oneapp_jenkins_opennebula_flow_endpoint:  "M|text|The URL of your OneFlow HTTP Endpoint API (for example, 'http://example.com:2474')||"
     oneapp_jenkins_opennebula_username:       "M|text|The OpenNebula username used by Jenkins to deploy each component||"
@@ -87,7 +87,7 @@ opennebula_template:
         ONEAPP_TNLCM_JENKINS_HOST     = "${jenkins.template.context.eth0_ip}"
         ONEAPP_TNLCM_JENKINS_USERNAME = "${jenkins.template.context.oneapp_jenkins_username}"
         ONEAPP_TNLCM_JENKINS_PASSWORD = "${jenkins.template.context.oneapp_jenkins_password}"
-        ONEAPP_TNLCM_ANSIBLE_VAULT    = "${jenkins.template.context.oneapp_jenkins_ansible_vault}"
+        ONEAPP_TNLCM_SITES_TOKEN      = "${jenkins.template.context.oneapp_jenkins_sites_token}"
       cooldown: 120
       max_vms: 1
 logo: sandbox.png

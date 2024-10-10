@@ -33,7 +33,7 @@ opennebula_template:
     start_script_base64: "IyEvYmluL2Jhc2gKb25lZ2F0ZSB2bSB1cGRhdGUgJChvbmVnYXRlIHZtIHNob3cgLWogfCBqcSAtciAnLlZNLklEJykgLS1kYXRhIEpFTktJTlNfVE9LRU49IiQoY2F0IC92YXIvbGliL2plbmtpbnMvY29uc3VsdF9tZS9qZW5raW5zX3RubGNtX3Rva2VuKSIKb25lZ2F0ZSB2bSB1cGRhdGUgJChvbmVnYXRlIHZtIHNob3cgLWogfCBqcSAtciAnLlZNLklEJykgLS1kYXRhIFNTSF9LRVk9IiQoY2F0IC92YXIvbGliL2plbmtpbnMvY29uc3VsdF9tZS9pZF9lZDI1NTE5LnB1Yiki"
     oneapp_jenkins_username:                 "$ONEAPP_JENKINS_USERNAME"
     oneapp_jenkins_password:                 "$ONEAPP_JENKINS_PASSWORD"
-    oneapp_jenkins_ansible_vault:            "$ONEAPP_JENKINS_ANSIBLE_VAULT"
+    oneapp_jenkins_sites_token:              "$ONEAPP_JENKINS_SITES_TOKEN"
     oneapp_jenkins_opennebula_endpoint:      "$ONEAPP_JENKINS_OPENNEBULA_ENDPOINT"
     oneapp_jenkins_opennebula_flow_endpoint: "$ONEAPP_JENKINS_OPENNEBULA_FLOW_ENDPOINT"
     oneapp_jenkins_opennebula_username:      "$ONEAPP_JENKINS_OPENNEBULA_USERNAME"

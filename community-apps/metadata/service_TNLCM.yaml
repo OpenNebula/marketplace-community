@@ -37,7 +37,7 @@ opennebula_template:
     oneapp_tnlcm_jenkins_username:  "$ONEAPP_TNLCM_JENKINS_USERNAME"
     oneapp_tnlcm_jenkins_password:  "$ONEAPP_TNLCM_JENKINS_PASSWORD"
     oneapp_tnlcm_jenkins_token:     "$ONEAPP_TNLCM_JENKINS_TOKEN"
-    oneapp_tnlcm_ansible_vault:     "$ONEAPP_TNLCM_ANSIBLE_VAULT"
+    oneapp_tnlcm_sites_token:       "$ONEAPP_TNLCM_SITES_TOKEN"
     oneapp_tnlcm_admin_user:        "$ONEAPP_TNLCM_ADMIN_USER"
     oneapp_tnlcm_admin_password:    "$ONEAPP_TNLCM_ADMIN_PASSWORD"
   cpu: '2'
@@ -62,7 +62,7 @@ opennebula_template:
     oneapp_tnlcm_jenkins_username:  "M|text|ONEAPP_TNLCM_JENKINS_USERNAME: Username used to login into the Jenkins server to access and retrieve pipeline info. | |admin"
     oneapp_tnlcm_jenkins_password:  "M|text|ONEAPP_TNLCM_JENKINS_PASSWORD: Password used to login into the Jenkins server to access and retrieve pipeline info. | |admin"
     oneapp_tnlcm_jenkins_token:     "M|password|ONEAPP_TNLCM_JENKINS_TOKEN: Token to authenticate while sending POST requests to the Jenkins Server API"
-    oneapp_tnlcm_ansible_vault:     "M|password|ONEAPP_TNLCM_ANSIBLE_VAULT: Passphrase to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault"
+    oneapp_tnlcm_sites_token:       "M|password|ONEAPP_TNLCM_SITES_TOKEN: Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault"
     oneapp_tnlcm_admin_user:        "O|text|ONEAPP_TNLCM_ADMIN_USER: Name of the TNLCM admin user. Default: tnlcm | |tnlcm"
     oneapp_tnlcm_admin_password:    "O|password|ONEAPP_TNLCM_ADMIN_PASSWORD: Password of the TNLCM admin user. Default: tnlcm| |tnlcm"
 logo: tnlcm.png

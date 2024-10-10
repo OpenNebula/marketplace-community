@@ -1,5 +1,5 @@
 ---
-name: ELCM backend+frontend
+name: 6G-Sandbox routemanager
 version: "20240705-1102"
 publisher: University of Malaga
 description: |-
@@ -12,7 +12,7 @@ description: |-
   **Note**: Remember to add a password variable in the template in order to have access to it, or make sure that your OpenNebula user has an SSH Public key preconfigured.
   
   **Note**: Remember to update the template in order to add a network after importing it.
-short_description: ELCM backend+frontend for KVM
+short_description: 6G-Sandbox ELCM backend+frontend for KVM
 tags:
   - 6G-Sandbox
   - ELCM
