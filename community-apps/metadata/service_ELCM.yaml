@@ -1,6 +1,6 @@
 ---
-name: ELCM backend+frontend
-version: "20240705-1102"
+name: ELCM
+version: "20241010-1249"
 publisher: University of Malaga
 description: |-
   This appliance installs the latest version of [ELCM](https://github.com/6G-SANDBOX/ELCM) and [ELCM_FRONTEND](https://github.com/6G-SANDBOX/portal) from the official repositories and configures them according to the input variables. Configuration of the ELCM can be made when instanciating the VM.
@@ -12,7 +12,7 @@ description: |-
   **Note**: Remember to add a password variable in the template in order to have access to it, or make sure that your OpenNebula user has an SSH Public key preconfigured.
   
   **Note**: Remember to update the template in order to add a network after importing it.
-short_description: ELCM backend+frontend for KVM
+short_description: ELCM appliance for KVM
 tags:
   - 6G-Sandbox
   - ELCM
@@ -58,7 +58,7 @@ opennebula_template:
     oneapp_elcm_grafana_password:   "M|password|ONEAPP_ELCM_GRAFANA_PASSWORD: Password used to login into the Grafana. | |admin"
 logo: ubuntu.png
 images:
-  - name: 6G-Sandbox ELCM
+  - name: ELCM
     url: >-
       https://rawimages.mobilesandbox.cloud:9443/service_ELCM.qcow2
     type: OS

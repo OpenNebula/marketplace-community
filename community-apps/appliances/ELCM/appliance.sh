@@ -6,10 +6,10 @@ set -o errexit -o pipefail
 # Appliance metadata
 # ------------------------------------------------------------------------------
 
-ONE_SERVICE_NAME='6G-Sandbox ELCM backend+frontend'
+ONE_SERVICE_NAME='ELCM'
 ONE_SERVICE_VERSION='3.6.3'   #latest
 ONE_SERVICE_BUILD=$(date +%s)
-ONE_SERVICE_SHORT_DESCRIPTION='6G-Sandbox ELCM backend+frontend for KVM'
+ONE_SERVICE_SHORT_DESCRIPTION='ELCM appliance for KVM'
 ONE_SERVICE_DESCRIPTION=$(cat <<EOF
 This appliance installs the latest version of [ELCM](https://github.com/6G-SANDBOX/ELCM) and [ELCM_FRONTEND](https://github.com/6G-SANDBOX/portal) from the official repositories and configures them according to the input variables. Configuration of the ELCM can be made when instanciating the VM.
 

@@ -60,4 +60,4 @@ opennebula_template:
   user_inputs: {}
 logo: tnlcm.png
 disks:
-- "6G-Sandbox TNLCM backend+frontend"
+- "6G-Sandbox TNLCM"

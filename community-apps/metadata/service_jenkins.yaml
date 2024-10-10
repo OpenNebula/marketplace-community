@@ -16,7 +16,7 @@ description: |-
   **Note**: Remember to add a password variable in the template in order to have access to it, or make sure that your OpenNebula user has an SSH Public key preconfigured.
   
   **Note**: Remember to update the template in order to add a network after importing it.
-short_description: 6G-Sandbox Jenkins for KVM
+short_description: 6G-Sandbox Jenkins appliance for KVM
 tags:
   - 6G-Sandbox
   - jenkins

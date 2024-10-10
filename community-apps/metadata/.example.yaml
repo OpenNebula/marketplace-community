@@ -64,7 +64,7 @@ opennebula_template:
     oneapp_example_sites_token:          "M|password|ONEAPP_EXAMPLE_SITES_TOKEN: Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault"
 logo: tnlcm.png
 images:
-  - name: TNLCM_6GSandbox
+  - name: Example
     url: >-
       https://rawimages.mobilesandbox.cloud:9443/tnlcm020.qcow2
     type: OS
