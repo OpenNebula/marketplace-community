@@ -7,7 +7,7 @@ set -o errexit -o pipefail
 # ------------------------------------------------------------------------------
 
 ONE_SERVICE_NAME='6G-Sandbox TNLCM backend+frontend'
-ONE_SERVICE_VERSION='0.3.2'   #latest
+ONE_SERVICE_VERSION='v0.3.2'   #latest
 ONE_SERVICE_BUILD=$(date +%s)
 ONE_SERVICE_SHORT_DESCRIPTION='6G-Sandbox TNLCM backend+frontend for KVM'
 ONE_SERVICE_DESCRIPTION=$(cat <<EOF
@@ -54,8 +54,9 @@ ONEAPP_TNLCM_ADMIN_PASSWORD="${ONEAPP_TNLCM_ADMIN_PASSWORD:-tnlcm}"
 
 DEP_PKGS="build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev pkg-config wget apt-transport-https ca-certificates curl gnupg lsb-release software-properties-common"
 
-PYTHON_VERSION="3.13.0"
-PYTHON_BIN="/usr/local/bin/python${PYTHON_VERSION%.*}"
+PYTHON_VERSION="3.13"
+PYTHON_BIN="python${PYTHON_VERSION}"
+# PYTHON_BIN="/usr/local/bin/python${PYTHON_VERSION%.*}"
 
 
 
@@ -174,15 +175,17 @@ install_pkg_deps()
 install_python()
 {
     msg info "Install python version ${PYTHON_VERSION}"
-    wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz"
-    tar xvf Python-${PYTHON_VERSION}.tgz
-    cd Python-${PYTHON_VERSION}/
-    ./configure --enable-optimizations
-    make altinstall
-    ${PYTHON_BIN} -m ensurepip --default-pip
-    ${PYTHON_BIN} -m pip install --upgrade pip setuptools wheel
-    cd
-    rm -rf Python-${PYTHON_VERSION}*
+    add-apt-repository ppa:deadsnakes/ppa -y
+    apt-get install python${PYTHON_VERSION}-full -y
+    # wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz"
+    # tar xvf Python-${PYTHON_VERSION}.tgz
+    # cd Python-${PYTHON_VERSION}/
+    # ./configure --enable-optimizations
+    # make altinstall
+    # ${PYTHON_BIN} -m ensurepip --default-pip
+    # ${PYTHON_BIN} -m pip install --upgrade pip setuptools wheel
+    # cd
+    # rm -rf Python-${PYTHON_VERSION}*
 }
 
 install_docker()
@@ -191,7 +194,6 @@ install_docker()
     install -m 0755 -d /etc/apt/keyrings
 
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-    #curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg   # así lo tenía yo, con docker.gpg en vez de .asc
 
     chmod a+r /etc/apt/keyrings/docker.asc
 
