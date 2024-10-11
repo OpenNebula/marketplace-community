@@ -5,10 +5,10 @@
 exec 1>&2
 set -eux -o pipefail
 
-service haveged stop ||:             # why ?
+service haveged stop ||:
 
 apk update
 
-apk add bash curl ethtool gawk grep iproute2 jq ruby sed tcpdump    # only ethtool, iproute2 and tcpdump come as not preinstalled
+apk add bash curl ethtool gawk grep iproute2 jq ruby sed tcpdump
 
 sync

@@ -6,19 +6,16 @@ set -o errexit -o pipefail
 # Appliance metadata
 # ------------------------------------------------------------------------------
 
-ONE_SERVICE_NAME='6G-Sandbox TNLCM'
+ONE_SERVICE_NAME='6G-Sandbox routemanager'
 ONE_SERVICE_VERSION='v0.3.2'   #latest
 ONE_SERVICE_BUILD=$(date +%s)
-ONE_SERVICE_SHORT_DESCRIPTION='6G-Sandbox TNLCM appliance for KVM'
+ONE_SERVICE_SHORT_DESCRIPTION='6G-Sandbox routemanager appliance for KVM'
 ONE_SERVICE_DESCRIPTION=$(cat <<EOF
-This appliance installs the latest version of [TNLCM](https://github.com/6G-SANDBOX/TNLCM) and [TNLCM_FRONTEND](https://github.com/6G-SANDBOX/TNLCM_FRONTEND) from the official repositories and configures them according to the input variables. Configuration of the TNLCM can be made when instanciating the VM.
+This appliance installs the latest version of [routemanager](https://github.com/6G-SANDBOX/route-manager-api), a REST API in port 8172/tcp developed with FastAPI for managing network routes on a Linux machine using the ip command.
 
-The image is based on an Ubuntu 24.04 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
+The image is based on an Alpine 3.20 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
 
 After deploying the appliance, check the status of the deployment in /etc/one-appliance/status. You chan check the appliance logs in /var/log/one-appliance/.
-
-**Note**: The TNLCM backend uses a MONGO database, so the VM needs to be virtualized with a CPU model that supports AVX instructions. The default CPU model in the template is host_passthrough, but if you are interested in VM live migration,
-change it to a CPU model similar to your host's CPU that supports [x86-64v2 or higher](https://www.qemu.org/docs/master/system/i386/cpu.html).
 EOF
 )
 
@@ -30,35 +27,17 @@ ONE_SERVICE_RECONFIGURABLE=true
 # ------------------------------------------------------------------------------
 
 ONE_SERVICE_PARAMS=(
-    'ONEAPP_TNLCM_JENKINS_HOST'            'configure'  'IP address of the Jenkins server used to deploy the Trial Networks'                     'M|text'
-    'ONEAPP_TNLCM_JENKINS_USERNAME'        'configure'  'Username used to login into the Jenkins server to access and retrieve pipeline info'    'M|text'
-    'ONEAPP_TNLCM_JENKINS_PASSWORD'        'configure'  'Password used to login into the Jenkins server to access and retrieve pipeline info'    'M|text'
-    'ONEAPP_TNLCM_JENKINS_TOKEN'           'configure'  'Token to authenticate while sending POST requests to the Jenkins Server API'            'M|password'
-    'ONEAPP_TNLCM_SITES_TOKEN'             'configure'  'Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault'          'M|password'
-    'ONEAPP_TNLCM_ADMIN_USER'              'configure'  'Name of the TNLCM admin user. Default: tnlcm'                                           'O|text'
-    'ONEAPP_TNLCM_ADMIN_PASSWORD'          'configure'  'Password of the TNLCM admin user. Default: tnlcm'                                       'O|password'
+    'ONEAPP_ROUTEMANAGER_TOKEN'       'configure'  'Token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`' 'O|password'
+    'ONEAPP_ROUTEMANAGER_PORT'        'configure'  'TCP port where the route-manager-api service will be exposed'    'O|text'
 )
 
-ONEAPP_TNLCM_JENKINS_HOST="${ONEAPP_TNLCM_JENKINS_HOST:-127.0.0.1}"
-ONEAPP_TNLCM_JENKINS_USERNAME="${ONEAPP_TNLCM_JENKINS_USERNAME:-admin}"
-ONEAPP_TNLCM_JENKINS_PASSWORD="${ONEAPP_TNLCM_JENKINS_PASSWORD:-admin}"
-ONEAPP_TNLCM_MAIL_USERNAME="${ONEAPP_TNLCM_MAIL_USERNAME:-tnlcm.uma@gmail.com}"
-ONEAPP_TNLCM_MAIL_PASSWORD="${ONEAPP_TNLCM_MAIL_PASSWORD:-czrs rsdg ktpm rrlx}"
-ONEAPP_TNLCM_ADMIN_USER="${ONEAPP_TNLCM_ADMIN_USER:-tnlcm}"
-ONEAPP_TNLCM_ADMIN_PASSWORD="${ONEAPP_TNLCM_ADMIN_PASSWORD:-tnlcm}"
-
+ONEAPP_ROUTEMANAGER_PORT="${ONEAPP_ROUTEMANAGER_PORT:-8172}"
 
 # ------------------------------------------------------------------------------
 # Global variables
 # ------------------------------------------------------------------------------
 
-DEP_PKGS="build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev pkg-config wget apt-transport-https ca-certificates curl gnupg lsb-release software-properties-common"
-
-PYTHON_VERSION="3.13"
-PYTHON_BIN="python${PYTHON_VERSION}"
-# PYTHON_BIN="/usr/local/bin/python${PYTHON_VERSION%.*}"
-
-
+DEP_PKGS="git python3"
 
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
@@ -68,25 +47,18 @@ PYTHON_BIN="python${PYTHON_VERSION}"
 
 service_install()
 {
-    export DEBIAN_FRONTEND=noninteractive
-    systemctl stop unattended-upgrades
 
     # packages
     install_pkg_deps DEP_PKGS
 
-    # python
-    install_python
+    # clone
+    clone_repo
 
-    # docker
-    install_docker
+    # venv
+    create_venv
 
-    # tnlcm backend
-    install_tnlcm_backend
-
-    # tnlcm frontend
-    install_tnlcm_frontend
-
-    systemctl daemon-reload
+    # service
+    define_service
 
     # service metadata
     create_one_service_metadata
@@ -102,10 +74,11 @@ service_install()
 # Runs when VM is first started, and every time 
 service_configure()
 {
-    export DEBIAN_FRONTEND=noninteractive
+    # TOKEN
+    generate_token
 
-    # update enviromental vars
-    update_envfiles
+    # config
+    update_config
 
     msg info "CONFIGURATION FINISHED"
     return 0
@@ -113,26 +86,11 @@ service_configure()
 
 service_bootstrap()
 {
-    export DEBIAN_FRONTEND=noninteractive
-
-    # raise docker compose
-    docker compose -f /opt/TNLCM/docker-compose.yaml up -d
-
-    systemctl enable --now tnlcm-backend.service
-    if [ $? -ne 0 ]; then
-        msg error "Error starting tnlcm-backend.service, aborting..."
+    if ! rc-service restart route-manager-api ; then
+        msg error "Error restarting service route-manager-api"
         exit 1
-    else
-        msg info "tnlcm-backend.service was strarted..."
     fi
-
-    systemctl enable --now tnlcm-frontend.service
-    if [ $? -ne 0 ]; then
-        msg error "Error starting tnlcm-frontend.service, aborting..."
-        exit 1
-    else
-        msg info "tnlcm-frontend.service was strarted..."
-    fi
+    msg "Service route-manager-api restarted"
 
     msg info "BOOTSTRAP FINISHED"
     return 0
@@ -172,137 +130,93 @@ install_pkg_deps()
     fi
 }
 
-install_python()
+clone_repo()
 {
-    msg info "Install python version ${PYTHON_VERSION}"
-    add-apt-repository ppa:deadsnakes/ppa -y
-    apt-get install python${PYTHON_VERSION}-full -y
-    # wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz"
-    # tar xvf Python-${PYTHON_VERSION}.tgz
-    # cd Python-${PYTHON_VERSION}/
-    # ./configure --enable-optimizations
-    # make altinstall
-    # ${PYTHON_BIN} -m ensurepip --default-pip
-    # ${PYTHON_BIN} -m pip install --upgrade pip setuptools wheel
-    # cd
-    # rm -rf Python-${PYTHON_VERSION}*
-}
-
-install_docker()
-{
-    msg info "Add Docker official GPG key"
-    install -m 0755 -d /etc/apt/keyrings
-
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-
-    chmod a+r /etc/apt/keyrings/docker.asc
-
-    msg info "Add Docker repository to apt sources"
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-        tee /etc/apt/sources.list.d/docker.list > /dev/null
-    apt-get update
-
-    msg info "Install Docker Engine"
-    if ! apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin ; then
-        msg error "Docker installation failed"
+    msg info "git clone route-manager-api repository"
+    if ! git clone https://github.com/6G-SANDBOX/route-manager-api /opt/route-manager-api ; then
+        msg error "Error cloning route-manager-api repository"
         exit 1
     fi
 }
 
-install_tnlcm_backend()
+create_venv()
 {
-    msg info "Clone TNLCM Repository"
-    git clone --branch ${ONE_SERVICE_VERSION} https://github.com/6G-SANDBOX/TNLCM.git /opt/TNLCM
-    cp /opt/TNLCM/.env.template /opt/TNLCM/.env
+    msg info "Create and activate venv 'routemgr'"
+    python3 -m venv /opt/route-manager-api/routemgr
+    source /opt/route-manager-api/routemgr/bin/activate
 
-    msg info "Activate TNLCM python virtual environment and install requirements"
-    ${PYTHON_BIN} -m venv /opt/TNLCM/venv
-    source /opt/TNLCM/venv/bin/activate
-    ${PYTHON_BIN} -m pip install -r /opt/TNLCM/requirements.txt
+    msg info "install application requirements inside the venv"
+    if ! pip install -r /opt/route-manager-api/requirements.txt ; then
+        msg error "Error downloading required python packages"
+        exit 1
+    fi
     deactivate
-
-    msg info "Define TNLCM backend systemd service"
-    cat > /etc/systemd/system/tnlcm-backend.service << EOF
-[Unit]
-Description=TNLCM Backend
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/TNLCM
-ExecStart=/bin/bash -c 'source venv/bin/activate && ${PYTHON_BIN} app.py'
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
 }
 
-install_tnlcm_frontend()
+define_service()
 {
-    msg info "Clone TNLCM_FRONTEND Repository"
-    git clone https://github.com/6G-SANDBOX/TNLCM_FRONTEND.git /opt/TNLCM_FRONTEND
-    cp /opt/TNLCM_FRONTEND/.env.template /opt/TNLCM_FRONTEND/.env
+    msg info "Defining route-manager-api OpenRC service"
+    cat > /etc/init.d/route-manager-api << 'EOF'
+#!/sbin/openrc-run
 
-    msg info "Install Node.js and dependencies"
-    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - &&\
-    sudo apt-get install -y nodejs
-    npm install -g npm
-    npm --prefix /opt/TNLCM_FRONTEND/ install
+description="Route Manager Service"
+command="/opt/route-manager-api/routemgr/bin/python3"
+command_args="/opt/route-manager-api/main.py"
+command_background="yes"
+pidfile="/var/run/route_manager.pid"
 
-    msg info "Define TNLCM frontend systemd service"
-    cat > /etc/systemd/system/tnlcm-frontend.service << EOF
-[Unit]
-Description=TNLCM Frontend
+output_log="/var/log/route_manager.log"
+error_log="/var/log/route_manager_error.log"
 
-[Service]
-Type=simple
-WorkingDirectory=/opt/TNLCM_FRONTEND
-ExecStart=/bin/bash -c '/usr/bin/npm run dev'
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
+depend() {
+    after net
 }
 
-update_envfiles()
+start_pre() {
+    cd /opt/route-manager-api
+}
+
+start() {
+    ebegin "Starting Route Manager"
+    start-stop-daemon --start --background --make-pidfile --pidfile "${pidfile}" \
+        --exec ${command} -- ${command_args} >> ${output_log} 2>> ${error_log}
+    eend $?
+}
+
+EOF
+
+    chmod +x /etc/init.d/route-manager-api
+    
+    msg info "Enabling service route-manager-api"
+    if ! rc-update add route-manager-api default ; then
+        msg error "Service route-manager-api could not be enabled succesfully"
+        exit 1
+    fi
+}
+
+generate_token()
 {
-    TNLCM_HOST=$(ip addr show eth0 | grep -oE '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b' | head -n 1)
-    declare -A var_map=(
-        ["JENKINS_HOST"]="ONEAPP_TNLCM_JENKINS_HOST"
-        ["JENKINS_USERNAME"]="ONEAPP_TNLCM_JENKINS_USERNAME"
-        ["JENKINS_PASSWORD"]="ONEAPP_TNLCM_JENKINS_PASSWORD"
-        ["JENKINS_TOKEN"]="ONEAPP_TNLCM_JENKINS_TOKEN"
-        ["SITES_TOKEN"]="ONEAPP_TNLCM_SITES_TOKEN"
-        ["MAIL_USERNAME"]="ONEAPP_TNLCM_MAIL_USERNAME"
-        ["MAIL_PASSWORD"]="ONEAPP_TNLCM_MAIL_PASSWORD"
-        ["TNLCM_HOST"]="TNLCM_HOST"
-        ["TNLCM_ADMIN_USER"]="ONEAPP_TNLCM_ADMIN_USER"
-        ["TNLCM_ADMIN_PASSWORD"]="ONEAPP_TNLCM_ADMIN_PASSWORD"
-    )
+    if [[ -z "${ONEAPP_ROUTEMANAGER_TOKEN}" ]]; then
+        msg info "TOKEN not provided. Generating one"
+        ONEAPP_ROUTEMANAGER_TOKEN=$(openssl rand -base64 32)
+    else
+        msg info "Using provided TOKEN"
+    fi
 
-    msg info "Update enviromental variables with the input parameters"
-    for env_var in "${!var_map[@]}"; do
+}
 
-        if [ -z "${!var_map[$env_var]}" ]; then
-            msg warning "Variable ${var_map[$env_var]} is not defined or empty"
-        else
-            sed -i "s%^${env_var}=.*%${env_var}=\"${!var_map[$env_var]}\"%" /opt/TNLCM/.env
-            msg debug "Variable ${env_var} overwritten with value ${!var_map[$env_var]}"
-        fi
 
-    done
-
-    msg info "Update enviromental variables of the TNLCM frontend"
-    sed -i "s%^NEXT_PUBLIC_LINKED_TNLCM_BACKEND_HOST=.*%NEXT_PUBLIC_LINKED_TNLCM_BACKEND_HOST=\"${TNLCM_HOST}\"%" /opt/TNLCM_FRONTEND/.env
-    msg debug "Variable NEXT_PUBLIC_LINKED_TNLCM_BACKEND_HOST overwritten with value ${TNLCM_HOST}"
+update_config()
+{
+    msg info "Update application config file"
+    sed -i 's/^TOKEN = .*/TOKEN = $ONEAPP_ROUTEMANAGER_TOKEN/' config.conf
+    sed -i 's/^PORT = .*/PORT = $ONEAPP_ROUTEMANAGER_PORT/' config.conf
 }
 
 postinstall_cleanup()
 {
     msg info "Delete cache and stored packages"
-    apt-get autoclean
-    apt-get autoremove
-    rm -rf /var/lib/apt/lists/*
+    apk cache clean
+    apk del --purge
+    rm -rf /var/cache/apk/*
 }
