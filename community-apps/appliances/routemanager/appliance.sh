@@ -197,7 +197,7 @@ EOF
 generate_token()
 {
     TEMP="$(onegate vm show --json |jq .VM.USER_TEMPLATE.ONEAPP_ROUTEMANAGER_TOKEN)"
-    if [[ -z "${ONEAPP_ROUTEMANAGER_TOKEN}" ]] || [[ -z "${TEMP}" ]] ; then
+    if [[ -z "${ONEAPP_ROUTEMANAGER_TOKEN}" ]] && [[ -z "${TEMP}" ]] ; then
         msg info "TOKEN not provided. Generating one"
         ONEAPP_ROUTEMANAGER_TOKEN=$(openssl rand -base64 32)
         onegate vm update --data ONEAPP_ROUTEMANAGER_TOKEN="${ONEAPP_ROUTEMANAGER_TOKEN}"
