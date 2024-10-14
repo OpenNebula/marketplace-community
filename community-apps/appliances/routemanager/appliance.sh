@@ -199,6 +199,7 @@ generate_token()
     if [[ -z "${ONEAPP_ROUTEMANAGER_TOKEN}" ]]; then
         msg info "TOKEN not provided. Generating one"
         ONEAPP_ROUTEMANAGER_TOKEN=$(openssl rand -base64 32)
+        onegate vm update --data ONEAPP_ROUTEMANAGER_TOKEN="${ONEAPP_ROUTEMANAGER_TOKEN}"
     else
         msg info "Using provided TOKEN"
     fi

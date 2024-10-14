@@ -30,6 +30,7 @@ opennebula_template:
     network: 'YES'
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    token: 'YES'
     oneapp_routemanager_token: "$ONEAPP_ROUTEMANAGER_TOKEN"
     oneapp_routemanager_port: "$ONEAPP_ROUTEMANAGER_PORT"
   cpu: '1'
