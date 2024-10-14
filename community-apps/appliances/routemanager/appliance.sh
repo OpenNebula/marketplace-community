@@ -160,7 +160,7 @@ define_service()
 #!/sbin/openrc-run
 
 name="route-manager-api"
-description="A REST API developed with FastAPI for managing network routes on a Linux machine using the ip command. It allows you to query active routes, create new routes, and dele
+description="A REST API developed with FastAPI for managing network routes on a Linux machine using the ip command. It allows you to query active routes, create new routes, and delete existing routes, with token-based authentication and persistence of scheduled routes to ensure their availability even after service restarts."
 command="/opt/route-manager-api/routemgr/bin/python3"
 command_args="/opt/route-manager-api/main.py"
 command_background="yes"
