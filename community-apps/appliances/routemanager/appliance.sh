@@ -90,7 +90,7 @@ service_bootstrap()
         msg error "Error restarting service route-manager-api"
         exit 1
     fi
-    msg "Service route-manager-api restarted"
+    msg info "Service route-manager-api restarted"
 
     msg info "BOOTSTRAP FINISHED"
     return 0
