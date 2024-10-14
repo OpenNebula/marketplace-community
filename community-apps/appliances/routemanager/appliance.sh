@@ -159,14 +159,14 @@ define_service()
     cat > /etc/init.d/route-manager-api << 'EOF'
 #!/sbin/openrc-run
 
-description="Route Manager Service"
+name="route-manager-api"
+description="A REST API developed with FastAPI for managing network routes on a Linux machine using the ip command. It allows you to query active routes, create new routes, and dele
 command="/opt/route-manager-api/routemgr/bin/python3"
 command_args="/opt/route-manager-api/main.py"
 command_background="yes"
 pidfile="/var/run/route_manager.pid"
 
 output_log="/var/log/route_manager.log"
-error_log="/var/log/route_manager_error.log"
 
 depend() {
     after net
@@ -179,7 +179,7 @@ start_pre() {
 start() {
     ebegin "Starting Route Manager"
     start-stop-daemon --start --background --make-pidfile --pidfile "${pidfile}" \
-        --exec ${command} -- ${command_args} >> ${output_log} 2>> ${error_log}
+    --stdout "${output_log}" --stderr "${output_log=}" --exec ${command} -- ${command_args}
     eend $?
 }
 
