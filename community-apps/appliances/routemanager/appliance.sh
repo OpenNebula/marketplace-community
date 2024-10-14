@@ -32,6 +32,7 @@ ONE_SERVICE_PARAMS=(
 )
 
 ONEAPP_ROUTEMANAGER_PORT="${ONEAPP_ROUTEMANAGER_PORT:-8172}"
+ONEAPP_ROUTEMANAGER_TOKEN="${ONEAPP_ROUTEMANAGER_TOKEN:-$(onegate vm show --json |jq .VM.USER_TEMPLATE.ONEAPP_ROUTEMANAGER_TOKEN)}"
 
 # ------------------------------------------------------------------------------
 # Global variables
@@ -196,6 +197,7 @@ EOF
 
 generate_token()
 {
+
     if [[ -z "${ONEAPP_ROUTEMANAGER_TOKEN}" ]]; then
         msg info "TOKEN not provided. Generating one"
         ONEAPP_ROUTEMANAGER_TOKEN=$(openssl rand -base64 32)
