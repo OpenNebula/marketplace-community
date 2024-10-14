@@ -200,6 +200,7 @@ generate_token()
         msg info "TOKEN not provided. Generating one"
         ONEAPP_ROUTEMANAGER_TOKEN=$(openssl rand -base64 32)
         onegate vm update --data ONEAPP_ROUTEMANAGER_TOKEN="${ONEAPP_ROUTEMANAGER_TOKEN}"
+        echo "export ONEAPP_ROUTEMANAGER_TOKEN=\"${ONEAPP_ROUTEMANAGER_TOKEN}\"" >> /var/run/one-context/one_env
     else
         msg info "Using provided TOKEN"
     fi
