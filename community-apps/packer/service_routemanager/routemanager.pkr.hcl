@@ -13,12 +13,12 @@ build {
 }
 
 
-source "qemu" "TNLCM" {
+source "qemu" "routemanager" {
   cpus        = 2 
-  memory      = 4096
+  memory      = 2048
   accelerator = "kvm"
 
-  iso_url      = "../one-apps/export/ubuntu2404.qcow2"
+  iso_url      = "../one-apps/export/alpine320.qcow2"
   iso_checksum = "none"
 
   headless = var.headless
@@ -30,7 +30,7 @@ source "qemu" "TNLCM" {
   format           = "qcow2"
   disk_compression = false
   #skip_resize_disk = true
-  disk_size        = "7168"        # default size increased to 7G
+  disk_size        = "2048"        # default size increased to 2GiB
 
   output_directory = var.output_dir
 
@@ -40,7 +40,7 @@ source "qemu" "TNLCM" {
     ["-serial", "stdio"],
     # MAC addr needs to mach ETH0_MAC from context iso
     ["-netdev", "user,id=net0,hostfwd=tcp::{{ .SSHHostPort }}-:22"],
-    ["-device", "virtio-net-pci,netdev=net0,mac=00:11:22:33:44:55"]
+    ["-device", "virtio-net-pci,netdev=net0,mac=00:11:22:33:44:55"],
   ]
   ssh_username     = "root"
   ssh_password     = "opennebula"
@@ -51,10 +51,14 @@ source "qemu" "TNLCM" {
 
 
 build {
-  sources = ["source.qemu.TNLCM"]
+  sources = ["source.qemu.routemanager"]
 
+  # update & revert insecure ssh options done by context start_script
   provisioner "shell" {
-    scripts = ["${var.input_dir}/81-configure-ssh.sh"]
+    scripts = [
+      "${var.input_dir}/10-update.sh",
+      "${var.input_dir}/81-configure-ssh.sh",
+    ]
   }
 
   provisioner "shell" {
@@ -74,6 +78,7 @@ build {
   }
 
   provisioner "file" {
+    # sources     = ["../one-apps/appliances/lib/helpers.rb"]  # For appliances in ruby
     sources = [
       "../one-apps/appliances/lib/common.sh",
       "../one-apps/appliances/lib/functions.sh",
@@ -82,13 +87,15 @@ build {
   }
 
   provisioner "file" {
+    # source      = "../one-apps/appliances/service.rb"   # For appliances in ruby
     source      = "../one-apps/appliances/service.sh"
     destination = "/etc/one-appliance/service"
   }
 
   provisioner "file" {
+    # sources     = ["appliances/routemanager"]
     sources     = [
-      "appliances/TNLCM/appliance.sh",
+      "appliances/routemanager/appliance.sh",
       ]
     destination = "/etc/one-appliance/service.d/"
   }

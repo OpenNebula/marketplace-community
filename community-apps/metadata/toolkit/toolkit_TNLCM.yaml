@@ -37,10 +37,9 @@ opennebula_template:
     oneapp_tnlcm_jenkins_host:      "$ONEAPP_TNLCM_JENKINS_HOST"
     oneapp_tnlcm_jenkins_username:  "$ONEAPP_TNLCM_JENKINS_USERNAME"
     oneapp_tnlcm_jenkins_password:  "$ONEAPP_TNLCM_JENKINS_PASSWORD"
-    oneapp_tnlcm_ansible_vault:     "$ONEAPP_TNLCM_ANSIBLE_VAULT"
+    oneapp_tnlcm_sites_token:       "$ONEAPP_TNLCM_SITES_TOKEN"
     oneapp_tnlcm_admin_user:        "$ONEAPP_TNLCM_ADMIN_USER"
     oneapp_tnlcm_admin_password:    "$ONEAPP_TNLCM_ADMIN_PASSWORD"
-    oneapp_tnlcm_admin_email:       "$ONEAPP_TNLCM_ADMIN_EMAIL"
   cpu: '2'
   vcpu: '2'
   cpu_model:
@@ -61,4 +60,4 @@ opennebula_template:
   user_inputs: {}
 logo: tnlcm.png
 disks:
-- "6G-Sandbox TNLCM backend+frontend"
+- "6G-Sandbox TNLCM"

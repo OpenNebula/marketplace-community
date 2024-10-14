@@ -34,7 +34,7 @@ ONE_SERVICE_RECONFIGURABLE=false
 ONE_SERVICE_PARAMS=(
     'ONEAPP_JENKINS_USERNAME'                  'configure'  'The username for the Jenkins admin user'                                        'O|text'
     'ONEAPP_JENKINS_PASSWORD'                  'configure'  'The password for the Jenkins admin user'                                        'O|text'
-    'ONEAPP_JENKINS_ANSIBLE_VAULT'             'configure'  'Passphrase to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault'  'M|password'
+    'ONEAPP_JENKINS_SITES_TOKEN'               'configure'  'Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault'  'M|password'
     'ONEAPP_JENKINS_OPENNEBULA_ENDPOINT'       'configure'  'The URL of your OpenNebula XML-RPC Endpoint API'                                'M|text'
     'ONEAPP_JENKINS_OPENNEBULA_FLOW_ENDPOINT'  'configure'  'The URL of your OneFlow HTTP Endpoint API'                                      'M|text'
     'ONEAPP_JENKINS_OPENNEBULA_USERNAME'       'configure'  'The OpenNebula username used by Jenkins to deploy each component'               'M|text'
@@ -408,7 +408,7 @@ credentials:
           - string:
               scope: GLOBAL
               id: "ANSIBLE_VAULT_PASSWORD"
-              secret: "$(echo ${ONEAPP_JENKINS_ANSIBLE_VAULT} | xargs)"
+              secret: "$(echo ${ONEAPP_JENKINS_SITES_TOKEN} | xargs)"
               description: "Password to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault"
       - credentials:
           - string:

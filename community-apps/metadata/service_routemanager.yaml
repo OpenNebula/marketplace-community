@@ -1,0 +1,65 @@
+---
+name: "6G-Sandbox route-manager-api"
+version: "20241010-1255"
+publisher: Telefonica Innovacion Digital
+description: |-
+  This appliance installs the latest version of [route-manager-api](https://github.com/6G-SANDBOX/route-manager-api), a REST API in port 8172/tcp developed with FastAPI for managing network routes on a Linux machine using the ip command.
+
+  The image is based on an Alpine 3.20 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
+
+  After deploying the appliance, check the status of the deployment in /etc/one-appliance/status. You chan check the appliance logs in /var/log/one-appliance/.
+
+  **Note**: Remember to add a password variable in the template in order to have access to it, or make sure that your OpenNebula user has an SSH Public key preconfigured.
+  
+  **Note**: Remember to update the template in order to add a network after importing it.
+short_description: 6G-Sandbox routemanager appliance for KVM
+tags:
+  - 6G-Sandbox
+  - routemanager
+  - alpine
+format: qcow2
+creation_time: 20241010
+os-id: Alpine
+os-release: 3.20
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: >-
+  6.2, 6.3, 6.4, 6.6, 6.8, 6.10
+opennebula_template:
+  context:
+    network: 'YES'
+    set_hostname: "$NAME"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    token: 'YES'
+    oneapp_routemanager_token: "$ONEAPP_ROUTEMANAGER_TOKEN"
+    oneapp_routemanager_port: "$ONEAPP_ROUTEMANAGER_PORT"
+  cpu: '1'
+  vcpu: '1'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  hot_resize:
+    cpu_hot_add_enabled: 'YES'
+    memory_hot_add_enabled: 'YES'
+  hypervisor: kvm
+  memory: '512'
+  memory_unit_cost: 'MB'
+  memory_resize_mode: 'BALLOONING'
+  os:
+    arch: x86_64
+  logo: images/logos/alpine.png
+  user_inputs:
+    oneapp_routemanager_token: "O|password|ONEAPP_ROUTEMANAGER_TOKEN: Token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32` | |"
+    oneapp_routemanager_port:  "O|number|ONEAPP_ROUTEMANAGER_PORT: TCP port where the route-manager-api service will be exposed| |8172"
+logo: routemanager.png
+images:
+  - name: 6G-Sandbox routemanager
+    url: >-
+      https://rawimages.mobilesandbox.cloud:9443/service_routemanager.qcow2
+    type: OS
+    dev_prefix: vd
+    driver: qcow2
+    size: "10516192768"
+    checksum:
+      md5: "490330ca6ee051cc7549cbdf80809e60"
+      sha256: "73a08181c7d6c3415c026d0854a4969ceabc1e33cc8cbd8e262cf12fa5208f2f"

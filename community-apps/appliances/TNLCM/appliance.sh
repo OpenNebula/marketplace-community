@@ -6,14 +6,14 @@ set -o errexit -o pipefail
 # Appliance metadata
 # ------------------------------------------------------------------------------
 
-ONE_SERVICE_NAME='6G-Sandbox TNLCM backend+frontend'
-ONE_SERVICE_VERSION='0.3.0'   #latest
+ONE_SERVICE_NAME='6G-Sandbox TNLCM'
+ONE_SERVICE_VERSION='v0.3.2'   #latest
 ONE_SERVICE_BUILD=$(date +%s)
-ONE_SERVICE_SHORT_DESCRIPTION='6G-Sandbox TNLCM backend+frontend for KVM'
+ONE_SERVICE_SHORT_DESCRIPTION='6G-Sandbox TNLCM appliance for KVM'
 ONE_SERVICE_DESCRIPTION=$(cat <<EOF
 This appliance installs the latest version of [TNLCM](https://github.com/6G-SANDBOX/TNLCM) and [TNLCM_FRONTEND](https://github.com/6G-SANDBOX/TNLCM_FRONTEND) from the official repositories and configures them according to the input variables. Configuration of the TNLCM can be made when instanciating the VM.
 
-The image is based on an Ubuntu 22.04 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
+The image is based on an Ubuntu 24.04 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
 
 After deploying the appliance, check the status of the deployment in /etc/one-appliance/status. You chan check the appliance logs in /var/log/one-appliance/.
 
@@ -34,10 +34,9 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_TNLCM_JENKINS_USERNAME'        'configure'  'Username used to login into the Jenkins server to access and retrieve pipeline info'    'M|text'
     'ONEAPP_TNLCM_JENKINS_PASSWORD'        'configure'  'Password used to login into the Jenkins server to access and retrieve pipeline info'    'M|text'
     'ONEAPP_TNLCM_JENKINS_TOKEN'           'configure'  'Token to authenticate while sending POST requests to the Jenkins Server API'            'M|password'
-    'ONEAPP_TNLCM_ANSIBLE_VAULT'           'configure'  'Password used to decrypt the contents of the 6G-Sandbox-Sites repository file'          'M|password'
+    'ONEAPP_TNLCM_SITES_TOKEN'             'configure'  'Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault'          'M|password'
     'ONEAPP_TNLCM_ADMIN_USER'              'configure'  'Name of the TNLCM admin user. Default: tnlcm'                                           'O|text'
     'ONEAPP_TNLCM_ADMIN_PASSWORD'          'configure'  'Password of the TNLCM admin user. Default: tnlcm'                                       'O|password'
-    'ONEAPP_TNLCM_ADMIN_EMAIL'             'configure'  'Email of the TNLCM admin user'                                                         'M|text'
 )
 
 ONEAPP_TNLCM_JENKINS_HOST="${ONEAPP_TNLCM_JENKINS_HOST:-127.0.0.1}"
@@ -55,8 +54,9 @@ ONEAPP_TNLCM_ADMIN_PASSWORD="${ONEAPP_TNLCM_ADMIN_PASSWORD:-tnlcm}"
 
 DEP_PKGS="build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev pkg-config wget apt-transport-https ca-certificates curl gnupg lsb-release software-properties-common"
 
-PYTHON_VERSION="3.13.0"
-PYTHON_BIN="/usr/local/bin/python${PYTHON_VERSION%.*}"
+PYTHON_VERSION="3.13"
+PYTHON_BIN="python${PYTHON_VERSION}"
+# PYTHON_BIN="/usr/local/bin/python${PYTHON_VERSION%.*}"
 
 
 
@@ -175,15 +175,17 @@ install_pkg_deps()
 install_python()
 {
     msg info "Install python version ${PYTHON_VERSION}"
-    wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz"
-    tar xvf Python-${PYTHON_VERSION}.tgz
-    cd Python-${PYTHON_VERSION}/
-    ./configure --enable-optimizations
-    make altinstall
-    ${PYTHON_BIN} -m ensurepip --default-pip
-    ${PYTHON_BIN} -m pip install --upgrade pip setuptools wheel
-    cd
-    rm -rf Python-${PYTHON_VERSION}*
+    add-apt-repository ppa:deadsnakes/ppa -y
+    apt-get install python${PYTHON_VERSION}-full -y
+    # wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz"
+    # tar xvf Python-${PYTHON_VERSION}.tgz
+    # cd Python-${PYTHON_VERSION}/
+    # ./configure --enable-optimizations
+    # make altinstall
+    # ${PYTHON_BIN} -m ensurepip --default-pip
+    # ${PYTHON_BIN} -m pip install --upgrade pip setuptools wheel
+    # cd
+    # rm -rf Python-${PYTHON_VERSION}*
 }
 
 install_docker()
@@ -192,7 +194,6 @@ install_docker()
     install -m 0755 -d /etc/apt/keyrings
 
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-    #curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg   # así lo tenía yo, con docker.gpg en vez de .asc
 
     chmod a+r /etc/apt/keyrings/docker.asc
 
@@ -212,7 +213,7 @@ install_docker()
 install_tnlcm_backend()
 {
     msg info "Clone TNLCM Repository"
-    git clone https://github.com/6G-SANDBOX/TNLCM.git /opt/TNLCM
+    git clone --branch ${ONE_SERVICE_VERSION} https://github.com/6G-SANDBOX/TNLCM.git /opt/TNLCM
     cp /opt/TNLCM/.env.template /opt/TNLCM/.env
 
     msg info "Activate TNLCM python virtual environment and install requirements"
@@ -273,10 +274,12 @@ update_envfiles()
         ["JENKINS_USERNAME"]="ONEAPP_TNLCM_JENKINS_USERNAME"
         ["JENKINS_PASSWORD"]="ONEAPP_TNLCM_JENKINS_PASSWORD"
         ["JENKINS_TOKEN"]="ONEAPP_TNLCM_JENKINS_TOKEN"
-        ["ANSIBLE_VAULT"]="ONEAPP_TNLCM_ANSIBLE_VAULT"
+        ["SITES_TOKEN"]="ONEAPP_TNLCM_SITES_TOKEN"
         ["MAIL_USERNAME"]="ONEAPP_TNLCM_MAIL_USERNAME"
         ["MAIL_PASSWORD"]="ONEAPP_TNLCM_MAIL_PASSWORD"
         ["TNLCM_HOST"]="TNLCM_HOST"
+        ["TNLCM_ADMIN_USER"]="ONEAPP_TNLCM_ADMIN_USER"
+        ["TNLCM_ADMIN_PASSWORD"]="ONEAPP_TNLCM_ADMIN_PASSWORD"
     )
 
     msg info "Update enviromental variables with the input parameters"
