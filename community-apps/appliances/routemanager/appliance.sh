@@ -209,8 +209,8 @@ generate_token()
 update_config()
 {
     msg info "Update application config file"
-    sed -i 's/^TOKEN = .*/TOKEN = $ONEAPP_ROUTEMANAGER_TOKEN/' config.conf
-    sed -i 's/^PORT = .*/PORT = $ONEAPP_ROUTEMANAGER_PORT/' config.conf
+    sed -i 's/^TOKEN = .*/TOKEN = $ONEAPP_ROUTEMANAGER_TOKEN/' /opt/route-manager-api/config.conf
+    sed -i 's/^PORT = .*/PORT = $ONEAPP_ROUTEMANAGER_PORT/' /opt/route-manager-api/config.conf
 }
 
 postinstall_cleanup()
