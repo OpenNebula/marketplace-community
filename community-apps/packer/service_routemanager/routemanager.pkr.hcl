@@ -93,10 +93,10 @@ build {
   }
 
   provisioner "file" {
-    sources     = ["appliances/routemanager"]
-    # sources     = [
-    #   "appliances/routemanager/appliance.sh",
-    #   ]
+    # sources     = ["appliances/routemanager"]
+    sources     = [
+      "appliances/routemanager/appliance.sh",
+      ]
     destination = "/etc/one-appliance/service.d/"
   }
 

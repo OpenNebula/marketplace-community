@@ -120,11 +120,11 @@ service_cleanup()
 
 install_pkg_deps()
 {
-    msg info "Run apt-get update"
-    apt-get update
+    msg info "Run apk update"
+    apk update
 
-    msg info "Install required packages for TNLCM"
-    if ! apt-get install -y ${!1} ; then
+    msg info "Install required packages for route-manager-api"
+    if ! apk add ${!1} ; then
         msg error "Package(s) installation failed"
         exit 1
     fi

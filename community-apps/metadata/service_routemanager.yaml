@@ -1,9 +1,9 @@
 ---
-name: 6G-Sandbox routemanager
+name: 6G-Sandbox route-manager-api
 version: "20241010-1255"
 publisher: Telefonica Innovacion Digital
 description: |-
-  This appliance installs the latest version of [routemanager](https://github.com/6G-SANDBOX/route-manager-api), a REST API in port 8172/tcp developed with FastAPI for managing network routes on a Linux machine using the ip command.
+  This appliance installs the latest version of [route-manager-api](https://github.com/6G-SANDBOX/route-manager-api), a REST API in port 8172/tcp developed with FastAPI for managing network routes on a Linux machine using the ip command.
 
   The image is based on an Alpine 3.20 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
 
@@ -30,11 +30,8 @@ opennebula_template:
     network: 'YES'
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
-    # TODO
-    # oneapp_elcm_influxdb_user:      "$ONEAPP_ELCM_INFLUXDB_USER"
-    # oneapp_elcm_influxdb_password:  "$ONEAPP_ELCM_INFLUXDB_PASSWORD"
-    # oneapp_elcm_influxdb_database:  "$ONEAPP_ELCM_INFLUXDB_DATABASE"
-    # oneapp_elcm_grafana_password:   "$ONEAPP_ELCM_GRAFANA_PASSWORD"
+    oneapp_routemanager_token: "$ONEAPP_ROUTEMANAGER_TOKEN"
+    oneapp_routemanager_port: "$ONEAPP_ROUTEMANAGER_PORT"
   cpu: '1'
   vcpu: '1'
   graphics:
@@ -51,11 +48,8 @@ opennebula_template:
     arch: x86_64
   logo: images/logos/alpine.png
   user_inputs:
-    # TODO
-    # oneapp_elcm_influxdb_user:      "M|text|ONEAPP_ELCM_INFLUXDB_USER: Username used to login into the InfluxDB. | |admin"
-    # oneapp_elcm_influxdb_password:  "M|password|ONEAPP_ELCM_INFLUXDB_PASSWORD: Password used to login into the InfluxDB. | |admin"
-    # oneapp_elcm_influxdb_database:  "M|text|ONEAPP_ELCM_INFLUXDB_DATABASE: Database name. | |elcmdb"
-    # oneapp_elcm_grafana_password:   "M|password|ONEAPP_ELCM_GRAFANA_PASSWORD: Password used to login into the Grafana. | |admin"
+    oneapp_routemanager_token: "O|password|ONEAPP_ROUTEMANAGER_TOKEN: Token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32` | |"
+    oneapp_routemanager_port:  "O|number|ONEAPP_ROUTEMANAGER_PORT: TCP port where the route-manager-api service will be exposed| |8172"
 logo: routemanager.png
 images:
   - name: 6G-Sandbox routemanager
