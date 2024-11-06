@@ -29,6 +29,7 @@ opennebula_template:
   context:
     service_id: "$SERVICE_ID"
     network: 'YES'
+    netcfg_type: "netplan"
     set_hostname: "$NAME"
     token: "YES"
     report_ready: "YES"
