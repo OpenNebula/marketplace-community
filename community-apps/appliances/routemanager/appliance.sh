@@ -6,12 +6,12 @@ set -o errexit -o pipefail
 # Appliance metadata
 # ------------------------------------------------------------------------------
 
-ONE_SERVICE_NAME='6G-Sandbox routemanager'
+ONE_SERVICE_NAME='6G-Sandbox route-manager-api'
 ONE_SERVICE_VERSION='v0.3.2'   #latest
 ONE_SERVICE_BUILD=$(date +%s)
-ONE_SERVICE_SHORT_DESCRIPTION='6G-Sandbox routemanager appliance for KVM'
+ONE_SERVICE_SHORT_DESCRIPTION='6G-Sandbox route-manager-api appliance for KVM'
 ONE_SERVICE_DESCRIPTION=$(cat <<EOF
-This appliance installs the latest version of [routemanager](https://github.com/6G-SANDBOX/route-manager-api), a REST API in port 8172/tcp developed with FastAPI for managing network routes on a Linux machine using the ip command.
+This appliance installs the latest version of [route-manager-api](https://github.com/6G-SANDBOX/route-manager-api), a REST API in port 8172/tcp developed with FastAPI for managing network routes on a Linux machine using the ip command.
 
 The image is based on an Alpine 3.20 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
 
@@ -60,6 +60,9 @@ service_install()
     # service
     define_service
 
+    # enable routing
+    echo net.ipv4.ip_forward=1 | tee -a /etc/sysctl.d/local.conf
+
     # service metadata
     create_one_service_metadata
 
@@ -86,12 +89,6 @@ service_configure()
 
 service_bootstrap()
 {
-    if ! rc-service route-manager-api restart ; then
-        msg error "Error restarting service route-manager-api"
-        exit 1
-    fi
-    msg info "Service route-manager-api restarted"
-
     msg info "BOOTSTRAP FINISHED"
     return 0
 }
@@ -179,7 +176,7 @@ start_pre() {
 start() {
     ebegin "Starting Route Manager"
     start-stop-daemon --start --background --make-pidfile --pidfile "${pidfile}" \
-    --stdout "${output_log}" --stderr "${output_log=}" --exec ${command} -- ${command_args}
+    --stdout "${output_log}" --stderr "${output_log}" --exec ${command} -- ${command_args}
     eend $?
 }
 
@@ -196,7 +193,7 @@ EOF
 
 generate_token()
 {
-    TEMP="$(onegate vm show --json |jq .VM.USER_TEMPLATE.ONEAPP_ROUTEMANAGER_TOKEN)"
+    TEMP="$(onegate vm show --json |jq -r .VM.USER_TEMPLATE.ONEAPP_ROUTEMANAGER_TOKEN)"
 
     if [[ -z "${ONEAPP_ROUTEMANAGER_TOKEN}" && "${TEMP}" == null ]] ; then
         msg info "TOKEN not provided. Generating one"
@@ -206,14 +203,21 @@ generate_token()
     elif [[ "${TEMP}" != null ]] ; then
         msg info "Using provided or previously generated TOKEN"
         ONEAPP_ROUTEMANAGER_TOKEN="${TEMP}"
+    fi
 }
 
 
 update_config()
 {
     msg info "Update application config file"
-    sed -i "s%^TOKEN = .*%TOKEN = ${ONEAPP_ROUTEMANAGER_TOKEN}%" /opt/route-manager-api/config/config.conf
+    sed -i "s%^APITOKEN = .*%APITOKEN = ${ONEAPP_ROUTEMANAGER_TOKEN}%" /opt/route-manager-api/config/config.conf
     sed -i "s%^PORT = .*%PORT = ${ONEAPP_ROUTEMANAGER_PORT}%" /opt/route-manager-api/config/config.conf
+
+    msg info "Restart service route-manager-api"
+    if ! rc-service route-manager-api restart ; then
+        msg error "Error restarting service route-manager-api"
+        exit 1
+    fi
 }
 
 postinstall_cleanup()

@@ -7,7 +7,7 @@ set -o errexit -o pipefail
 # ------------------------------------------------------------------------------
 
 ONE_SERVICE_NAME='6G-Sandbox TNLCM'
-ONE_SERVICE_VERSION='v0.3.2'   #latest
+ONE_SERVICE_VERSION='v0.4.1'   #latest
 ONE_SERVICE_BUILD=$(date +%s)
 ONE_SERVICE_SHORT_DESCRIPTION='6G-Sandbox TNLCM appliance for KVM'
 ONE_SERVICE_DESCRIPTION=$(cat <<EOF
@@ -30,13 +30,13 @@ ONE_SERVICE_RECONFIGURABLE=true
 # ------------------------------------------------------------------------------
 
 ONE_SERVICE_PARAMS=(
-    'ONEAPP_TNLCM_JENKINS_HOST'            'configure'  'IP address of the Jenkins server used to deploy the Trial Networks'                     'M|text'
-    'ONEAPP_TNLCM_JENKINS_USERNAME'        'configure'  'Username used to login into the Jenkins server to access and retrieve pipeline info'    'M|text'
-    'ONEAPP_TNLCM_JENKINS_PASSWORD'        'configure'  'Password used to login into the Jenkins server to access and retrieve pipeline info'    'M|text'
-    'ONEAPP_TNLCM_JENKINS_TOKEN'           'configure'  'Token to authenticate while sending POST requests to the Jenkins Server API'            'M|password'
-    'ONEAPP_TNLCM_SITES_TOKEN'             'configure'  'Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault'          'M|password'
-    'ONEAPP_TNLCM_ADMIN_USER'              'configure'  'Name of the TNLCM admin user. Default: tnlcm'                                           'O|text'
-    'ONEAPP_TNLCM_ADMIN_PASSWORD'          'configure'  'Password of the TNLCM admin user. Default: tnlcm'                                       'O|password'
+    'ONEAPP_TNLCM_JENKINS_HOST'            'configure'  'IP address of the Jenkins server used to deploy the Trial Networks'                                       'M|text'
+    'ONEAPP_TNLCM_JENKINS_USERNAME'        'configure'  'Username used to login into the Jenkins server to access and retrieve pipeline info'                      'M|text'
+    'ONEAPP_TNLCM_JENKINS_PASSWORD'        'configure'  'Password used to login into the Jenkins server to access and retrieve pipeline info'                      'M|password'
+    'ONEAPP_TNLCM_JENKINS_TOKEN'           'configure'  'Token to authenticate while sending POST requests to the Jenkins Server API'                              'M|password'
+    'ONEAPP_TNLCM_SITES_TOKEN'             'configure'  'Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault'     'M|password'
+    'ONEAPP_TNLCM_ADMIN_USER'              'configure'  'Name of the TNLCM admin user. Default: tnlcm'                                                             'O|text'
+    'ONEAPP_TNLCM_ADMIN_PASSWORD'          'configure'  'Password of the TNLCM admin user. Default: tnlcm'                                                         'O|password'
 )
 
 ONEAPP_TNLCM_JENKINS_HOST="${ONEAPP_TNLCM_JENKINS_HOST:-127.0.0.1}"
@@ -56,8 +56,13 @@ DEP_PKGS="build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev lib
 
 PYTHON_VERSION="3.13"
 PYTHON_BIN="python${PYTHON_VERSION}"
-# PYTHON_BIN="/usr/local/bin/python${PYTHON_VERSION%.*}"
 
+BACKEND_PATH="/opt/TNLCM_BACKEND"
+# FRONTEND_PATH="/opt/TNLCM_FRONTEND"
+MONGODB_VERSION="8.0"
+YARN_GLOBAL_LIBRARIES="/opt/yarn_global"
+MONGO_EXPRESS_VERSION="v1.0.2"
+MONGO_EXPRESS_PATH=/opt/mongo-express-${MONGO_EXPRESS_VERSION}
 
 
 # ------------------------------------------------------------------------------
@@ -77,14 +82,33 @@ service_install()
     # python
     install_python
 
-    # docker
-    install_docker
+    # mongodb
+    install_mongodb
 
     # tnlcm backend
     install_tnlcm_backend
 
+    # nodejs
+    install_nodejs
+
     # tnlcm frontend
-    install_tnlcm_frontend
+    # install_tnlcm_frontend
+
+    # yarn
+    install_yarn
+
+    # yarn dotenv
+    install_dotenv
+
+    # load tnlcm database
+    msg info "Load the TNLCM database from mongoDB"
+    if ! mongosh --file ${BACKEND_PATH}/core/database/tnlcm-structure.js ; then
+        msg error "Error loading the TNLCM database"
+        exit 1
+    fi
+
+    # mongo-express
+    install_mongo_express
 
     systemctl daemon-reload
 
@@ -115,24 +139,23 @@ service_bootstrap()
 {
     export DEBIAN_FRONTEND=noninteractive
 
-    # raise docker compose
-    docker compose -f /opt/TNLCM/docker-compose.yaml up -d
+    systemctl enable --now mongo-express.service
 
     systemctl enable --now tnlcm-backend.service
     if [ $? -ne 0 ]; then
         msg error "Error starting tnlcm-backend.service, aborting..."
         exit 1
     else
-        msg info "tnlcm-backend.service was strarted..."
+        msg info "tnlcm-backend.service was started..."
     fi
 
-    systemctl enable --now tnlcm-frontend.service
-    if [ $? -ne 0 ]; then
-        msg error "Error starting tnlcm-frontend.service, aborting..."
-        exit 1
-    else
-        msg info "tnlcm-frontend.service was strarted..."
-    fi
+    # systemctl enable --now tnlcm-frontend.service
+    # if [ $? -ne 0 ]; then
+    #     msg error "Error starting tnlcm-frontend.service, aborting..."
+    #     exit 1
+    # else
+    #     msg info "tnlcm-frontend.service was started..."
+    # fi
 
     msg info "BOOTSTRAP FINISHED"
     return 0
@@ -172,54 +195,41 @@ install_pkg_deps()
     fi
 }
 
+
 install_python()
 {
     msg info "Install python version ${PYTHON_VERSION}"
     add-apt-repository ppa:deadsnakes/ppa -y
     apt-get install python${PYTHON_VERSION}-full -y
-    # wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz"
-    # tar xvf Python-${PYTHON_VERSION}.tgz
-    # cd Python-${PYTHON_VERSION}/
-    # ./configure --enable-optimizations
-    # make altinstall
-    # ${PYTHON_BIN} -m ensurepip --default-pip
-    # ${PYTHON_BIN} -m pip install --upgrade pip setuptools wheel
-    # cd
-    # rm -rf Python-${PYTHON_VERSION}*
 }
 
-install_docker()
+
+install_mongodb()
 {
-    msg info "Add Docker official GPG key"
-    install -m 0755 -d /etc/apt/keyrings
-
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-
-    chmod a+r /etc/apt/keyrings/docker.asc
-
-    msg info "Add Docker repository to apt sources"
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-        tee /etc/apt/sources.list.d/docker.list > /dev/null
+    msg info "Install mongoDB"
+    curl -fsSL https://www.mongodb.org/static/pgp/server-${MONGODB_VERSION}.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-${MONGODB_VERSION}.gpg --dearmor
+    echo "deb [ arch=amd64 signed-by=/usr/share/keyrings/mongodb-server-${MONGODB_VERSION}.gpg ] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/${MONGODB_VERSION} multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-${MONGODB_VERSION}.list
     apt-get update
-
-    msg info "Install Docker Engine"
-    if ! apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin ; then
-        msg error "Docker installation failed"
+    if ! apt-get install -y mongodb-org; then
+        msg error "Error installing package 'mongo-org'"
         exit 1
     fi
+    msg info "Start mongoDB service"
+    systemctl enable --now mongod
 }
+
 
 install_tnlcm_backend()
 {
     msg info "Clone TNLCM Repository"
-    git clone --branch ${ONE_SERVICE_VERSION} https://github.com/6G-SANDBOX/TNLCM.git /opt/TNLCM
-    cp /opt/TNLCM/.env.template /opt/TNLCM/.env
+    git clone --depth 1 --branch ${ONE_SERVICE_VERSION} -c advice.detachedHead=false https://github.com/6G-SANDBOX/TNLCM.git ${BACKEND_PATH}
+    # git clone --depth 1 --branch dev -c advice.detachedHead=false https://github.com/6G-SANDBOX/TNLCM.git ${BACKEND_PATH}
+    cp ${BACKEND_PATH}/.env.template ${BACKEND_PATH}/.env
 
     msg info "Activate TNLCM python virtual environment and install requirements"
-    ${PYTHON_BIN} -m venv /opt/TNLCM/venv
-    source /opt/TNLCM/venv/bin/activate
-    ${PYTHON_BIN} -m pip install -r /opt/TNLCM/requirements.txt
+    ${PYTHON_BIN} -m venv ${BACKEND_PATH}/venv
+    source ${BACKEND_PATH}/venv/bin/activate
+    ${BACKEND_PATH}/venv/bin/pip install -r ${BACKEND_PATH}/requirements.txt
     deactivate
 
     msg info "Define TNLCM backend systemd service"
@@ -229,8 +239,8 @@ Description=TNLCM Backend
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/TNLCM
-ExecStart=/bin/bash -c 'source venv/bin/activate && ${PYTHON_BIN} app.py'
+WorkingDirectory=${BACKEND_PATH}/
+ExecStart=/bin/bash -c 'source venv/bin/activate && gunicorn -c conf/gunicorn_conf.py'
 Restart=always
 
 [Install]
@@ -238,17 +248,33 @@ WantedBy=multi-user.target
 EOF
 }
 
+
+install_nodejs()
+{
+    msg info "Install Node.js and dependencies"
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+    apt-get install -y nodejs
+    npm install -g npm
+}
+
+
+install_yarn()
+{
+    msg info "Install yarn"
+    curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
+    echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
+    apt-get update
+    apt-get install -y yarn
+}
+
+
 install_tnlcm_frontend()
 {
     msg info "Clone TNLCM_FRONTEND Repository"
-    git clone https://github.com/6G-SANDBOX/TNLCM_FRONTEND.git /opt/TNLCM_FRONTEND
-    cp /opt/TNLCM_FRONTEND/.env.template /opt/TNLCM_FRONTEND/.env
+    git clone --depth 1 https://github.com/6G-SANDBOX/TNLCM_FRONTEND.git ${FRONTEND_PATH}
+    cp ${FRONTEND_PATH}/.env.template ${FRONTEND_PATH}/.env
 
-    msg info "Install Node.js and dependencies"
-    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - &&\
-    sudo apt-get install -y nodejs
-    npm install -g npm
-    npm --prefix /opt/TNLCM_FRONTEND/ install
+    npm --prefix ${FRONTEND_PATH}/ install
 
     msg info "Define TNLCM frontend systemd service"
     cat > /etc/systemd/system/tnlcm-frontend.service << EOF
@@ -257,7 +283,7 @@ Description=TNLCM Frontend
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/TNLCM_FRONTEND
+WorkingDirectory=${FRONTEND_PATH}/
 ExecStart=/bin/bash -c '/usr/bin/npm run dev'
 Restart=always
 
@@ -265,6 +291,41 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 }
+
+
+install_dotenv()
+{
+    msg info "Install dotenv library"
+    yarn config set global-folder ${YARN_GLOBAL_LIBRARIES}
+    yarn global add dotenv
+}
+
+
+install_mongo_express()
+{
+    msg info "Clone mongo-express repository"
+    git clone --depth 1 --branch release/${MONGO_EXPRESS_VERSION} -c advice.detachedHead=false https://github.com/mongo-express/mongo-express.git ${MONGO_EXPRESS_PATH}
+    cd ${MONGO_EXPRESS_PATH}
+    yarn install
+    yarn build
+    cd
+
+    msg info "Define mongo-express systemd service"
+    cat > /etc/systemd/system/mongo-express.service << EOF
+[Unit]
+Description=Mongo Express
+
+[Service]
+Type=simple
+WorkingDirectory=${MONGO_EXPRESS_PATH}
+ExecStart=/bin/bash -ac 'source ${BACKEND_PATH}/.env && yarn start'
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
 
 update_envfiles()
 {
@@ -288,16 +349,17 @@ update_envfiles()
         if [ -z "${!var_map[$env_var]}" ]; then
             msg warning "Variable ${var_map[$env_var]} is not defined or empty"
         else
-            sed -i "s%^${env_var}=.*%${env_var}=\"${!var_map[$env_var]}\"%" /opt/TNLCM/.env
+            sed -i "s%^${env_var}=.*%${env_var}=\"${!var_map[$env_var]}\"%" ${BACKEND_PATH}/.env
             msg debug "Variable ${env_var} overwritten with value ${!var_map[$env_var]}"
         fi
 
     done
 
-    msg info "Update enviromental variables of the TNLCM frontend"
-    sed -i "s%^NEXT_PUBLIC_LINKED_TNLCM_BACKEND_HOST=.*%NEXT_PUBLIC_LINKED_TNLCM_BACKEND_HOST=\"${TNLCM_HOST}\"%" /opt/TNLCM_FRONTEND/.env
-    msg debug "Variable NEXT_PUBLIC_LINKED_TNLCM_BACKEND_HOST overwritten with value ${TNLCM_HOST}"
+    # msg info "Update enviromental variables of the TNLCM frontend"
+    # sed -i "s%^NEXT_PUBLIC_LINKED_TNLCM_BACKEND_HOST=.*%NEXT_PUBLIC_LINKED_TNLCM_BACKEND_HOST=\"${TNLCM_HOST}\"%" ${FRONTEND_PATH}/.env
+    # msg debug "Variable NEXT_PUBLIC_LINKED_TNLCM_BACKEND_HOST overwritten with value ${TNLCM_HOST}"
 }
+
 
 postinstall_cleanup()
 {
