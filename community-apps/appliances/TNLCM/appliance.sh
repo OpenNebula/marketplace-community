@@ -7,7 +7,7 @@ set -o errexit -o pipefail
 # ------------------------------------------------------------------------------
 
 ONE_SERVICE_NAME='6G-Sandbox TNLCM'
-ONE_SERVICE_VERSION='v0.4.1'   #latest
+ONE_SERVICE_VERSION='v0.4.2'   #latest
 ONE_SERVICE_BUILD=$(date +%s)
 ONE_SERVICE_SHORT_DESCRIPTION='6G-Sandbox TNLCM appliance for KVM'
 ONE_SERVICE_DESCRIPTION=$(cat <<EOF
@@ -57,6 +57,8 @@ DEP_PKGS="build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev lib
 PYTHON_VERSION="3.13"
 PYTHON_BIN="python${PYTHON_VERSION}"
 
+POETRY_FOLDER="/opt/poetry"
+POETRY_BIN="/opt/poetry/bin/poetry"
 BACKEND_PATH="/opt/TNLCM_BACKEND"
 # FRONTEND_PATH="/opt/TNLCM_FRONTEND"
 MONGODB_VERSION="8.0"
@@ -84,6 +86,9 @@ service_install()
 
     # mongodb
     install_mongodb
+
+    # poetry
+    install_poetry
 
     # tnlcm backend
     install_tnlcm_backend
@@ -218,6 +223,13 @@ install_mongodb()
     systemctl enable --now mongod
 }
 
+install_poetry()
+{
+    msg info "Install poetry"
+    curl -sSL https://install.python-poetry.org | POETRY_HOME=${POETRY_FOLDER} python3 -
+    msg info "Config poetry"
+    ${POETRY_BIN} config virtualenvs.in-project true
+}
 
 install_tnlcm_backend()
 {
@@ -226,11 +238,8 @@ install_tnlcm_backend()
     # git clone --depth 1 --branch dev -c advice.detachedHead=false https://github.com/6G-SANDBOX/TNLCM.git ${BACKEND_PATH}
     cp ${BACKEND_PATH}/.env.template ${BACKEND_PATH}/.env
 
-    msg info "Activate TNLCM python virtual environment and install requirements"
-    ${PYTHON_BIN} -m venv ${BACKEND_PATH}/venv
-    source ${BACKEND_PATH}/venv/bin/activate
-    ${BACKEND_PATH}/venv/bin/pip install -r ${BACKEND_PATH}/requirements.txt
-    deactivate
+    msg info "Generate .venv/ directory and install dependencies"
+    ${POETRY_BIN} install --no-root --directory ${BACKEND_PATH}
 
     msg info "Define TNLCM backend systemd service"
     cat > /etc/systemd/system/tnlcm-backend.service << EOF
@@ -240,7 +249,7 @@ Description=TNLCM Backend
 [Service]
 Type=simple
 WorkingDirectory=${BACKEND_PATH}/
-ExecStart=/bin/bash -c 'source venv/bin/activate && gunicorn -c conf/gunicorn_conf.py'
+ExecStart=/bin/bash -c '${POETRY_BIN} run gunicorn -c conf/gunicorn_conf.py'
 Restart=always
 
 [Install]
