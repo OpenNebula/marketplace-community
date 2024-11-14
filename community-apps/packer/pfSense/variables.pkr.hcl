@@ -22,11 +22,15 @@ variable "headless" {
 }
 
 variable "pfSense" {
-  type = map(map(string))
+  type = map(object({ 
+    iso_url = string,
+    iso_checksum = string
+  }))
 
   default = {
     "272" = {
       iso_url      = "https://repo.ialab.dsu.edu/pfsense/pfSense-CE-2.7.2-RELEASE-amd64.iso.gz"
+      iso_checksum = "https://repo.ialab.dsu.edu/pfsense/pfSense-CE-2.7.2-RELEASE-amd64.iso.gz.sha256"
     }
   }
 }
@@ -35,53 +39,6 @@ variable "boot_cmd" {
   type = map(list(string))
 
   default = {
-    "12" = [
-      "I<wait>",       # Welcome: Install
-      "<enter><wait>", # Keymap Selection: Continue with default
-
-      "localhost", # Set hostname
-      "<enter><wait>",
-
-      "<enter><wait>", # Distribution Select, OK
-
-      "<enter><wait>",                             # Partitioning Auto (UFS)
-      "E<wait>",                                   # Entire Disk
-      "G<enter><wait>",                            # GPT
-      "<down><down><down>D<wait>",                 # Delete swap partition
-      "M<wait>",                                   # Modify second partition
-      "<tab><tab><down><down>rootfs<enter><wait>", # Set rootfs label on root partition
-      "F<wait>",                                   # Finish
-      "C<wait>",                                   # Commit
-
-      "<wait5m>",
-
-      "opennebula<enter><wait>", # Root password
-      "opennebula<enter><wait>",
-
-      "<enter><wait>", # Network Configuration vtnet0
-      "Y<wait>",       # IPv4 yes
-      "Y<wait10>",     # DHCP yes
-      "N<wait>",       # IPv6 no
-      "<enter><wait>", # Resolver configuration
-
-      "0<enter><wait>", # Time Zone Selector: UTC + Time&Date
-      "Y<wait>",        # Confirm
-      "S<wait>",        # Skip date
-      "S<wait>",        # Skip time
-
-      "<enter><wait>",    # System Configuration, OK
-      "<enter><wait>",    # System Hardening, OK
-      "N<wait>",          # Add User Accounts, no
-      "E<enter><wait10>", # Final Configuration, Exit
-
-      "Y<wait>", # Manual configuration, Yes
-      "sed -i '' -e 's/^#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config<enter><wait>",
-      "sed -i '' -e 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config<enter><wait>",
-      "sed -i '' -e 's/^.*\\([[:space:]]\\/[[:space:]]\\)/\\/dev\\/gpt\\/rootfs\\1/' /etc/fstab<enter><wait>",
-      "sync<enter>exit<enter><wait>",
-      "R<wait10>" # Complete: Reboot
-    ]
-
     "13" = [
       "I<wait>",       # Welcome: Install
       "<enter><wait>", # Keymap Selection: Continue with default
