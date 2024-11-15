@@ -23,7 +23,7 @@ tags:
 format: qcow2
 creation_time: "1721640274"
 os-id: Ubuntu
-os-release: 24.04 LTS
+os-release: 22.04 LTS
 os-arch: x86_64
 hypervisor: KVM
 opennebula_version: >-
@@ -33,7 +33,6 @@ opennebula_template:
     network: 'YES'
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
-    netcfg_type: "netplan"
     oneapp_tnlcm_jenkins_host:      "$ONEAPP_TNLCM_JENKINS_HOST"
     oneapp_tnlcm_jenkins_username:  "$ONEAPP_TNLCM_JENKINS_USERNAME"
     oneapp_tnlcm_jenkins_password:  "$ONEAPP_TNLCM_JENKINS_PASSWORD"

@@ -20,7 +20,7 @@ type: VMTEMPLATE
 format: qcow2
 creation_time: 1725448126   # date +%s
 os-id: Ubuntu
-os-release: 24.04 LTS
+os-release: 22.04 LTS
 os-arch: x86_64
 hypervisor: KVM
 opennebula_version: >-
@@ -29,7 +29,6 @@ opennebula_template:
   context:
     service_id: "$SERVICE_ID"
     network: 'YES'
-    netcfg_type: "netplan"
     set_hostname: "$NAME"
     token: "YES"
     report_ready: "YES"
