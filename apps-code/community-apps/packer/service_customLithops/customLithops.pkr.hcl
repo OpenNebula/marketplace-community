@@ -13,7 +13,7 @@ build {
 }
 
 # Build VM image
-source "qemu" "Lithops" {
+source "qemu" "customLithops" {
   cpus        = 2
   memory      = 2048
   accelerator = "kvm"
@@ -49,7 +49,7 @@ source "qemu" "Lithops" {
 }
 
 build {
-  sources = ["source.qemu.Lithops"]
+  sources = ["source.qemu.customLithops"]
 
   # revert insecure ssh options done by context start_script
   provisioner "shell" {
@@ -83,7 +83,7 @@ build {
     destination = "/etc/one-appliance/service"
   }
   provisioner "file" {
-    sources     = ["appliances/Lithops/appliance.sh"]
+    sources     = ["appliances/customLithops/appliance.sh"]
     destination = "/etc/one-appliance/service.d/"
   }
 
