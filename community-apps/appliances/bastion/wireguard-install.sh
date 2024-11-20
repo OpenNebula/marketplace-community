@@ -68,15 +68,23 @@ Address = 10.7.0.1/24
 PrivateKey = $(wg genkey)
 ListenPort = ${port}
 
-PostUp = iptables -I input -p udp --dport ${port} -j ACCEPT
-PostUp = iptables -I forward -o %i -j ACCEPT
-PostUp = iptables -I forward -i %i -j ACCEPT
-PostUp = iptables -I forward -m state --state RELATED,ESTABLISHED -j ACCEPT
-PostDown = iptables -D input -p udp --dport ${port} -j ACCEPT
-PostDown = iptables -D forward -o %i -j ACCEPT
-PostDown = iptables -D forward -i %i -j ACCEPT
-PostDown = iptables -D forward -m state --state RELATED,ESTABLISHED -j ACCEPT
+PostUp = nft add rule inet wireguard input udp dport ${port} counter accept
+PostUp = nft add rule inet wireguard forward ct state related,established counter accept
+PostUp = nft add rule inet wireguard forward oifname %i counter accept
+PostUp = nft add rule inet wireguard forward iifname %i counter accept
+PostDown = nft delete rule inet wireguard input udp dport ${port} counter accept
+PostDown = nft delete rule inet wireguard forward ct state related,established counter accept
+PostDown = nft delete rule inet wireguard forward oifname %i counter accept
+PostDown = nft delete rule inet wireguard forward iifname %i counter accept
 EOF
+# PostUp = iptables -I input -p udp --dport ${port} -j ACCEPT
+# PostUp = iptables -I forward -o %i -j ACCEPT
+# PostUp = iptables -I forward -i %i -j ACCEPT
+# PostUp = iptables -I forward -m state --state RELATED,ESTABLISHED -j ACCEPT
+# PostDown = iptables -D input -p udp --dport ${port} -j ACCEPT
+# PostDown = iptables -D forward -o %i -j ACCEPT
+# PostDown = iptables -D forward -i %i -j ACCEPT
+# PostDown = iptables -D forward -m state --state RELATED,ESTABLISHED -j ACCEPT
 
 	chmod 600 /etc/wireguard/wg0.conf
 
