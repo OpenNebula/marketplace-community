@@ -69,13 +69,13 @@ PrivateKey = $(wg genkey)
 ListenPort = ${port}
 
 PostUp = nft add rule inet wireguard input udp dport ${port} counter accept
-PostUp = nft add rule inet wireguard forward ct state related,established counter accept
-PostUp = nft add rule inet wireguard forward oifname %i counter accept
 PostUp = nft add rule inet wireguard forward iifname %i counter accept
+PostUp = nft add rule inet wireguard forward oifname %i counter accept
+PostUp = nft add rule inet wireguard forward ct state related,established counter accept
 PostDown = nft delete rule inet wireguard input udp dport ${port} counter accept
-PostDown = nft delete rule inet wireguard forward ct state related,established counter accept
-PostDown = nft delete rule inet wireguard forward oifname %i counter accept
 PostDown = nft delete rule inet wireguard forward iifname %i counter accept
+PostDown = nft delete rule inet wireguard forward oifname %i counter accept
+PostDown = nft delete rule inet wireguard forward ct state related,established counter accept
 EOF
 # PostUp = iptables -I input -p udp --dport ${port} -j ACCEPT
 # PostUp = iptables -I forward -o %i -j ACCEPT

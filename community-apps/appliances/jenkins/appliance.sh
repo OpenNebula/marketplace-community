@@ -7,7 +7,7 @@ set -o errexit -o pipefail
 # ------------------------------------------------------------------------------
 
 ONE_SERVICE_NAME='6G-Sandbox Jenkins'
-ONE_SERVICE_VERSION='0.2.0'   #latest
+ONE_SERVICE_VERSION='0.3.0'   #latest
 ONE_SERVICE_BUILD=$(date +%s)
 ONE_SERVICE_SHORT_DESCRIPTION='Appliance with Jenkins preinstalled and configured to serve 6G-Sandbox sites.'
 ONE_SERVICE_DESCRIPTION=$(cat <<EOF
@@ -54,7 +54,7 @@ ONEAPP_JENKINS_OPENNEBULA_INSECURE="${ONEAPP_JENKINS_OPENNEBULA_INSECURE:-YES}"
 # ------------------------------------------------------------------------------
 
 DEP_PKGS="fontconfig openjdk-21-jre-headless gnupg software-properties-common gpg python3-pip"
-DEP_PIP="boto3 botocore pyone"
+DEP_PIP="boto3 botocore pyone==6.8.3"
 ANSIBLE_COLLECTIONS="amazon.aws kubernetes.core community.general"
 CONSULT_ME_DIR="/var/lib/jenkins/consult_me/"
 
