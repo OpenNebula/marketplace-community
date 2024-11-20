@@ -22,3 +22,4 @@ configuration-as-code
 job-dsl
 file-parameters
 rebuild
+ansicolor
