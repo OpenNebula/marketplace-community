@@ -22,7 +22,7 @@ change it to a CPU model similar to your host's CPU that supports [x86-64v2 or h
 EOF
 )
 
-ONE_SERVICE_RECONFIGURABLE=true
+ONE_SERVICE_RECONFIGURABLE=false
 
 
 # ------------------------------------------------------------------------------
@@ -76,7 +76,6 @@ MONGO_EXPRESS_PATH=/opt/mongo-express-${MONGO_EXPRESS_VERSION}
 service_install()
 {
     export DEBIAN_FRONTEND=noninteractive
-    systemctl stop unattended-upgrades
 
     # packages
     install_pkg_deps DEP_PKGS
@@ -105,13 +104,6 @@ service_install()
     # yarn dotenv
     install_dotenv
 
-    # load tnlcm database
-    msg info "Load the TNLCM database from mongoDB"
-    if ! mongosh --file ${BACKEND_PATH}/core/database/tnlcm-structure.js ; then
-        msg error "Error loading the TNLCM database"
-        exit 1
-    fi
-
     # mongo-express
     install_mongo_express
 
@@ -128,7 +120,8 @@ service_install()
     return 0
 }
 
-# Runs when VM is first started, and every time 
+# Si ONE_SERVICE_RECONFIGURABLE=false solo se ejecuta cuando se arranca por primera vez la VM
+# Si ONE_SERVICE_RECONFIGURABLE=true se ejecuta cada vez que se arranca la VM por poweroff o undeploy
 service_configure()
 {
     export DEBIAN_FRONTEND=noninteractive
@@ -136,16 +129,14 @@ service_configure()
     # update enviromental vars
     update_envfiles
 
-    msg info "CONFIGURATION FINISHED"
-    return 0
-}
+    exec_ping_mongo
 
-service_bootstrap()
-{
-    export DEBIAN_FRONTEND=noninteractive
+    load_tnlcm_database
 
+    msg info "Start mongo-express service"
     systemctl enable --now mongo-express.service
 
+    msg info "Start tnlcm backend service"
     systemctl enable --now tnlcm-backend.service
     if [ $? -ne 0 ]; then
         msg error "Error starting tnlcm-backend.service, aborting..."
@@ -161,6 +152,14 @@ service_bootstrap()
     # else
     #     msg info "tnlcm-frontend.service was started..."
     # fi
+
+    msg info "CONFIGURATION FINISHED"
+    return 0
+}
+
+# Se ejecuta cada vez que se arranca la VM por poweroff o undeploy
+service_bootstrap()
+{
 
     msg info "BOOTSTRAP FINISHED"
     return 0
@@ -181,7 +180,6 @@ service_cleanup()
     :
 }
 
-
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 # Function Definitions
@@ -194,33 +192,37 @@ install_pkg_deps()
     apt-get update
 
     msg info "Install required packages for TNLCM"
+    wait_for_dpkg_lock_release
     if ! apt-get install -y ${!1} ; then
         msg error "Package(s) installation failed"
         exit 1
     fi
 }
 
-
 install_python()
 {
     msg info "Install python version ${PYTHON_VERSION}"
     add-apt-repository ppa:deadsnakes/ppa -y
+    wait_for_dpkg_lock_release
     apt-get install python${PYTHON_VERSION}-full -y
 }
-
 
 install_mongodb()
 {
     msg info "Install mongoDB"
     curl -fsSL https://www.mongodb.org/static/pgp/server-${MONGODB_VERSION}.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-${MONGODB_VERSION}.gpg --dearmor
     echo "deb [ arch=amd64 signed-by=/usr/share/keyrings/mongodb-server-${MONGODB_VERSION}.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -sc 2> /dev/null)/mongodb-org/${MONGODB_VERSION} multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-${MONGODB_VERSION}.list
+    wait_for_dpkg_lock_release
     apt-get update
     if ! apt-get install -y mongodb-org; then
         msg error "Error installing package 'mongo-org'"
         exit 1
     fi
+
+    sudo systemctl daemon-reload
+
     msg info "Start mongoDB service"
-    systemctl enable --now mongod
+    systemctl enable --now mongod.service
 }
 
 install_poetry()
@@ -235,7 +237,7 @@ install_tnlcm_backend()
 {
     msg info "Clone TNLCM Repository"
     git clone --depth 1 --branch ${ONE_SERVICE_VERSION} -c advice.detachedHead=false https://github.com/6G-SANDBOX/TNLCM.git ${BACKEND_PATH}
-    # git clone --depth 1 --branch dev -c advice.detachedHead=false https://github.com/6G-SANDBOX/TNLCM.git ${BACKEND_PATH}
+    # git clone --depth 1 --branch develop -c advice.detachedHead=false https://github.com/6G-SANDBOX/TNLCM.git ${BACKEND_PATH}
     cp ${BACKEND_PATH}/.env.template ${BACKEND_PATH}/.env
 
     msg info "Generate .venv/ directory and install dependencies"
@@ -257,25 +259,24 @@ WantedBy=multi-user.target
 EOF
 }
 
-
 install_nodejs()
 {
     msg info "Install Node.js and dependencies"
     curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+    wait_for_dpkg_lock_release
     apt-get install -y nodejs
     npm install -g npm
 }
-
 
 install_yarn()
 {
     msg info "Install yarn"
     curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
     echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
+    wait_for_dpkg_lock_release
     apt-get update
     apt-get install -y yarn
 }
-
 
 install_tnlcm_frontend()
 {
@@ -301,14 +302,12 @@ WantedBy=multi-user.target
 EOF
 }
 
-
 install_dotenv()
 {
     msg info "Install dotenv library"
     yarn config set global-folder ${YARN_GLOBAL_LIBRARIES}
     yarn global add dotenv
 }
-
 
 install_mongo_express()
 {
@@ -334,7 +333,6 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 }
-
 
 update_envfiles()
 {
@@ -369,6 +367,41 @@ update_envfiles()
     # msg debug "Variable NEXT_PUBLIC_LINKED_TNLCM_BACKEND_HOST overwritten with value ${TNLCM_HOST}"
 }
 
+exec_ping_mongo() {
+    msg info "Waiting for MongoDB to be ready..."
+    while ! mongosh --eval "db.adminCommand('ping')" > /dev/null 2>&1; do
+        msg info "MongoDB is not ready yet. Retrying in 10 seconds..."
+        sleep 10s
+    done
+    msg info "MongoDB is ready"
+}
+
+load_tnlcm_database()
+{
+    msg info "Load TNLCM database"
+    if ! mongosh --file "${BACKEND_PATH}/core/database/tnlcm-structure.js"; then
+        msg error "Error creating the TNLCM database"
+        exit 1
+    fi
+}
+
+wait_for_dpkg_lock_release()
+{
+  local lock_file="/var/lib/dpkg/lock-frontend"
+  local timeout=600
+  local interval=5
+
+  for ((i=0; i<timeout; i+=interval)); do
+    if ! lsof "${lock_file}" &>/dev/null; then
+      return 0
+    fi
+    echo "Could not get lock ${lock_file} due to unattended-upgrades. Retrying in ${interval} seconds..."
+    sleep "${interval}"
+  done
+
+  echo "Error: 10m timeout without ${lock_file} being released by unattended-upgrades"
+  exit 1
+}
 
 postinstall_cleanup()
 {
