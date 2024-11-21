@@ -48,8 +48,28 @@ curl -fsSL "https://raw.githubusercontent.com/containerd/containerd/v$CONTAINERD
 systemctl daemon-reload
 
 (containerd config default | gawk -f /dev/fd/3 | install -m u=rw,go=r /dev/fd/0 /etc/containerd/config.toml) 3<<'AWK'
-{ print gensub("^(\\s*SystemdCgroup\\s*)=.*$", "\\1= true", 1) }
+$1 == "[plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.runc.options]" {
+    update_SystemdCgroup = 1
+}
+update_SystemdCgroup && $1 == "SystemdCgroup" {
+    update_SystemdCgroup = 0
+    $0 = gensub("^(\\s*SystemdCgroup\\s*)=.*$", "\\1= true", 1)
+}
+$1 == "[plugins.\"io.containerd.grpc.v1.cri\".registry]" {
+    update_config_path = 1
+}
+update_config_path && $1 == "config_path" {
+    update_config_path = 0
+    $0 = gensub("^(\\s*config_path\\s*)=.*$", "\\1= \"/etc/containerd/certs.d/\"", 1)
+}
+{ print }
 AWK
+
+install -m u=rw,go=r -D /dev/fd/0 /etc/containerd/certs.d/registry.dev:5005/hosts.toml <<'EOF'
+[host."http://registry.dev:5005"]
+  capabilities = ["pull", "resolve"]
+  skip_verify = true
+EOF
 
 systemctl enable containerd --now # must be started to pre-pull images in later stages
 

@@ -6,7 +6,9 @@ build {
 
   provisioner "shell-local" {
     inline = [
-      "cloud-localds ${var.input_dir}/${var.appliance_name}-cloud-init.iso ${var.input_dir}/cloud-init.yml",
+      "mkdir -p ${var.input_dir}/context",
+      "${var.input_dir}/gen_context > ${var.input_dir}/context/context.sh",
+      "mkisofs -o ${var.input_dir}/${var.appliance_name}-context.iso -V CONTEXT -J -R ${var.input_dir}/context",
     ]
   }
 }
@@ -17,8 +19,8 @@ source "qemu" "capone" {
   memory      = 2048
   accelerator = "kvm"
 
-  iso_url      = lookup(lookup(var.kubeadm, var.version, {}), "iso_url", "")
-  iso_checksum = lookup(lookup(var.kubeadm, var.version, {}), "iso_checksum", "")
+  iso_url      = "../one-apps/export/ubuntu2404.qcow2"
+  iso_checksum = "none"
 
   headless = var.headless
 
@@ -35,8 +37,11 @@ source "qemu" "capone" {
 
   qemuargs = [
     ["-cpu", "host"],
-    ["-cdrom", "${var.input_dir}/${var.appliance_name}-cloud-init.iso"],
+    ["-cdrom", "${var.input_dir}/${var.appliance_name}-context.iso"],
     ["-serial", "stdio"],
+    # MAC addr needs to mach ETH0_MAC from context iso
+    ["-netdev", "user,id=net0,hostfwd=tcp::{{ .SSHHostPort }}-:22"],
+    ["-device", "virtio-net-pci,netdev=net0,mac=00:11:22:33:44:55"]
   ]
 
   ssh_username     = "root"

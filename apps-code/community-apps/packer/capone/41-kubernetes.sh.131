@@ -56,12 +56,17 @@ systemctl daemon-reload
 
 kubeadm config images pull "--kubernetes-version=v$KUBERNETES_VERSION"
 
-ctr image pull "ghcr.io/kube-vip/kube-vip:v$KUBEVIP_VERSION"
-ctr image pull "ghcr.io/kube-vip/kube-vip-cloud-provider:v$KUBEVIP_CLOUD_PROVIDER_VERSION"
+ctr --namespace=k8s.io image pull "ghcr.io/kube-vip/kube-vip:v$KUBEVIP_VERSION"
+ctr --namespace=k8s.io image pull "ghcr.io/kube-vip/kube-vip-cloud-provider:v$KUBEVIP_CLOUD_PROVIDER_VERSION"
 
 install -m u=rwx,go=rx /dev/fd/0 /usr/local/bin/kube-vip <<EOF
 #!/usr/bin/env bash
-exec ctr run --rm --net-host ghcr.io/kube-vip/kube-vip:v$KUBEVIP_VERSION vip /kube-vip "$$@"
+exec ctr --namespace=k8s.io run --rm --net-host ghcr.io/kube-vip/kube-vip:v$KUBEVIP_VERSION vip /kube-vip "\$@"
+EOF
+
+install -m u=rw,go=r /dev/fd/0 /etc/profile.d/crictl.sh <<'EOF'
+export CONTAINER_RUNTIME_ENDPOINT=/run/containerd/containerd.sock
+export IMAGE_SERVICE_ENDPOINT=/run/containerd/containerd.sock
 EOF
 
 install -m u=rw,go=r /dev/fd/0 /etc/profile.d/kubeconfig.sh <<'EOF'

@@ -1,6 +1,6 @@
 variable "appliance_name" {
   type    = string
-  default = "kubeadm"
+  default = "capone"
 }
 
 variable "version" {
@@ -19,15 +19,4 @@ variable "output_dir" {
 variable "headless" {
   type    = bool
   default = false
-}
-
-variable "kubeadm" {
-  type = map(map(string))
-
-  default = {
-    "131" = {
-      iso_url      = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
-      iso_checksum = "file:https://cloud-images.ubuntu.com/noble/current/SHA256SUMS"
-    }
-  }
 }

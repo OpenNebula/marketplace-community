@@ -5,17 +5,17 @@ include Makefile.config
 -include Makefile.local
 
 # services
-services: $(patsubst %, packer-%, $(SERVICES))
+services: $(patsubst %,packer-%,$(SERVICES))
 
 # allow individual services targets (e.g., "make service_Lithops")
-$(SERVICES):  %: packer-% ;
+$(SERVICES): %: packer-%
 
 # aliases + dependency
 packer-%: ${DIR_EXPORT}/%.qcow2
 	@${INFO} "Packer ${*} done"
 
 # run packer build for given distro or service
-${DIR_EXPORT}/%.qcow2: $(patsubst %, ${DIR_ONEAPPS}/context-linux/out/%, $(LINUX_CONTEXT_PACKAGES))
+${DIR_EXPORT}/%.qcow2:
 	$(eval DISTRO_NAME := $(shell echo ${*} | sed 's/[0-9].*//'))
 	$(eval DISTRO_VER  := $(shell echo ${*} | sed 's/^.[^0-9]*\(.*\)/\1/'))
 	packer/build.sh "${DISTRO_NAME}" "${DISTRO_VER}" ${@}
