@@ -31,12 +31,19 @@ ONE_SERVICE_RECONFIGURABLE=false
 # List of contextualization parameters
 # ------------------------------------------------------------------------------
 
+#TODO
 ONE_SERVICE_PARAMS=(
     'ONEAPP_ROUTEMANAGER_TOKEN'       'configure'  'Token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`' 'O|password'
     'ONEAPP_ROUTEMANAGER_PORT'        'configure'  'TCP port where the route-manager-api service will be exposed'    'O|text'
 )
 
-ONEAPP_ROUTEMANAGER_PORT="${ONEAPP_ROUTEMANAGER_PORT:-8172}"
+### Lista de momento
+# new password for the currently logged in user.
+ONEAPP_BASTION_DNS_PASSWORD"=${ONEAPP_BASTION_DNS_PASSWORD:-admin}"
+# A comma separated list of forwarders to be used by the DNS server.
+ONEAPP_BASTION_DNS_FORWARDERS"=${ONEAPP_BASTION_DNS_FORWARDERS:-'8.8.8.8 1.1.1.1'}"
+# The domain name for creating the new zone. The value can be valid domain name, an IP address, or an network address in CIDR format. When value is IP address or network address, a reverse zone is created.
+ONEAPP_BASTION_DNS_DOMAIN"=${ONEAPP_BASTION_DNS_DOMAIN:-$(hostname)}"
 
 # ------------------------------------------------------------------------------
 # Global variables
@@ -52,21 +59,24 @@ DEP_PKGS="python3"
 
 service_install()
 {
+    export DEBIAN_FRONTEND=noninteractive
 
     # packages
     install_pkg_deps DEP_PKGS
 
-    # clone
-    clone_repo
+    # Technitium
 
-    # venv
-    create_venv
+    # # clone
+    # clone_repo
 
-    # service
-    define_service
+    # # venv
+    # create_venv
 
-    # enable routing
-    echo net.ipv4.ip_forward=1 | tee -a /etc/sysctl.d/local.conf
+    # # service
+    # define_service
+
+    # # enable routing
+    # echo net.ipv4.ip_forward=1 | tee -a /etc/sysctl.d/local.conf
 
     # service metadata
     create_one_service_metadata
@@ -122,107 +132,182 @@ service_cleanup()
 
 install_pkg_deps()
 {
-    msg info "Run apk update"
-    apk update
+    msg info "Run apt-get update"
+    apt-get update
 
-    msg info "Install required packages for route-manager-api"
-    if ! apk add ${!1} ; then
+    msg info "Install required packages for ${ONE_SERVICE_NAME}"
+    wait_for_dpkg_lock_release
+    if ! apt-get install -y "${!1}" ; then
         msg error "Package(s) installation failed"
         exit 1
     fi
 }
 
-clone_repo()
+install_dns()
 {
-    msg info "git clone route-manager-api repository"
-    if ! git clone https://github.com/6G-SANDBOX/route-manager-api /opt/route-manager-api ; then
-        msg error "Error cloning route-manager-api repository"
+    # Install Technitium DNS
+    if ! curl -sSL https://download.technitium.com/dns/install.sh | sudo bash; then
+        msg error "Technitium DNS install script encountered an error"
         exit 1
     fi
 }
 
-create_venv()
-{
-    msg info "Create and activate venv 'routemgr'"
-    python3 -m venv /opt/route-manager-api/routemgr
-    source /opt/route-manager-api/routemgr/bin/activate
+configure_dns()
+{  
+    # first login
+    msg info "First login into Technitium DNS API"
+    tmp_token=$(api_request "/user/login?user=admin&pass=admin&includeInfo=false" | jq -r '.token')
 
-    msg info "install application requirements inside the venv"
-    if ! pip install -r /opt/route-manager-api/requirements.txt ; then
-        msg error "Error downloading required python packages"
-        exit 1
+    # persistent token
+    msg info "Set persistent login for DNS user 'admin'"
+    token=$(api_request "/user/createToken?user=admin&pass=admin&tokenName=JenkinsToken" | jq -r '.token')
+
+    # change password
+    if [[ -z "${ONEAPP_BASTION_DNS_PASSWORD}" || "${ONEAPP_BASTION_DNS_PASSWORD}" == "admin" ]]; then
+        msg info "Default password for DNS user 'admin' will remain as-is"
+    else
+        msg info "Change default password for DNS user 'admin'"
+        api_request "/user/changePassword?token=${tmp_token}&pass=${ONEAPP_BASTION_DNS_PASSWORD}"
     fi
-    deactivate
+
+    # logout first login
+    msg info "Logout from first login"
+    api_request "/user/logout?token=${tmp_token}" | jq -r '.token'
+
+    # DNS domain and forwarders
+    msg info "Set DNS domain and forwarders"
+    api_request "/settings/set?token=${token}&dnsServerDomain=${ONEAPP_BASTION_DNS_DOMAIN}&forwarders=${ONEAPP_BASTION_DNS_FORWARDERS}"
+
+    # DNS zone
+    msg info "Set DNS zone where new entries will be set"
+    api_request "/zones/create?token=${token}&zone=${ONEAPP_BASTION_DNS_DOMAIN}&type=Primary"
+
+    # download request logs plugin
+    msg info "Download Query Logs plugin"
+    api_request "/apps/downloadAndInstall?token=${token}&name=Query Logs (Sqlite)&url=https://download.technitium.com/dns/apps/QueryLogsSqliteApp-v6.zip"
 }
 
-define_service()
+dns_api()
 {
-    msg info "Defining route-manager-api OpenRC service"
-    cat > /etc/init.d/route-manager-api << 'EOF'
-#!/sbin/openrc-run
+    base_url="http://localhost:5380/api"
+    local endpoint=$1
 
-name="route-manager-api"
-description="A REST API developed with FastAPI for managing network routes on a Linux machine using the ip command. It allows you to query active routes, create new routes, and delete existing routes, with token-based authentication and persistence of scheduled routes to ensure their availability even after service restarts."
-command="/opt/route-manager-api/routemgr/bin/python3"
-command_args="/opt/route-manager-api/main.py"
-command_background="yes"
-pidfile="/var/run/route_manager.pid"
-
-output_log="/var/log/route_manager.log"
-
-depend() {
-    after net
+    response=$(curl -s -w "%{http_code}" --location "${base_url}${endpoint}")
+    [[ "${response: -3}" != "200" ]] && msg error "HTTP error: $(echo "${response::-3}" | jq)" && exit 1
+    [[ "$(echo "${response::-3}" | jq -r '.status')" != "ok" ]] && msg error "API error: $(echo "${response::-3}" | jq -r '.errorMessage')" && exit 1
+    echo "${response::-3}"
 }
 
-start_pre() {
-    cd /opt/route-manager-api
-}
 
-start() {
-    ebegin "Starting Route Manager"
-    start-stop-daemon --start --background --make-pidfile --pidfile "${pidfile}" \
-    --stdout "${output_log}" --stderr "${output_log}" --exec ${command} -- ${command_args}
-    eend $?
-}
+# clone_repo()
+# {
+#     msg info "git clone route-manager-api repository"
+#     if ! git clone https://github.com/6G-SANDBOX/route-manager-api /opt/route-manager-api ; then
+#         msg error "Error cloning route-manager-api repository"
+#         exit 1
+#     fi
+# }
 
-EOF
+# create_venv()
+# {
+#     msg info "Create and activate venv 'routemgr'"
+#     python3 -m venv /opt/route-manager-api/routemgr
+#     source /opt/route-manager-api/routemgr/bin/activate
 
-    chmod +x /etc/init.d/route-manager-api
+#     msg info "install application requirements inside the venv"
+#     if ! pip install -r /opt/route-manager-api/requirements.txt ; then
+#         msg error "Error downloading required python packages"
+#         exit 1
+#     fi
+#     deactivate
+# }
+
+# define_service()
+# {
+#     msg info "Defining route-manager-api OpenRC service"
+#     cat > /etc/init.d/route-manager-api << 'EOF'
+# #!/sbin/openrc-run
+
+# name="route-manager-api"
+# description="A REST API developed with FastAPI for managing network routes on a Linux machine using the ip command. It allows you to query active routes, create new routes, and delete existing routes, with token-based authentication and persistence of scheduled routes to ensure their availability even after service restarts."
+# command="/opt/route-manager-api/routemgr/bin/python3"
+# command_args="/opt/route-manager-api/main.py"
+# command_background="yes"
+# pidfile="/var/run/route_manager.pid"
+
+# output_log="/var/log/route_manager.log"
+
+# depend() {
+#     after net
+# }
+
+# start_pre() {
+#     cd /opt/route-manager-api
+# }
+
+# start() {
+#     ebegin "Starting Route Manager"
+#     start-stop-daemon --start --background --make-pidfile --pidfile "${pidfile}" \
+#     --stdout "${output_log}" --stderr "${output_log}" --exec ${command} -- ${command_args}
+#     eend $?
+# }
+
+# EOF
+
+#     chmod +x /etc/init.d/route-manager-api
     
-    msg info "Enabling service route-manager-api"
-    if ! rc-update add route-manager-api default ; then
-        msg error "Service route-manager-api could not be enabled succesfully"
-        exit 1
-    fi
-}
+#     msg info "Enabling service route-manager-api"
+#     if ! rc-update add route-manager-api default ; then
+#         msg error "Service route-manager-api could not be enabled succesfully"
+#         exit 1
+#     fi
+# }
 
-generate_token()
+# generate_token()
+# {
+#     TEMP="$(onegate vm show --json |jq -r .VM.USER_TEMPLATE.ONEAPP_ROUTEMANAGER_TOKEN)"
+
+#     if [[ -z "${ONEAPP_ROUTEMANAGER_TOKEN}" && "${TEMP}" == null ]] ; then
+#         msg info "TOKEN not provided. Generating one"
+#         ONEAPP_ROUTEMANAGER_TOKEN=$(openssl rand -base64 32)
+#         onegate vm update --data ONEAPP_ROUTEMANAGER_TOKEN="${ONEAPP_ROUTEMANAGER_TOKEN}"
+
+#     elif [[ "${TEMP}" != null ]] ; then
+#         msg info "Using provided or previously generated TOKEN"
+#         ONEAPP_ROUTEMANAGER_TOKEN="${TEMP}"
+#     fi
+# }
+
+
+# update_config()
+# {
+#     msg info "Update application config file"
+#     sed -i "s%^APITOKEN = .*%APITOKEN = ${ONEAPP_ROUTEMANAGER_TOKEN}%" /opt/route-manager-api/config/config.conf
+#     sed -i "s%^PORT = .*%PORT = ${ONEAPP_ROUTEMANAGER_PORT}%" /opt/route-manager-api/config/config.conf
+
+#     msg info "Restart service route-manager-api"
+#     if ! rc-service route-manager-api restart ; then
+#         msg error "Error restarting service route-manager-api"
+#         exit 1
+#     fi
+# }
+
+wait_for_dpkg_lock_release()
 {
-    TEMP="$(onegate vm show --json |jq -r .VM.USER_TEMPLATE.ONEAPP_ROUTEMANAGER_TOKEN)"
+  local lock_file="/var/lib/dpkg/lock-frontend"
+  local timeout=600
+  local interval=5
 
-    if [[ -z "${ONEAPP_ROUTEMANAGER_TOKEN}" && "${TEMP}" == null ]] ; then
-        msg info "TOKEN not provided. Generating one"
-        ONEAPP_ROUTEMANAGER_TOKEN=$(openssl rand -base64 32)
-        onegate vm update --data ONEAPP_ROUTEMANAGER_TOKEN="${ONEAPP_ROUTEMANAGER_TOKEN}"
-
-    elif [[ "${TEMP}" != null ]] ; then
-        msg info "Using provided or previously generated TOKEN"
-        ONEAPP_ROUTEMANAGER_TOKEN="${TEMP}"
+  for ((i=0; i<timeout; i+=interval)); do
+    if ! lsof "${lock_file}" &>/dev/null; then
+      return 0
     fi
-}
+    echo "Could not get lock ${lock_file} due to unattended-upgrades. Retrying in ${interval} seconds..."
+    sleep "${interval}"
+  done
 
-
-update_config()
-{
-    msg info "Update application config file"
-    sed -i "s%^APITOKEN = .*%APITOKEN = ${ONEAPP_ROUTEMANAGER_TOKEN}%" /opt/route-manager-api/config/config.conf
-    sed -i "s%^PORT = .*%PORT = ${ONEAPP_ROUTEMANAGER_PORT}%" /opt/route-manager-api/config/config.conf
-
-    msg info "Restart service route-manager-api"
-    if ! rc-service route-manager-api restart ; then
-        msg error "Error restarting service route-manager-api"
-        exit 1
-    fi
+  echo "Error: 10m timeout without ${lock_file} being released by unattended-upgrades"
+  exit 1
 }
 
 postinstall_cleanup()
