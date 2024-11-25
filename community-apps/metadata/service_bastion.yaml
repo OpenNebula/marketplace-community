@@ -38,6 +38,7 @@ opennebula_template:
     netcfg_type: "interfaces"
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    token: 'YES'
     oneapp_bastion_dns_password:       "$ONEAPP_BASTION_DNS_PASSWORD"
     oneapp_bastion_dns_forwarders:     "$ONEAPP_BASTION_DNS_FORWARDERS"
     oneapp_bastion_dns_domain:         "$ONEAPP_BASTION_DNS_DOMAIN"
@@ -60,7 +61,7 @@ opennebula_template:
   logo: images/logos/ubuntu.png
   user_inputs:
     oneapp_bastion_dns_password:       "O|password|ONEAPP_BASTION_DNS_PASSWORD: For the Technitium DNS, admin user password.| |admin"
-    oneapp_bastion_dns_forwarders:     "O|text|ONEAPP_BASTION_DNS_FORWARDERS: For the Technitium DNS, comma separated list of forwarders to be used by the DNS server.| |8.8.8.8, 1.1.1.1"
+    oneapp_bastion_dns_forwarders:     "O|text|ONEAPP_BASTION_DNS_FORWARDERS: For the Technitium DNS, comma separated list of forwarders to be used by the DNS server.| |8.8.8.8,1.1.1.1"
     oneapp_bastion_dns_domain:         "M|text|ONEAPP_BASTION_DNS_DOMAIN: For the Technitium DNS, domain name for creating the new zone."
     oneapp_bastion_routemanager_token: "O|password|ONEAPP_BASTION_ROUTEMANAGER_TOKEN: For the route-manager-api, token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32` | |"
     oneapp_bastion_routemanager_port:  "O|number|ONEAPP_ROUTEMANAGER_PORT: For the route-manager-api, TCP port where the API service is be exposed| |8172"

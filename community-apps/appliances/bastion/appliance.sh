@@ -40,7 +40,7 @@ ONE_SERVICE_PARAMS=(
 )
 
 ONEAPP_BASTION_DNS_PASSWORD="${ONEAPP_BASTION_DNS_PASSWORD:-admin}"
-ONEAPP_BASTION_DNS_FORWARDERS="${ONEAPP_BASTION_DNS_FORWARDERS:-'8.8.8.8, 1.1.1.1'}"
+ONEAPP_BASTION_DNS_FORWARDERS="${ONEAPP_BASTION_DNS_FORWARDERS:-'8.8.8.8,1.1.1.1'}"
 ONEAPP_BASTION_ROUTEMANAGER_PORT="${ONEAPP_ROUTEMANAGER_PORT:-8172}"
 
 
@@ -186,9 +186,32 @@ dns_api()
     local endpoint=$1
 
     response=$(curl -s -w "%{http_code}" --location "${base_url}${endpoint}")
-    [[ "${response: -3}" != "200" ]] && msg error "HTTP error: $(echo "${response::-3}" | jq)" && exit 1
-    [[ "$(echo "${response::-3}" | jq -r '.status')" != "ok" ]] && msg error "API error: $(echo "${response::-3}" | jq -r '.errorMessage')" && exit 1
-    echo "${response::-3}"
+
+    http_code="${response: -3}"
+    body="${response::-3}"
+
+    # Verify http_code is 200
+    if [[ "$http_code" != "200" ]]; then
+        msg error "API returned code ${http_code}:${body})"
+        exit 1
+    fi
+
+    # Verify response is a valid JSON
+    if ! echo "${body}" | jq empty > /dev/null 2>&1; then
+        msg error "Invalid response received from API: ${body}"
+        exit 1
+    fi
+
+    # Verify response has ok status
+    if [[ "$(echo "${body}" | jq -r '.status')" != "ok" ]]; then
+        msg error "API returned error: $(echo "${body}" | jq -r '.errorMessage')"
+        exit 1
+    fi
+    echo "${body}"
+
+    # [[ "${response: -3}" != "200" ]] && msg error "HTTP error: $(echo "${response::-3}" | jq)" && exit 1
+    # [[ "$(echo "${response::-3}" | jq -r '.status')" != "ok" ]] && msg error "API error: $(echo "${response::-3}" | jq -r '.errorMessage')" && exit 1
+    # echo "${response::-3}"
 }
 
 
