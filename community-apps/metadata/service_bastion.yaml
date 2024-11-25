@@ -1,5 +1,5 @@
 ---
-name: 6G-Sandbox bastion
+name: "[Testing] 6G-Sandbox bastion"
 version: "20241125-1624"
 publisher: Telefonica Innovacion Digital
 description: |-
@@ -88,7 +88,7 @@ opennebula_template:
     oneapp_bastion_routemanager_port:  "O|number|ONEAPP_ROUTEMANAGER_PORT: For the route-manager-api, TCP port where the API service is be exposed| |8172"
 logo: sandbox.png
 images:
-  - name: 6G-Sandbox bastion
+  - name: "[Testing] 6G-Sandbox bastion"
     url: >-
       https://rawtest.mobilesandbox.cloud:9443/service_bastion.qcow2
     type: OS

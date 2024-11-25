@@ -48,7 +48,7 @@ ONEAPP_BASTION_ROUTEMANAGER_PORT="${ONEAPP_ROUTEMANAGER_PORT:-8172}"
 # Global variables
 # ------------------------------------------------------------------------------
 
-DEP_PKGS="git python3 wireguard"
+DEP_PKGS="git python3 python3-venv wireguard"
 
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
@@ -63,11 +63,11 @@ service_install()
     # packages
     install_pkg_deps
 
-    # Technitium DNS
-    install_dns
-
     # route-manager-api
     install_routemanager
+
+    # Technitium DNS
+    install_dns
 
     # service metadata
     create_one_service_metadata
@@ -129,7 +129,7 @@ install_pkg_deps()
 
     msg info "Install required packages for ${ONE_SERVICE_NAME}"
     wait_for_dpkg_lock_release
-    if ! apt-get install -y "${DEP_PKGS}" ; then
+    if ! apt-get install -y ${DEP_PKGS} ; then
         msg error "Package(s) installation failed"
         exit 1
     fi
@@ -284,7 +284,7 @@ wait_for_dpkg_lock_release()
 postinstall_cleanup()
 {
     msg info "Delete cache and stored packages"
-    apk cache clean
-    apk del --purge
-    rm -rf /var/cache/apk/*
+    apt-get autoclean
+    apt-get autoremove
+    rm -rf /var/lib/apt/lists/*
 }
