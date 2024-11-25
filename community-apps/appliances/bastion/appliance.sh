@@ -148,35 +148,35 @@ configure_dns()
 {  
     # first login
     msg info "First login into Technitium DNS API"
-    tmp_token=$(api_request "/user/login?user=admin&pass=admin&includeInfo=false" | jq -r '.token')
+    tmp_token=$(dns_api "/user/login?user=admin&pass=admin&includeInfo=false" | jq -r '.token')
 
     # persistent token
     msg info "Set persistent login for DNS user 'admin'"
-    token=$(api_request "/user/createToken?user=admin&pass=admin&tokenName=JenkinsToken" | jq -r '.token')
+    token=$(dns_api "/user/createToken?user=admin&pass=admin&tokenName=JenkinsToken" | jq -r '.token')
 
     # change password
     if [[ -z "${ONEAPP_BASTION_DNS_PASSWORD}" || "${ONEAPP_BASTION_DNS_PASSWORD}" == "admin" ]]; then
         msg info "Default password for DNS user 'admin' will remain as-is"
     else
         msg info "Change default password for DNS user 'admin'"
-        api_request "/user/changePassword?token=${tmp_token}&pass=${ONEAPP_BASTION_DNS_PASSWORD}"
+        dns_api "/user/changePassword?token=${tmp_token}&pass=${ONEAPP_BASTION_DNS_PASSWORD}"
     fi
 
     # logout first login
     msg info "Logout from first login"
-    api_request "/user/logout?token=${tmp_token}" | jq -r '.token'
+    dns_api "/user/logout?token=${tmp_token}" | jq -r '.token'
 
     # DNS domain and forwarders
     msg info "Set DNS domain and forwarders"
-    api_request "/settings/set?token=${token}&dnsServerDomain=${ONEAPP_BASTION_DNS_DOMAIN}&forwarders=${ONEAPP_BASTION_DNS_FORWARDERS}"
+    dns_api "/settings/set?token=${token}&dnsServerDomain=${ONEAPP_BASTION_DNS_DOMAIN}&forwarders=${ONEAPP_BASTION_DNS_FORWARDERS}"
 
     # DNS zone
     msg info "Set DNS zone where new entries will be set"
-    api_request "/zones/create?token=${token}&zone=${ONEAPP_BASTION_DNS_DOMAIN}&type=Primary"
+    dns_api "/zones/create?token=${token}&zone=${ONEAPP_BASTION_DNS_DOMAIN}&type=Primary"
 
     # download request logs plugin
     msg info "Download Query Logs plugin to Technitium DNS"
-    api_request "/apps/downloadAndInstall?token=${token}&name=Query Logs (Sqlite)&url=https://download.technitium.com/dns/apps/QueryLogsSqliteApp-v6.zip"
+    dns_api "/apps/downloadAndInstall?token=${token}&name=Query Logs (Sqlite)&url=https://download.technitium.com/dns/apps/QueryLogsSqliteApp-v6.zip"
 }
 
 dns_api()
