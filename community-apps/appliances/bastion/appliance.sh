@@ -153,6 +153,7 @@ configure_dns()
     # persistent token
     msg info "Set persistent login for DNS user 'admin'"
     token=$(dns_api "/user/createToken?user=admin&pass=admin&tokenName=JenkinsToken" | jq -r '.token')
+    onegate vm update --data ONEAPP_BASTION_DNS_TOKEN="${token}"
 
     # change password
     if [[ -z "${ONEAPP_BASTION_DNS_PASSWORD}" || "${ONEAPP_BASTION_DNS_PASSWORD}" == "admin" ]]; then
@@ -168,7 +169,7 @@ configure_dns()
 
     # DNS domain and forwarders
     msg info "Set DNS domain and forwarders"
-    dns_api "/settings/set?token=${token}&dnsServerDomain=${ONEAPP_BASTION_DNS_DOMAIN}&forwarders=${ONEAPP_BASTION_DNS_FORWARDERS}"
+    dns_api "/settings/set?token=${token}&dnsServerDomain=tn_bastion.${ONEAPP_BASTION_DNS_DOMAIN}&forwarders=$(echo "${ONEAPP_BASTION_DNS_FORWARDERS}" | tr -d ' ')"
 
     # DNS zone
     msg info "Set DNS zone where new entries will be set"
