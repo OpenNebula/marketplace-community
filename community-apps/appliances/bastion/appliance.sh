@@ -167,6 +167,10 @@ configure_dns()
     msg info "Logout from first login"
     dns_api "/user/logout?token=${tmp_token}" 1>/dev/null
 
+    # download request logs plugin
+    msg info "Download Query Logs plugin to Technitium DNS"
+    dns_api "/apps/downloadAndInstall?token=${token}&name=Query%20Logs%20%28Sqlite%29&url=https://download.technitium.com/dns/apps/QueryLogsSqliteApp-v6.zip" 1>/dev/null
+
     # DNS domain and forwarders
     msg info "Set DNS domain and forwarders"
     dns_api "/settings/set?token=${token}&dnsServerDomain=$(hostname | rev | cut -d'-' -f1 | rev).${ONEAPP_BASTION_DNS_DOMAIN}&forwarders=$(echo "${ONEAPP_BASTION_DNS_FORWARDERS}" | tr -d ' ')" 1>/dev/null
@@ -174,10 +178,6 @@ configure_dns()
     # DNS zone
     msg info "Set DNS zone where new entries will be set"
     dns_api "/zones/create?token=${token}&zone=${ONEAPP_BASTION_DNS_DOMAIN}&type=Primary" 1>/dev/null
-
-    # download request logs plugin
-    msg info "Download Query Logs plugin to Technitium DNS"
-    dns_api "/apps/downloadAndInstall?token=${token}&name=Query%20Logs%20%28Sqlite%29&url=https://download.technitium.com/dns/apps/QueryLogsSqliteApp-v6.zip" 1>/dev/null
 }
 
 dns_api()
