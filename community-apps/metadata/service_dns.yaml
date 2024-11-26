@@ -54,7 +54,7 @@ opennebula_template:
     oneapp_bastion_dns_password:       "O|password|ONEAPP_DNS_PASSWORD: Admin user password.| |admin"
     oneapp_bastion_dns_forwarders:     "O|text|ONEAPP_DNS_FORWARDERS: Comma separated list of forwarders to be used by the DNS server.| |8.8.8.8,1.1.1.1"
     oneapp_bastion_dns_domain:         "M|text|ONEAPP_DNS_DOMAIN: Domain name for creating the new zone."
-logo: sandbox.png
+logo: technitium.png
 images:
   - name: "[Testing] Technitium DNS"
     url: >-
