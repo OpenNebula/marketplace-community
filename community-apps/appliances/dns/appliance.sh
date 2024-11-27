@@ -111,6 +111,9 @@ install_dns()
         exit 1
     fi
 
+    # Wait 5 seconds for Technitium DNS API to start
+    sleep 5
+
     # temporal login
     msg info "Temporal login into Technitium DNS API"
     tmp_token=$(dns_api "/user/login?user=admin&pass=admin&includeInfo=false" | jq -r '.token')
@@ -127,7 +130,7 @@ install_dns()
 configure_dns()
 {  
     # temporal login
-    msg info "Tirst login into Technitium DNS API"
+    msg info "Temporal login into Technitium DNS API"
     tmp_token=$(dns_api "/user/login?user=admin&pass=admin&includeInfo=false" | jq -r '.token')
 
     # persistent token
