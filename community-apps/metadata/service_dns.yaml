@@ -5,8 +5,6 @@ publisher: Telefonica Innovacion Digital
 description: |-
   This appliance installs Technitium DNS, an open source authoritative as well as recursive DNS server that can be used for self hosting a DNS server for privacy & security.
 
-  The Bastion has IPv4 routing enabled by default, with all private IPs forbidden by default, unless explictly specified.
-
   The image is based on an Ubuntu 22.04 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
 
   After deploying the appliance, check the status of the deployment in /etc/one-appliance/status. You chan check the appliance logs in /var/log/one-appliance/.
@@ -32,9 +30,9 @@ opennebula_template:
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
     token: 'YES'
-    oneapp_dns_password:       "$ONEAPP_BASTION_DNS_PASSWORD"
-    oneapp_dns_forwarders:     "$ONEAPP_BASTION_DNS_FORWARDERS"
-    oneapp_dns_domain:         "$ONEAPP_BASTION_DNS_DOMAIN"
+    oneapp_dns_password:       "$ONEAPP_DNS_PASSWORD"
+    oneapp_dns_forwarders:     "$ONEAPP_DNS_FORWARDERS"
+    oneapp_dns_domain:         "$ONEAPP_DNS_DOMAIN"
   cpu: '2'
   vcpu: '2'
   graphics:
@@ -51,9 +49,9 @@ opennebula_template:
     arch: x86_64
   logo: images/logos/ubuntu.png
   user_inputs:
-    oneapp_bastion_dns_password:       "O|password|ONEAPP_DNS_PASSWORD: Admin user password.| |admin"
-    oneapp_bastion_dns_forwarders:     "O|text|ONEAPP_DNS_FORWARDERS: Comma separated list of forwarders to be used by the DNS server.| |8.8.8.8,1.1.1.1"
-    oneapp_bastion_dns_domain:         "M|text|ONEAPP_DNS_DOMAIN: Domain name for creating the new zone."
+    oneapp_dns_password:       "O|password|ONEAPP_DNS_PASSWORD: Admin user password.| |admin"
+    oneapp_dns_forwarders:     "O|text|ONEAPP_DNS_FORWARDERS: Comma separated list of forwarders to be used by the DNS server.| |8.8.8.8,1.1.1.1"
+    oneapp_dns_domain:         "M|text|ONEAPP_DNS_DOMAIN: Domain name for creating the new zone."
 logo: technitium.png
 images:
   - name: "[Testing] Technitium DNS"
