@@ -142,12 +142,24 @@ install_dns()
         msg error "Technitium DNS install script encountered an error"
         exit 1
     fi
+
+    # temporal login
+    msg info "Temporal login into Technitium DNS API"
+    tmp_token=$(dns_api "/user/login?user=admin&pass=admin&includeInfo=false" | jq -r '.token')
+
+    # download request logs plugin
+    msg info "Download Query Logs plugin to Technitium DNS"
+    dns_api "/apps/downloadAndInstall?token=${tmp_token}&name=Query%20Logs%20%28Sqlite%29&url=https://download.technitium.com/dns/apps/QueryLogsSqliteApp-v6.zip" 1>/dev/null
+
+    # logout temporal login
+    msg info "Logout from temporal login"
+    dns_api "/user/logout?token=${tmp_token}" 1>/dev/null
 }
 
 configure_dns()
 {  
-    # first login
-    msg info "First login into Technitium DNS API"
+    # temporal login
+    msg info "Tirst login into Technitium DNS API"
     tmp_token=$(dns_api "/user/login?user=admin&pass=admin&includeInfo=false" | jq -r '.token')
 
     # persistent token
@@ -163,13 +175,9 @@ configure_dns()
         dns_api "/user/changePassword?token=${tmp_token}&pass=${ONEAPP_BASTION_DNS_PASSWORD}" 1>/dev/null
     fi
 
-    # logout first login
-    msg info "Logout from first login"
+    # logout temporal login
+    msg info "Logout from temporal login"
     dns_api "/user/logout?token=${tmp_token}" 1>/dev/null
-
-    # download request logs plugin
-    msg info "Download Query Logs plugin to Technitium DNS"
-    dns_api "/apps/downloadAndInstall?token=${token}&name=Query%20Logs%20%28Sqlite%29&url=https://download.technitium.com/dns/apps/QueryLogsSqliteApp-v6.zip" 1>/dev/null
 
     # DNS domain and forwarders
     msg info "Set DNS domain and forwarders"
