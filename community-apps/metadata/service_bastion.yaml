@@ -12,8 +12,19 @@ description: |-
 
   The image is based on an Ubuntu 22.04 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
 
-  After deploying the appliance, check the status of the deployment in /etc/one-appliance/status. You chan check the appliance logs in /var/log/one-appliance/.
+  After deploying the appliance, you can check the status of the deployment in `/etc/one-appliance/status`, or deployment logs in `/var/log/one-appliance/`.
 
+  The appliance configuration can be customized via parameters:
+
+  * `ONEAPP_BASTION_DNS_PASSWORD` - For the Technitium DNS, admin user password.
+  * `ONEAPP_BASTION_DNS_FORWARDERS` - For the Technitium DNS, comma separated list of forwarders to be used by the DNS server.
+  * `ONEAPP_BASTION_DNS_DOMAIN` - For the Technitium DNS, domain name for creating the new zone.
+  * `ONEAPP_BASTION_ROUTEMANAGER_TOKEN` - For the route-manager-api, token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`.
+  * `ONEAPP_BASTION_ROUTEMANAGER_PORT` - For the route-manager-api, TCP port where the API service is be exposed.
+
+  **Note**: This appliance does not permit recontextualization. Modifying the context variables will not have any real efects on the running instance.
+
+  **Note**: Wireguard VPN is installed, but without any default configuration. Standalone deployments (outside Trial Networks) won't have any configuration applied by default.
 short_description: 6G-Sandbox bastion for KVM
 tags:
   - 6G-Sandbox
@@ -59,8 +70,8 @@ opennebula_template:
     oneapp_bastion_dns_password:       "O|password|ONEAPP_BASTION_DNS_PASSWORD: For the Technitium DNS, admin user password.| |admin"
     oneapp_bastion_dns_forwarders:     "O|text|ONEAPP_BASTION_DNS_FORWARDERS: For the Technitium DNS, comma separated list of forwarders to be used by the DNS server.| |8.8.8.8,1.1.1.1"
     oneapp_bastion_dns_domain:         "M|text|ONEAPP_BASTION_DNS_DOMAIN: For the Technitium DNS, domain name for creating the new zone."
-    oneapp_bastion_routemanager_token: "O|password|ONEAPP_BASTION_ROUTEMANAGER_TOKEN: For the route-manager-api, token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32` | |"
-    oneapp_bastion_routemanager_port:  "O|number|ONEAPP_ROUTEMANAGER_PORT: For the route-manager-api, TCP port where the API service is be exposed| |8172"
+    oneapp_bastion_routemanager_token: "O|password|ONEAPP_BASTION_ROUTEMANAGER_TOKEN: For the route-manager-api, token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`.| |"
+    oneapp_bastion_routemanager_port:  "O|number|ONEAPP_ROUTEMANAGER_PORT: For the route-manager-api, TCP port where the API service is be exposed.| |8172"
 logo: sandbox.png
 images:
   - name: "[Testing] 6G-Sandbox bastion"

@@ -7,7 +7,15 @@ description: |-
 
   The image is based on an Ubuntu 22.04 cloud image with the OpenNebula [contextualization package](http://docs.opennebula.io/6.6/management_and_operations/references/kvm_contextualization.html).
 
-  After deploying the appliance, check the status of the deployment in /etc/one-appliance/status. You chan check the appliance logs in /var/log/one-appliance/.
+  After deploying the appliance, you can check the status of the deployment in `/etc/one-appliance/status`, or deployment logs in `/var/log/one-appliance/`.
+
+  The appliance configuration can be customized via parameters:
+
+  * `ONEAPP_DNS_PASSWORD` - Admin user password.
+  * `ONEAPP_DNS_FORWARDERS` - Comma separated list of forwarders to be used by the DNS server.
+  * `ONEAPP_DNS_DOMAIN` - Domain name for creating the new zone.
+
+  **Note**: This appliance does not permit recontextualization. Modifying the context variables will not have any real efects on the running instance.
 
 short_description: Technitium DNS appliance for KVM
 tags:
