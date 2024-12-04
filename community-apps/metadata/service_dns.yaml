@@ -11,7 +11,7 @@ description: |-
 
   The appliance configuration can be customized via parameters:
 
-  * `ONEAPP_DNS_PASSWORD` - Admin user password.
+  * `ONEAPP_DNS_PASSWORD` - Admin user password. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`.
   * `ONEAPP_DNS_FORWARDERS` - Comma separated list of forwarders to be used by the DNS server.
   * `ONEAPP_DNS_DOMAIN` - Domain name for creating the new zone.
 
@@ -57,7 +57,7 @@ opennebula_template:
     arch: x86_64
   logo: images/logos/ubuntu.png
   user_inputs:
-    oneapp_dns_password:       "O|password|ONEAPP_DNS_PASSWORD: Admin user password.| |admin"
+    oneapp_dns_password:       "O|password|ONEAPP_DNS_PASSWORD: Admin user password. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`."
     oneapp_dns_forwarders:     "O|text|ONEAPP_DNS_FORWARDERS: Comma separated list of forwarders to be used by the DNS server.| |8.8.8.8,1.1.1.1"
     oneapp_dns_domain:         "M|text|ONEAPP_DNS_DOMAIN: Domain name for creating the new zone."
 logo: technitium.png

@@ -32,14 +32,13 @@ ONE_SERVICE_RECONFIGURABLE=false
 # ------------------------------------------------------------------------------
 
 ONE_SERVICE_PARAMS=(
-    'ONEAPP_BASTION_DNS_PASSWORD'             'configure'  'For the Technitium DNS, admin user password.'                     'O|password'
-    'ONEAPP_BASTION_DNS_FORWARDERS'           'configure'  'For the Technitium DNS, comma separated list of forwarders to be used by the DNS server.'    'O|text'
-    'ONEAPP_BASTION_DNS_DOMAIN'               'configure'  'For the Technitium DNS, domain name for creating the new zone.'   'M|text'
-    'ONEAPP_BASTION_ROUTEMANAGER_TOKEN'       'configure'  'For the route-manager-api, token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`.' 'O|password'
-    'ONEAPP_BASTION_ROUTEMANAGER_PORT'        'configure'  'TCP port where the route-manager-api service will be exposed.'    'O|text'
+    'ONEAPP_BASTION_DNS_PASSWORD'        'configure'  'For the Technitium DNS, admin user password. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`.' 'O|password'
+    'ONEAPP_BASTION_DNS_FORWARDERS'      'configure'  'For the Technitium DNS, comma separated list of forwarders to be used by the DNS server.'    'O|text'
+    'ONEAPP_BASTION_DNS_DOMAIN'          'configure'  'For the Technitium DNS, domain name for creating the new zone.'   'M|text'
+    'ONEAPP_BASTION_ROUTEMANAGER_TOKEN'  'configure'  'For the route-manager-api, token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`.' 'O|password'
+    'ONEAPP_BASTION_ROUTEMANAGER_PORT'   'configure'  'TCP port where the route-manager-api service will be exposed.'    'O|text'
 )
 
-ONEAPP_BASTION_DNS_PASSWORD="${ONEAPP_BASTION_DNS_PASSWORD:-admin}"
 ONEAPP_BASTION_DNS_FORWARDERS="${ONEAPP_BASTION_DNS_FORWARDERS:-'8.8.8.8,1.1.1.1'}"
 ONEAPP_BASTION_ROUTEMANAGER_PORT="${ONEAPP_ROUTEMANAGER_PORT:-8172}"
 
@@ -170,13 +169,15 @@ configure_dns()
     token=$(dns_api "/user/createToken?user=admin&pass=admin&tokenName=JenkinsToken" | jq -r '.token')
     onegate vm update --data ONEAPP_BASTION_DNS_TOKEN="${token}"
 
-    # change password
-    if [[ -z "${ONEAPP_BASTION_DNS_PASSWORD}" || "${ONEAPP_BASTION_DNS_PASSWORD}" == "admin" ]]; then
-        msg info "Default password for DNS user 'admin' will remain as-is"
-    else
-        msg info "Change default password for DNS user 'admin'"
-        dns_api "/user/changePassword?token=${tmp_token}&pass=${ONEAPP_BASTION_DNS_PASSWORD}" 1>/dev/null
+    if [[ -z "${ONEAPP_BASTION_DNS_PASSWORD}" ]] ; then
+        msg info "Password for Technitium DNS's admin user not provided. Generating one"
+        ONEAPP_BASTION_DNS_PASSWORD=$(openssl rand -base64 32)
+        onegate vm update --data ONEAPP_BASTION_DNS_PASSWORD="${ONEAPP_BASTION_DNS_PASSWORD}"
     fi
+
+    # change password
+    msg info "Change default password for DNS user 'admin'"
+    dns_api "/user/changePassword?token=${tmp_token}&pass=${ONEAPP_BASTION_DNS_PASSWORD}" 1>/dev/null
 
     # logout temporal login
     msg info "Logout from temporal login"

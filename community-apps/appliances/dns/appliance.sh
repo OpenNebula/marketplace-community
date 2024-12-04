@@ -27,12 +27,11 @@ ONE_SERVICE_RECONFIGURABLE=false
 # ------------------------------------------------------------------------------
 
 ONE_SERVICE_PARAMS=(
-    'ONEAPP_DNS_PASSWORD'             'configure'  'Admin user password.'                     'O|password'
-    'ONEAPP_DNS_FORWARDERS'           'configure'  'Comma separated list of forwarders to be used by the DNS server.'    'O|text'
-    'ONEAPP_DNS_DOMAIN'               'configure'  'Domain name for creating the new zone.'   'M|text'
+    'ONEAPP_DNS_PASSWORD'    'configure'  'Admin user password. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`.' 'O|password'
+    'ONEAPP_DNS_FORWARDERS'  'configure'  'Comma separated list of forwarders to be used by the DNS server.'    'O|text'
+    'ONEAPP_DNS_DOMAIN'      'configure'  'Domain name for creating the new zone.'                              'M|text'
 )
 
-ONEAPP_DNS_PASSWORD="${ONEAPP_DNS_PASSWORD:-admin}"
 ONEAPP_DNS_FORWARDERS="${ONEAPP_DNS_FORWARDERS:-'8.8.8.8,1.1.1.1'}"
 
 
@@ -136,15 +135,17 @@ configure_dns()
     # persistent token
     msg info "Set persistent login for DNS user 'admin'"
     token=$(dns_api "/user/createToken?user=admin&pass=admin&tokenName=JenkinsToken" | jq -r '.token')
-    onegate vm update --data ONEAPP_BASTION_DNS_TOKEN="${token}"
+    onegate vm update --data ONEAPP_DNS_TOKEN="${token}"
+
+    if [[ -z "${ONEAPP_DNS_PASSWORD}" ]] ; then
+        msg info "Password for admin user not provided. Generating one"
+        ONEAPP_DNS_PASSWORD=$(openssl rand -base64 32)
+        onegate vm update --data ONEAPP_DNS_PASSWORD="${ONEAPP_DNS_PASSWORD}"
+    fi
 
     # change password
-    if [[ -z "${ONEAPP_BASTION_DNS_PASSWORD}" || "${ONEAPP_BASTION_DNS_PASSWORD}" == "admin" ]]; then
-        msg info "Default password for DNS user 'admin' will remain as-is"
-    else
-        msg info "Change default password for DNS user 'admin'"
-        dns_api "/user/changePassword?token=${tmp_token}&pass=${ONEAPP_BASTION_DNS_PASSWORD}" 1>/dev/null
-    fi
+    msg info "Change default password for DNS user 'admin'"
+    dns_api "/user/changePassword?token=${tmp_token}&pass=${ONEAPP_DNS_PASSWORD}" 1>/dev/null
 
     # logout temporal login
     msg info "Logout from temporal login"
@@ -152,11 +153,11 @@ configure_dns()
 
     # DNS domain and forwarders
     msg info "Set DNS domain and forwarders"
-    dns_api "/settings/set?token=${token}&dnsServerDomain=$(hostname | rev | cut -d'-' -f1 | rev).${ONEAPP_BASTION_DNS_DOMAIN}&forwarders=$(echo "${ONEAPP_BASTION_DNS_FORWARDERS}" | tr -d ' ')" 1>/dev/null
+    dns_api "/settings/set?token=${token}&dnsServerDomain=$(hostname | rev | cut -d'-' -f1 | rev).${ONEAPP_DNS_DOMAIN}&forwarders=$(echo "${ONEAPP_DNS_FORWARDERS}" | tr -d ' ')" 1>/dev/null
 
     # DNS zone
     msg info "Set DNS zone where new entries will be set"
-    dns_api "/zones/create?token=${token}&zone=${ONEAPP_BASTION_DNS_DOMAIN}&type=Primary" 1>/dev/null
+    dns_api "/zones/create?token=${token}&zone=${ONEAPP_DNS_DOMAIN}&type=Primary" 1>/dev/null
 }
 
 dns_api()
