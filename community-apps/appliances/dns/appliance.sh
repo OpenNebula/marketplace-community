@@ -139,7 +139,7 @@ configure_dns()
 
     if [[ -z "${ONEAPP_DNS_PASSWORD}" ]] ; then
         msg info "Password for admin user not provided. Generating one"
-        ONEAPP_DNS_PASSWORD=$(openssl rand -base64 32)
+        ONEAPP_DNS_PASSWORD=$(openssl rand -base64 32 | tr '/+' '_-')
         onegate vm update --data ONEAPP_DNS_PASSWORD="${ONEAPP_DNS_PASSWORD}"
     fi
 

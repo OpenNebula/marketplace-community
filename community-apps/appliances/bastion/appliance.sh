@@ -171,7 +171,7 @@ configure_dns()
 
     if [[ -z "${ONEAPP_BASTION_DNS_PASSWORD}" ]] ; then
         msg info "Password for Technitium DNS's admin user not provided. Generating one"
-        ONEAPP_BASTION_DNS_PASSWORD=$(openssl rand -base64 32)
+        ONEAPP_BASTION_DNS_PASSWORD=$(openssl rand -base64 32 | tr '/+' '_-')
         onegate vm update --data ONEAPP_BASTION_DNS_PASSWORD="${ONEAPP_BASTION_DNS_PASSWORD}"
     fi
 
