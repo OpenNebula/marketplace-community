@@ -1,0 +1,65 @@
+---
+name: CAPONE VNF
+version: 1.0.0-6.10.0.1-20241212
+publisher: OpenNebula Systems
+description: |-
+  Appliance providing several Virtual Network Functions (routing, NAT, DNS)
+  to run as regular VM.
+
+  See the dedicated [documentation](https://github.com/OpenNebula/one-apps/wiki).
+short_description: Appliance with several Virtual Network Functions to run
+  as VM
+tags:
+- alpine
+- capone
+- service
+- vnf
+format: qcow2
+creation_time: 1734014184
+os-id: Alpine
+os-release: '3.18'
+os-arch: x86_64
+hypervisor: ALL
+opennebula_version: "6.10"
+opennebula_template:
+  context:
+    network: 'YES'
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    oneapp_vnf_dns_enabled: "$ONEAPP_VNF_DNS_ENABLED"
+    oneapp_vnf_dns_nameservers: "$ONEAPP_VNF_DNS_NAMESERVERS"
+    oneapp_vnf_dns_use_rootservers: "$ONEAPP_VNF_DNS_USE_ROOTSERVERS"
+    oneapp_vnf_nat4_enabled: "$ONEAPP_VNF_NAT4_ENABLED"
+    oneapp_vnf_nat4_interfaces_out: "$ONEAPP_VNF_NAT4_INTERFACES_OUT"
+    oneapp_vnf_router4_enabled: 'YES'
+    token: 'YES'
+  cpu: '1'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  inputs_order: ''
+  memory: '512'
+  nic_default:
+    model: virtio
+  lxd_security_privileged: 'true'
+  os:
+    arch: x86_64
+    firmware_secure: "YES"
+  user_inputs:
+    oneapp_vnf_dns_enabled: O|boolean|Enable DNS Server| |YES
+    oneapp_vnf_dns_nameservers: "O|text|DNS - Nameservers||1.1.1.1,8.8.8.8"
+    oneapp_vnf_dns_use_rootservers: O|boolean|DNS - Use Rootservers| |NO
+    oneapp_vnf_nat4_enabled: O|boolean|Enable NAT| |YES
+    oneapp_vnf_nat4_interfaces_out: O|text|NAT - Outgoing Interfaces| |eth0
+  vrouter: 'YES'
+logo: router.png
+images:
+- name: capone_vnf
+  # url: #TODO: Publish image
+  url: http://172.20.0.5:8080/capone131_vnf.qcow2
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 2147483648
+  checksum:
+    md5: 7ff32da806cc6a7a3a2228a11dfea54c
+    sha256: 2474a75d7ec358dcf14113052b71e7d6cd8ff47ea5f2b83e147936148d966f80
