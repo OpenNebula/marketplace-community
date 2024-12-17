@@ -1,6 +1,6 @@
 ---
 name: CAPONE VNF
-version: 0.0.1-6.10.0.1-20241212
+version: 0.0.1-6.10.0-2-20241217
 publisher: OpenNebula Systems
 description: |-
   Appliance providing several Virtual Network Functions (routing, NAT, DNS)
@@ -15,7 +15,7 @@ tags:
 - service
 - vnf
 format: qcow2
-creation_time: 1734014184
+creation_time: 1734453805
 os-id: Alpine
 os-release: '3.18'
 os-arch: x86_64
@@ -54,12 +54,11 @@ opennebula_template:
 logo: router.png
 images:
 - name: capone_vnf
-  # url: #TODO: Publish image
-  url: http://172.20.0.5:8080/capone131_vnf.qcow2
+  url: https://d24fmfybwxpuhu.cloudfront.net/service_VRouter-6.10.0-2-20241203.qcow2
   type: OS
   dev_prefix: vd
   driver: qcow2
   size: 2147483648
   checksum:
-    md5: 7ff32da806cc6a7a3a2228a11dfea54c
-    sha256: 2474a75d7ec358dcf14113052b71e7d6cd8ff47ea5f2b83e147936148d966f80
+    md5: 7d4b1edb38cdfa6db7fb69ca9285be8e
+    sha256: 03cfac21780ff46ba9f7b2ab3f73d6c0d9e6ce3ad59e6bf94c21edd9de985436
