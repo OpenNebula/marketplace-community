@@ -260,6 +260,4 @@ images: []
 ```
 ## Acknowledgements
 
-Some of the appliances included in this repository have been made possible through the funding of the following innovation projects:
-
-* [ONEedge5G](https://opennebula.io/innovation/oneedge5g/) (Grant Agreement TSI-064200-2023-1), supported by the Spanish Ministry for Digital Transformation and Civil Service through the UNICO I+D 6G Program, co-funded by the European Union – NextGenerationEU through the Recovery and Resilience Facility (RRF).
+Some of the appliances included in this repository have been made possible through the funding of the following innovation project: [ONEedge5G](https://opennebula.io/innovation/oneedge5g/).
