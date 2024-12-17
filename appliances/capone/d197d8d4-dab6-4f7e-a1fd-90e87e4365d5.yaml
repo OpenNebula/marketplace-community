@@ -1,6 +1,6 @@
 ---
 name: CAPONE K8s node
-version: 1.0.0-6.10.0.1-20241112
+version: 0.0.1-6.10.0.1-20241112
 publisher: OpenNebula Systems
 description: |-
   CAPONE image and template for K8s nodes

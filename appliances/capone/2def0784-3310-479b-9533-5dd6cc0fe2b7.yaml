@@ -1,6 +1,6 @@
 ---
 name: CAPONE VNF
-version: 1.0.0-6.10.0.1-20241212
+version: 0.0.1-6.10.0.1-20241212
 publisher: OpenNebula Systems
 description: |-
   Appliance providing several Virtual Network Functions (routing, NAT, DNS)
