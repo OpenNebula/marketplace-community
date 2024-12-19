@@ -1,0 +1,70 @@
+---
+name: Lithops Service - MinIO
+version: 6.10.0-2-20241018
+publisher: OpenNebula Systems
+description: |-
+  Appliance with preinstalled [MinIO](https://min.io/docs/minio/linux/index.html).
+
+  See the dedicated [documentation](https://github.com/OpenNebula/one-apps/wiki/minio_quick).
+short_description: Appliance with preinstalled MinIO server for KVM hosts
+tags:
+- minio
+- storage
+- ubuntu
+- service
+format: qcow2
+creation_time: 1734631373
+os-id: Ubuntu
+os-release: 22.04 LTS
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.4, 6.8, 6.10
+opennebula_template:
+  context:
+    fallback_gw: "$FALLBACK_GW"
+    fallback_dns: "$FALLBACK_DNS"
+    network: 'YES'
+    oneapp_minio_hostname: "$ONEAPP_MINIO_HOSTNAME"
+    oneapp_minio_multi: "YES"
+    oneapp_minio_opts: "$ONEAPP_MINIO_OPTS"
+    oneapp_minio_root_password: "$ONEAPP_MINIO_ROOT_PASSWORD"
+    oneapp_minio_root_user: "$ONEAPP_MINIO_ROOT_USER"
+    oneapp_minio_tls_enabled: "$ONEAPP_MINIO_TLS_ENABLED"
+    oneapp_minio_tls_cert: "$ONEAPP_MINIO_TLS_CERT"
+    oneapp_minio_tls_key: "$ONEAPP_MINIO_TLS_KEY"
+    report_ready: "YES"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+  cpu: '1'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  inputs_order: >-
+    ONEAPP_MINIO_HOSTNAME,ONEAPP_MINIO_ROOT_USER,ONEAPP_MINIO_ROOT_PASSWORD,ONEAPP_MINIO_OPTS,ONEAPP_MINIO_TLS_ENABLED,ONEAPP_MINIO_TLS_CERT,ONEAPP_MINIO_TLS_KEY
+  memory: '2048'
+  os:
+    arch: x86_64
+  logo: images/logos/minio.png
+  user_inputs:
+    oneapp_minio_hostname: >-
+      O|text|MinIO hostname for TLS certificate| |localhost,minio-*.example.net
+    oneapp_minio_opts: >-
+      O|text|Additional commandline options for MinIO server| |--console-address
+      :9001
+    oneapp_minio_root_password: O|password|Mv binIO root user password for
+      MinIO server
+    oneapp_minio_root_user: O|text|MinIO root user for MinIO server| |myminioadmin
+    oneapp_minio_tls_enabled: "M|boolean|Enable TLS configuration| |YES"
+    oneapp_minio_tls_cert: O|text64|MinIO TLS certificate (.crt)| |
+    oneapp_minio_tls_key: O|text64|MinIO TLS key (.key)| |
+logo: minio.png
+images:
+- name: service_MinIO
+  url: >-
+    https://d24fmfybwxpuhu.cloudfront.net/service_MinIO-6.10.0-3-20241018.qcow2
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 2361393152
+  checksum:
+    md5: 300fc063bc34bebe682acd9267db5354
+    sha256: ab9434a7fe55cb7255f450b8e5b754978f5e747859de2e67713eb89b34c0f2fb

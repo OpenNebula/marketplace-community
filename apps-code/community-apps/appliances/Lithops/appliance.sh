@@ -20,11 +20,20 @@ set -o errexit -o pipefail
 ONE_SERVICE_PARAMS=(
     'ONEAPP_LITHOPS_BACKEND'            'configure'  'Lithops compute backend'                                          'O|text'
     'ONEAPP_LITHOPS_STORAGE'            'configure'  'Lithops storage backend'                                          'O|text'
+    'ONEAPP_LITHOPS_STANDALONE'         'configure'  'Wether the appliance runs as standalone or as a service'          'O|boolean'
     'ONEAPP_MINIO_ENDPOINT'             'configure'  'Lithops storage backend MinIO endpoint URL'                       'O|text'
     'ONEAPP_MINIO_ACCESS_KEY_ID'        'configure'  'Lithops storage backend MinIO account user access key'            'O|text'
     'ONEAPP_MINIO_SECRET_ACCESS_KEY'    'configure'  'Lithops storage backend MinIO account user secret access key'     'O|text'
-    'ONEAPP_MINIO_BUCKET'              'configure'  'Lithops storage backend MinIO existing bucket'                    'O|text'
+    'ONEAPP_MINIO_BUCKET'               'configure'  'Lithops storage backend MinIO existing bucket'                    'O|text'
     'ONEAPP_MINIO_ENDPOINT_CERT'        'configure'  'Lithops storage backend MinIO endpoint certificate'               'O|text64'
+    'ONEAPP_ONEBE_DOCKER_USER'          'configure'  'Username from dockerhub'                                          'O|text'
+    'ONEAPP_ONEBE_DOCKER_PASSWORD'      'configure'  'Password for dockerhub'                                           'O|password'
+    'ONEAPP_ONEBE_RUNTIME_CPU'          'configure'  'Number of vCPU per POD'                                           'O|text'
+    'ONEAPP_ONEBE_RUNTIME_MEMORY'       'configure'  'Amount of memory per POD'                                         'O|text'
+    'ONEAPP_ONEBE_KUBECFG_PATH'         'configure'  'Path where kubeconfig file will be stored'                        'O|text'
+    'ONEAPP_ONEBE_AUTOSCALE'            'configure'  'k8s backend autoscale option'                                     'O|text'
+    'FALLBACK_GW'                       'configure'  'Appliance GW for Service mode'                                    'O|text'
+    'FALLBACK_DNS'                      'configure'  'Appliance DNS for Service mode'                                   'O|text'
 )
 
 
@@ -58,12 +67,19 @@ ONE_SERVICE_RECONFIGURABLE=true
 
 ONEAPP_LITHOPS_BACKEND="${ONEAPP_LITHOPS_BACKEND:-localhost}"
 ONEAPP_LITHOPS_STORAGE="${ONEAPP_LITHOPS_STORAGE:-localhost}"
+ONEAPP_LITHOPS_STANDALONE="${ONEAPP_LITHOPS_STANDALONE:-YES}"
+ONEAPP_ONEBE_RUNTIME_CPU="${ONEAPP_ONEBE_RUNTIME_CPU:-1}"
+ONEAPP_ONEBE_RUNTIME_MEMORY="${ONEAPP_ONEBE_RUNTIME_MEMORY:-512}"
+ONEAPP_ONEBE_KUBECFG_PATH="${ONEAPP_ONEBE_KUBECFG_PATH:-\/tmp\/kubeconfig}"
+ONEAPP_ONEBE_AUTOSCALE="${ONEAPP_ONEBE_AUTOSCALE:-all}"
 
 ### Globals ##########################################################
 
 DEP_PKGS="python3-pip"
-DEP_PIP="boto3"
+DEP_PIP="boto3 requests"
 LITHOPS_VERSION="3.4.0"
+LITHOPS_REPO="https://github.com/OpenNebula/lithops.git"
+LITHOPS_BRANCH="f-569"
 DOCKER_VERSION="5:26.1.3-1~ubuntu.22.04~jammy"
 
 ###############################################################################
@@ -93,7 +109,7 @@ service_install()
     install_docker
 
     # Lithops
-    install_lithops
+    install_lithops_git
 
     # create Lithops config file in /etc/lithops
     create_lithops_config
@@ -111,6 +127,27 @@ service_install()
 
 service_configure()
 {
+    # If the appliance is configured to deploy in a service, configure networking
+    if [[ ${ONEAPP_LITHOPS_STANDALONE} =~ ^(no|NO)$ ]]; then
+        msg info "Configure appliance as part of a service"
+        # Configure GW & DNS
+        if [[ ! -z ${FALLBACK_GW} ]] && [[ ! -z ${FALLBACK_DNS} ]]; then
+            msg info "Change default route to VNF IP"
+            ip route replace default via ${FALLBACK_GW} dev eth0
+            msg info "Change DNS server to VNF IP"
+            cat > /etc/resolv.conf <<EOF
+nameserver ${FALLBACK_DNS}
+EOF
+        else
+            msg error "No fallback GW or DNS defined, error configuring appliance"
+            exit 1
+        fi
+        # Get k8s worker CPU & memory
+        msg info "Get k8s worker CPU & memory"
+        ONEAPP_ONEBE_RUNTIME_CPU=($(onegate service show -j --extended | jq -r '.SERVICE.roles[] | select(.name=="worker").nodes[0].vm_info.VM.TEMPLATE.CPU'))
+        ONEAPP_ONEBE_RUNTIME_MEMORY=($(onegate service show -j --extended | jq -r '.SERVICE.roles[] | select(.name=="worker").nodes[0].vm_info.VM.TEMPLATE.MEMORY'))
+        msg info "runtime_memory: ${ONEAPP_ONEBE_RUNTIME_MEMORY}; runtime_cpu: ${ONEAPP_ONEBE_RUNTIME_CPU}"
+    fi
     # update Lithops config file if non-default options are set
     update_lithops_config
 
@@ -197,6 +234,28 @@ install_lithops()
     mkdir /etc/lithops
 }
 
+install_lithops_git()
+{
+    if ! apt-get -y remove python3-requests python3-urllib3 ; then
+        msg error "Error uninstalling pip deps"
+        exit 1
+    fi
+
+    msg info "Cloning Lithops git repository"
+    git clone --single-branch --branch ${LITHOPS_BRANCH} ${LITHOPS_REPO}
+
+    cd lithops
+    msg info "Install Lithops from git"
+    if ! pip install . ; then
+        msg error "Error installing Lithops"
+        exit 1
+    fi
+
+    cd
+    msg info "Create /etc/lithops folder"
+    mkdir /etc/lithops
+}
+
 create_lithops_config()
 {
     msg info "Create default config file"
@@ -217,6 +276,29 @@ update_lithops_config(){
     msg info "Update compute and storage backend modes"
     sed -i "s/backend: .*/backend: ${ONEAPP_LITHOPS_BACKEND}/g" /etc/lithops/config
     sed -i "s/storage: .*/storage: ${ONEAPP_LITHOPS_STORAGE}/g" /etc/lithops/config
+
+    if [[ ${ONEAPP_LITHOPS_BACKEND} = "localhost" ]]; then
+        msg info "Edit config file for localhost Compute Backend"
+        sed -i -ne "/# Start Compute/ {p;" -e ":a; n; /# End Compute/ {p; b}; ba}; p" /etc/lithops/config
+    elif [[ ${ONEAPP_LITHOPS_BACKEND} = "one" ]]; then
+        msg info "Edit config file for ONE Compute Backend"
+
+        if ! check_onebe_attrs; then
+            msg info "Check ONE backed attributes"
+            msg error "ONE backend configuration failed"
+            exit 1
+        else
+            local_service_attr=""
+            msg info "Adding ONE backend configuration to /etc/lithops/config"
+                if [[ ! -z "$ONEAPP_ONEBE_SERVICE_ID" ]]; then
+                local_service_attr="service_id: ${ONEAPP_ONEBE_SERVICE_ID}"
+                elif [[ ! -z "$ONEAPP_ONEBE_SERVICE_TMPL_ID" ]]; then
+                local_service_attr="service_template_id: $ONEAPP_ONEBE_SERVICE_TMPL_ID"
+                fi
+            msg info "runtime_memory: ${ONEAPP_ONEBE_RUNTIME_MEMORY}; runtime_cpu: ${ONEAPP_ONEBE_RUNTIME_CPU}"
+            sed -i -ne "/# Start Compute/ {p; ione:\n  docker_user: ${ONEAPP_ONEBE_DOCKER_USER}\n  docker_password: ${ONEAPP_ONEBE_DOCKER_PASSWORD}\n  runtime_cpu: ${ONEAPP_ONEBE_RUNTIME_CPU}\n  runtime_memory: ${ONEAPP_ONEBE_RUNTIME_MEMORY}\n  kubecfg_path: ${ONEAPP_ONEBE_KUBECFG_PATH}\n  auto_scale: ${ONEAPP_ONEBE_AUTOSCALE}" -e ":a; n; /# End Compute/ {p; b}; ba}; p" /etc/lithops/config
+        fi
+    fi
 
     if [[ ${ONEAPP_LITHOPS_STORAGE} = "localhost" ]]; then
         msg info "Edit config file for localhost Storage Backend"
@@ -241,6 +323,13 @@ check_minio_attrs()
     [[ -z "$ONEAPP_MINIO_ACCESS_KEY_ID" ]] && return 1
     [[ -z "$ONEAPP_MINIO_SECRET_ACCESS_KEY" ]] && return 1
 
+    return 0
+}
+
+check_onebe_attrs()
+{
+    [[ -z "$ONEAPP_ONEBE_DOCKER_USER" ]] && return 1
+    [[ -z "$ONEAPP_ONEBE_DOCKER_PASSWORD" ]] && return 1
     return 0
 }
 

@@ -1,0 +1,74 @@
+---
+name: Lithops Service - Client
+version: 6.10.0-2-20241018
+publisher: OpenNebula Systems
+description: |-
+  Appliance with preinstalled [Lithops](https://lithops-cloud.github.io/docs/).
+
+  See the dedicated [documentation](https://github.com/OpenNebula/marketplace-community/wiki/lithops_intro).
+short_description: Appliance with preinstalled Lithops for KVM hosts
+tags:
+- lithops
+- big-data
+- analytics
+- ubuntu
+- service
+type: VMTEMPLATE
+format: qcow2
+creation_time: 1734631373
+os-id: Ubuntu
+os-release: '22.04 LTS'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.8, 6.10
+opennebula_template:
+  context:
+    network: 'YES'
+    fallback_dns: '$FALLBACK_DNS'
+    fallback_gw: '$FALLBACK_GW'
+    network: 'YES'
+    oneapp_lithops_backend: '$ONEAPP_LITHOPS_BACKEND'
+    oneapp_lithops_standalone: 'NO'
+    oneapp_lithops_storage: '$ONEAPP_LITHOPS_STORAGE'
+    oneapp_minio_access_key_id: '$ONEAPP_MINIO_ACCESS_KEY_ID"'
+    oneapp_minio_bucket: '$ONEAPP_MINIO_BUCKET'
+    oneapp_minio_endpoint: '$ONEAPP_MINIO_ENDPOINT'
+    oneapp_minio_endpoint_cert: '$ONEAPP_MINIO_ENDPOINT_CERT'
+    oneapp_minio_secret_access_key: '$ONEAPP_MINIO_SECRET_ACCESS_KEY'
+    oneapp_onebe_autoscale: '$ONEAPP_ONEBE_AUTOSCALE'
+    oneapp_onebe_docker_password: '$ONEAPP_ONEBE_DOCKER_PASSWORD'
+    oneapp_onebe_docker_user: '$ONEAPP_ONEBE_DOCKER_USER'
+    oneapp_onebe_jupyter_password: '$ONEAPP_ONEBE_JUPYTER_PASSWORD'
+    oneapp_onebe_kubecfg_path: '$ONEAPP_ONEBE_KUBECFG_PATH'
+    oneapp_onebe_runtime_cpu: '$ONEAPP_ONEBE_RUNTIME_CPU'
+    oneapp_onebe_runtime_memory: '$ONEAPP_ONEBE_RUNTIME_MEMORY'
+    report_ready: 'YES'
+    start_script_base64: "bWtkaXIgL21udC9jb250ZXh0Cm1vdW50IC9kZXYvY2Ryb20gL21udC9jb250ZXh0"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    token: 'YES'
+  cpu: '1'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  inputs_order: >-
+    ONEAPP_LITHOPS_BACKEND,ONEAPP_LITHOPS_STORAGE,ONEAPP_MINIO_ENDPOINT,ONEAPP_MINIO_ACCESS_KEY_ID,ONEAPP_MINIO_SECRET_ACCESS_KEY,ONEAPP_MINIO_BUCKET,ONEAPP_MINIO_ENDPOINT_CERT,ONEAPP_ONEBE_KUBECFG_PATH,ONEAPP_ONEBE_DOCKER_USER,ONEAPP_ONEBE_DOCKER_PASSWORD,ONEAPP_ONEBE_JUPYTER_PASSWORD,ONEAPP_ONEBE_AUTOSCALE
+  memory: '768'
+  os:
+    arch: x86_64
+  logo: images/logos/lithops.png
+  user_inputs:
+    oneapp_lithops_backend: "O|text|Compute backend| |localhost"
+    oneapp_lithops_storage: "O|text|Storage backend| |localhost"
+    oneapp_minio_endpoint: "O|text|MinIO endpoint URL| |"
+    oneapp_minio_access_key_id: "O|text|MinIO account user access key| |"
+    oneapp_minio_secret_access_key: "O|text|MinIO account user secret access key| |"
+    oneapp_minio_bucket: "O|text|MinIO bucket name| |"
+    oneapp_minio_endpoint_cert: "O|text64|CA certificate for MinIO connection| |"
+    oneapp_onebe_docker_user: "M|text|Docker user for Lithops||"
+    oneapp_onebe_docker_password: "M|password|Docker user password for Lithops||"
+    oneapp_onebe_kubecfg_path: "O|text|Path where kubeconfig file will be stored||"
+    oneapp_onebe_jupyter_password: "M|password|Password for Jupyter access||"
+    oneapp_onebe_autoscale: "0|text|Lithops backend autoscale option||all"
+logo: lithops.png
+disks:
+- "Service Lithops"
