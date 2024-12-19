@@ -185,7 +185,7 @@ configure_dns()
 
     # DNS domain and forwarders
     msg info "Set DNS domain and forwarders"
-    dns_api "/settings/set?token=${token}&dnsServerDomain=$(hostname | rev | cut -d'-' -f1 | rev).${ONEAPP_DNS_DOMAIN}&dnsServerLocalEndPoints=0.0.0.0:53,127.0.0.1:53,[::]:53&forwarders=$(echo "${ONEAPP_DNS_FORWARDERS}" | tr -d ' ')" 1>/dev/null
+    dns_api "/settings/set?token=${token}&dnsServerDomain=$(hostname | rev | cut -d'-' -f1 | rev).${ONEAPP_DNS_DOMAIN}&dnsServerLocalEndPoints=127.0.0.1:53,[::]:53&forwarders=$(echo "${ONEAPP_DNS_FORWARDERS}" | tr -d ' ')" 1>/dev/null
 
 
     # DNS zone
