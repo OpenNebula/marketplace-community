@@ -1,5 +1,5 @@
 ---
-name: "6G-Sandbox route-manager-api"
+name: "[Testing] 6G-Sandbox route-manager-api"
 version: "20241010-1255"
 publisher: Telefonica Innovacion Digital
 description: |-
@@ -56,9 +56,9 @@ opennebula_template:
     oneapp_routemanager_port:  "O|number|ONEAPP_ROUTEMANAGER_PORT: TCP port where the route-manager-api service will be exposed| |8172"
 logo: routemanager.png
 images:
-  - name: 6G-Sandbox route-manager-api
+  - name: "[Testing] 6G-Sandbox route-manager-api"
     url: >-
-      https://rawimages.mobilesandbox.cloud:9443/service_routemanager.qcow2
+      https://rawtest.mobilesandbox.cloud:9443/service_routemanager.qcow2
     type: OS
     dev_prefix: vd
     driver: qcow2

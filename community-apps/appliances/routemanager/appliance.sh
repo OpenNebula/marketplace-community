@@ -7,7 +7,7 @@ set -o errexit -o pipefail
 # ------------------------------------------------------------------------------
 
 ONE_SERVICE_NAME='6G-Sandbox route-manager-api'
-ONE_SERVICE_VERSION='v0.3.2'   #latest
+ONE_SERVICE_VERSION='v0.3.0'   #latest
 ONE_SERVICE_BUILD=$(date +%s)
 ONE_SERVICE_SHORT_DESCRIPTION='6G-Sandbox route-manager-api appliance for KVM'
 ONE_SERVICE_DESCRIPTION=$(cat <<EOF
@@ -38,6 +38,7 @@ ONEAPP_ROUTEMANAGER_PORT="${ONEAPP_ROUTEMANAGER_PORT:-8172}"
 # ------------------------------------------------------------------------------
 
 DEP_PKGS="git python3"
+DEP_PIP="pydantic-core==2.20.1 watchfiles==1.0.4 uvloop==0.21.0"
 
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
@@ -49,7 +50,7 @@ service_install()
 {
 
     # packages
-    install_pkg_deps DEP_PKGS
+    install_pkg_deps
 
     # clone
     clone_repo
@@ -121,7 +122,7 @@ install_pkg_deps()
     apk update
 
     msg info "Install required packages for route-manager-api"
-    if ! apk add ${!1} ; then
+    if ! apk add "${DEP_PKGS}" ; then
         msg error "Package(s) installation failed"
         exit 1
     fi
@@ -138,16 +139,28 @@ clone_repo()
 
 create_venv()
 {
-    msg info "Create and activate venv 'routemgr'"
-    python3 -m venv /opt/route-manager-api/routemgr
-    source /opt/route-manager-api/routemgr/bin/activate
+    msg info "Install uv"
+    curl -LsSf https://astral.sh/uv/install.sh | sh
 
-    msg info "install application requirements inside the venv"
-    if ! pip install -r /opt/route-manager-api/requirements.txt ; then
-        msg error "Error downloading required python packages"
-        exit 1
+    msg info "Install required pip packages for route-manager-api"
+    if [ -n "${DEP_PIP}" ]; then
+        if ! uv --directory /opt/route-manager-api/ pip install install ${DEP_PIP} --only-binary=:all:; then
+            msg error "pip package(s) installation failed"
+            exit 1
+        fi
     fi
-    deactivate
+
+
+#     msg info "Create and activate venv 'routemgr'"
+#     python3 -m venv /opt/route-manager-api/routemgr
+#     source /opt/route-manager-api/routemgr/bin/activate
+
+#     msg info "install application requirements inside the venv"
+#     if ! pip install -r /opt/route-manager-api/requirements.txt ; then
+#         msg error "Error downloading required python packages"
+#         exit 1
+#     fi
+#     deactivate
 }
 
 define_service()
@@ -158,8 +171,8 @@ define_service()
 
 name="route-manager-api"
 description="A REST API developed with FastAPI for managing network routes on a Linux machine using the ip command. It allows you to query active routes, create new routes, and delete existing routes, with token-based authentication and persistence of scheduled routes to ensure their availability even after service restarts."
-command="/opt/route-manager-api/routemgr/bin/python3"
-command_args="/opt/route-manager-api/main.py"
+command="/root/.local/bin/uv run -m "
+command_args="run -m app.main:app"
 command_background="yes"
 pidfile="/var/run/route_manager.pid"
 
@@ -210,8 +223,8 @@ generate_token()
 update_config()
 {
     msg info "Update application config file"
-    sed -i "s%^APITOKEN = .*%APITOKEN = ${ONEAPP_ROUTEMANAGER_TOKEN}%" /opt/route-manager-api/config/config.conf
-    sed -i "s%^PORT = .*%PORT = ${ONEAPP_ROUTEMANAGER_PORT}%" /opt/route-manager-api/config/config.conf
+    sed -i "s%^APITOKEN = .*%APITOKEN = ${ONEAPP_ROUTEMANAGER_TOKEN}%" /opt/route-manager-api/.env
+    sed -i "s%^PORT = .*%PORT = ${ONEAPP_ROUTEMANAGER_PORT}%" /opt/route-manager-api/.env
 
     msg info "Restart service route-manager-api"
     if ! rc-service route-manager-api restart ; then
