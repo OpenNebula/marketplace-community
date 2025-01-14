@@ -4,11 +4,10 @@ include Makefile.config
 # load possible overrides or non-free definitions
 -include Makefile.local
 
-distros: $(patsubst %, packer-%, $(DISTROS))
 services: $(patsubst %, packer-%, $(SERVICES))
 
 # allow individual services targets (e.g., "make service_Lithops")
-$(DISTROS)  $(SERVICES):  %: packer-% ;
+$(SERVICES):  %: packer-% ;
 
 # aliases + dependency
 packer-%: ${DIR_EXPORT}/%.qcow2
