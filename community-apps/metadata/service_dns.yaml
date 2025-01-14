@@ -1,5 +1,5 @@
 ---
-name: "[Testing] Technitium DNS"
+name: "Technitium DNS"
 version: "20241126-1224"
 publisher: Telefonica Innovacion Digital
 description: |-
@@ -62,9 +62,9 @@ opennebula_template:
     oneapp_dns_domain:         "M|text|ONEAPP_DNS_DOMAIN: Domain name for creating the new zone."
 logo: technitium.png
 images:
-  - name: "[Testing] Technitium DNS"
+  - name: "Technitium DNS"
     url: >-
-      https://rawtest.mobilesandbox.cloud:9443/service_dns.qcow2
+      https://rawimages.mobilesandbox.cloud:9443/service_dns.qcow2
     type: OS
     dev_prefix: vd
     driver: qcow2
