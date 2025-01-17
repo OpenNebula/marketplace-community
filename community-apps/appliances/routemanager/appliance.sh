@@ -141,6 +141,8 @@ create_venv()
 {
     msg info "Install uv"
     curl -LsSf https://astral.sh/uv/install.sh | sh
+    echo 'eval "$(uv generate-shell-completion bash)"' >> ~/.bashrc
+    echo 'eval "$(uvx --generate-shell-completion bash)"' >> ~/.bashrc
 
     msg info "Install required pip packages for route-manager-api"
     if [ -n "${DEP_PIP}" ]; then
