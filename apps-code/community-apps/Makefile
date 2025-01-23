@@ -5,23 +5,23 @@ include Makefile.config
 -include Makefile.local
 
 # services
-services: $(patsubst %,packer-%,$(SERVICES))
+services: $(SERVICES:%=packer-%)
 
 # allow individual services targets (e.g., "make service_Lithops")
 $(SERVICES): %: packer-%
 
 # aliases + dependency
-packer-%: ${DIR_EXPORT}/%.qcow2
-	@${INFO} "Packer ${*} done"
+packer-%: $(DIR_EXPORT)/%.qcow2
+	@$(INFO) 'Packer $* done'
 
 # run packer build for given distro or service
-${DIR_EXPORT}/%.qcow2:
-	$(eval DISTRO_NAME := $(shell echo ${*} | sed 's/[0-9].*//'))
-	$(eval DISTRO_VER  := $(shell echo ${*} | sed 's/^.[^0-9]*\(.*\)/\1/'))
-	packer/build.sh "${DISTRO_NAME}" "${DISTRO_VER}" ${@}
+$(DIR_EXPORT)/%.qcow2:
+	$(eval DISTRO_NAME := $(shell echo $* | sed 's/[0-9].*//'))
+	$(eval DISTRO_VER  := $(shell echo $* | sed 's/^.[^0-9]*\(.*\)/\1/'))
+	packer/build.sh '$(DISTRO_NAME)' '$(DISTRO_VER)' $@
 
 clean:
-	-rm -rf ${DIR_EXPORT}/*
+	-if [ -d '$(DIR_EXPORT)' ]; then rm -rf $(DIR_EXPORT)/*; fi
 
 help:
 	@echo 'Usage examples:'

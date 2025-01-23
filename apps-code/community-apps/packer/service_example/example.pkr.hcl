@@ -21,7 +21,7 @@ source "qemu" "example" {
   memory      = 2048
   accelerator = "kvm"
 
-  iso_url      = "export/alma8.qcow2"
+  iso_url      = "../one-apps/export/alma8.qcow2"
   iso_checksum = "none"
 
   headless = var.headless
