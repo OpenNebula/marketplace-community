@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-: "${CNI_PLUGINS_VERSION:=1.5.1}"
-: "${CONTAINERD_VERSION:=1.7.22}"
-: "${RUNC_VERSION:=1.1.14}"
+: "${CNI_PLUGINS_VERSION:=1.6.2}"
+: "${CONTAINERD_VERSION:=2.0.2}"
+: "${RUNC_VERSION:=1.2.4}"
 
 exec 1>&2
 set -eux -o pipefail
@@ -36,8 +36,6 @@ curl -fsSL "https://github.com/containernetworking/plugins/releases/download/v$C
 curl -fsSL "https://github.com/containerd/containerd/releases/download/v$CONTAINERD_VERSION/containerd-static-$CONTAINERD_VERSION-linux-amd64.tar.gz" \
 | tar -xz -f- -C /usr/local/bin/ --strip-components=1 --no-same-owner \
   bin/containerd \
-  bin/containerd-shim \
-  bin/containerd-shim-runc-v1 \
   bin/containerd-shim-runc-v2 \
   bin/containerd-stress \
   bin/ctr

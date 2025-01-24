@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
 : "${CRICTL_VERSION:=1.31.1}"
-: "${HELM_VERSION:=3.16.0}"
-: "${KUBERNETES_RELEASE_VERSION:=0.17.8}"
-: "${KUBERNETES_VERSION:=1.31.1}"
-: "${KUBEVIP_CLOUD_PROVIDER_VERSION:=0.0.10}"
-: "${KUBEVIP_VERSION:=0.8.3}"
+: "${HELM_VERSION:=3.16.2}"
+: "${KUBERNETES_RELEASE_VERSION:=0.17.12}"
+: "${KUBERNETES_VERSION:=1.31.4}"
+: "${KUBEVIP_CLOUD_PROVIDER_VERSION:=0.0.11}"
+: "${KUBEVIP_VERSION:=0.8.9}"
+: "${FLANNEL_VERSION:=0.26.3}"
 
 exec 1>&2
 set -eux -o pipefail
@@ -58,6 +59,11 @@ kubeadm config images pull "--kubernetes-version=v$KUBERNETES_VERSION"
 
 ctr --namespace=k8s.io image pull "ghcr.io/kube-vip/kube-vip:v$KUBEVIP_VERSION"
 ctr --namespace=k8s.io image pull "ghcr.io/kube-vip/kube-vip-cloud-provider:v$KUBEVIP_CLOUD_PROVIDER_VERSION"
+
+curl -fsSL "https://github.com/flannel-io/flannel/releases/download/v$FLANNEL_VERSION/kube-flannel.yml" | gawk -f /dev/fd/3 3<<'AWK'
+/^ *image:/ { seen[$2]++ }
+END { for (img in seen) system("ctr --namespace=k8s.io image pull " img) }
+AWK
 
 install -m u=rwx,go=rx /dev/fd/0 /usr/local/bin/kube-vip <<EOF
 #!/usr/bin/env bash
