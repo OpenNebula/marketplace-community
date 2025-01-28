@@ -163,7 +163,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/root/.local/bin/uv --directory /opt/route-manager-api/ run fastapi run --port 8712
+ExecStart=/root/.local/bin/uv --directory /opt/route-manager-api/ run fastapi run --port 8172
 StandardOutput=append:/var/log/route_manager.log
 StandardError=append:/var/log/route_manager.log
 Restart=always

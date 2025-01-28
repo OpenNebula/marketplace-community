@@ -35,7 +35,7 @@ opennebula_template:
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
     token: 'YES'
     oneapp_routemanager_apitoken: "$ONEAPP_ROUTEMANAGER_APITOKEN"
-  cpu: '1'
+  cpu: '2'
   vcpu: '2'
   graphics:
     listen: 0.0.0.0
