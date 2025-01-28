@@ -32,22 +32,20 @@ ONE_SERVICE_RECONFIGURABLE=false
 # ------------------------------------------------------------------------------
 
 ONE_SERVICE_PARAMS=(
-    'ONEAPP_BASTION_DNS_PASSWORD'        'configure'  'For the Technitium DNS, admin user password. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`.' 'O|password'
-    'ONEAPP_BASTION_DNS_FORWARDERS'      'configure'  'For the Technitium DNS, comma separated list of forwarders to be used by the DNS server.'    'O|text'
-    'ONEAPP_BASTION_DNS_DOMAIN'          'configure'  'For the Technitium DNS, domain name for creating the new zone.'   'M|text'
-    'ONEAPP_BASTION_ROUTEMANAGER_TOKEN'  'configure'  'For the route-manager-api, token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`.' 'O|password'
-    'ONEAPP_BASTION_ROUTEMANAGER_PORT'   'configure'  'TCP port where the route-manager-api service will be exposed.'    'O|text'
+    'ONEAPP_BASTION_DNS_PASSWORD'           'configure'  'For the Technitium DNS, admin user password. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`.' 'O|password'
+    'ONEAPP_BASTION_DNS_FORWARDERS'         'configure'  'For the Technitium DNS, comma separated list of forwarders to be used by the DNS server.'    'O|text'
+    'ONEAPP_BASTION_DNS_DOMAIN'             'configure'  'For the Technitium DNS, domain name for creating the new zone.'   'M|text'
+    'ONEAPP_BASTION_ROUTEMANAGER_APITOKEN'  'configure'  'For the route-manager-api, Bearer token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`.' 'O|password'
 )
 
 ONEAPP_BASTION_DNS_FORWARDERS="${ONEAPP_BASTION_DNS_FORWARDERS:-'8.8.8.8,1.1.1.1'}"
-ONEAPP_BASTION_ROUTEMANAGER_PORT="${ONEAPP_ROUTEMANAGER_PORT:-8172}"
 
 
 # ------------------------------------------------------------------------------
 # Global variables
 # ------------------------------------------------------------------------------
 
-DEP_PKGS="git python3 python3-venv wireguard"
+DEP_PKGS="git wireguard"
 
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
@@ -82,6 +80,7 @@ service_install()
 # Runs when VM is first started, and every time 
 service_configure()
 {
+    export DEBIAN_FRONTEND=noninteractive
 
     # Technitium DNS
     configure_dns
@@ -95,6 +94,7 @@ service_configure()
 
 service_bootstrap()
 {
+    export DEBIAN_FRONTEND=noninteractive
     msg info "BOOTSTRAP FINISHED"
     return 0
 }
@@ -232,16 +232,17 @@ install_routemanager()
         exit 1
     fi
 
-    msg info "Create and activate venv 'routemgr'"
-    python3 -m venv /opt/route-manager-api/routemgr
-    source /opt/route-manager-api/routemgr/bin/activate
-
-    msg info "install application requirements inside the 'routemgr' venv"
-    if ! pip install -r /opt/route-manager-api/requirements.txt ; then
-        msg error "Error downloading required python packages"
+    msg info "Install uv"
+    if ! (curl -LsSf https://astral.sh/uv/install.sh | sh); then
+        msg error "Error installing uv"
         exit 1
     fi
-    deactivate
+
+    msg info "Create virtual environment"
+    if ! (/root/.local/bin/uv sync --project /opt/route-manager-api/); then
+        msg error "Error creating .venv"
+        exit 1
+    fi
 
     routemanager_service
 
@@ -260,7 +261,9 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/opt/route-manager-api/routemgr/bin/python3 /opt/route-manager-api/main.py
+User=root
+Group=root
+ExecStart=/root/.local/bin/uv --directory /opt/route-manager-api/ run fastapi run --port 8172
 StandardOutput=append:/var/log/route_manager.log
 StandardError=append:/var/log/route_manager.log
 Restart=always
@@ -281,15 +284,19 @@ EOF
 
 configure_routemanager()
 {
-    if [[ -z "${ONEAPP_BASTION_ROUTEMANAGER_TOKEN}" ]] ; then
-        msg info "TOKEN for route-manager-api not provided. Generating one"
-        ONEAPP_BASTION_ROUTEMANAGER_TOKEN=$(openssl rand -base64 32)
-        onegate vm update --data ONEAPP_BASTION_ROUTEMANAGER_TOKEN="${ONEAPP_BASTION_ROUTEMANAGER_TOKEN}"
+    TEMP="$(onegate vm show --json |jq -r .VM.USER_TEMPLATE.ONEAPP_BASTION_ROUTEMANAGER_APITOKEN)"
+
+    if [[ -z "${ONEAPP_BASTION_ROUTEMANAGER_APITOKEN}" && "${TEMP}" == null ]] ; then
+        msg info "APITOKEN for route-manager-api not provided. Generating one"
+        ONEAPP_BASTION_ROUTEMANAGER_APITOKEN=$(openssl rand -base64 32)
+        onegate vm update --data ONEAPP_BASTION_ROUTEMANAGER_APITOKEN="${ONEAPP_BASTION_ROUTEMANAGER_APITOKEN}"
+    elif [[ "${TEMP}" != null ]] ; then
+        msg info "Using provided or previously generated APITOKEN"
+        ONEAPP_BASTION_ROUTEMANAGER_APITOKEN="${TEMP}"
     fi
 
     msg info "Update APITOKEN for route-manager-api config file"
-    sed -i "s%^APITOKEN = .*%APITOKEN = ${ONEAPP_BASTION_ROUTEMANAGER_TOKEN}%" /opt/route-manager-api/config/config.conf
-    sed -i "s%^PORT = .*%PORT = ${ONEAPP_BASTION_ROUTEMANAGER_PORT}%" /opt/route-manager-api/config/config.conf
+    sed -i "s%^APITOKEN = .*%APITOKEN = ${ONEAPP_BASTION_ROUTEMANAGER_APITOKEN}%" /opt/route-manager-api/config/config.conf
 
     msg info "Restart service route-manager-api"
     if ! systemctl restart route-manager-api.service ; then
