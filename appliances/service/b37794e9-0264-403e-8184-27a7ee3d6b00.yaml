@@ -1,6 +1,6 @@
 ---
 name: UERANSIM
-version: 6.10.0-2-20241218
+version: 6.10.0-3-20250128
 publisher: OpenNebula Systems
 description: |-
   Appliance with a pre-installed version of the [UERANSIM](https://github.com/aligungr/UERANSIM) 5G UE and RAN (gNodeB) simulator.
@@ -14,11 +14,10 @@ tags:
 format: qcow2
 creation_time: 1734523165
 os-id: Ubuntu
-os-release: '22.04 LTS'
+os-release: 22.04 LTS
 os-arch: x86_64
 hypervisor: KVM
-opennebula_version: >-
-  6.4, 6.6, 6.8, 6.10
+opennebula_version: 6.4, 6.6, 6.8, 6.10
 opennebula_template:
   context:
     network: 'YES'
@@ -46,27 +45,30 @@ opennebula_template:
   os:
     arch: x86_64
   user_inputs:
-    oneapp_ueran_network_mcc: "O|text|Mobile Country Code value| |922"
-    oneapp_ueran_network_mnc: "O|text|Mobile Network Code value (2 or 3 digits)| |77"
-    oneapp_ueran_cell_id: "O|text|NR Cell Identity (36-bit)| |0x000000010"
-    oneapp_ueran_gnb_id: "O|text|NR gNB ID length in bits [22...32]| |32"
-    oneapp_ueran_tac_id: "O|text|Tracking Area Code| |1"
-    oneapp_ueran_amf_ip: "O|text|AMF IP Address| |127.0.0.1"
-    oneapp_ueran_amf_port: "O|text|AMF_PORT| |38412"
-    oneapp_ueran_sst_id: "O|text|List of supported S-NSSAIs by this gNB slices| |1"
-    oneapp_ueran_ue_imsi: "O|text|IMSI number of the UE. IMSI = [MCC,MNC,MSISDN] (In total 15 digits)| |imsi-999700000000001"
-    oneapp_ueran_subscriptoin_key: "O|text|Permanent subscription key| |465B5CE8B199B49FAA5F0A2EE238A6BC"
-    oneapp_ueran_operator_code: "O|text|Operator code (OP or OPC) of the UE| |E8ED289DEBA952E4283B54E88E6183CA"
-    oneapp_ueran_vnf_ip: "O|text|IP of the virtual router to connect to the OneKE cluster| |1"
-    oneapp_ueran_core_subnet: "O|text|Subnet assigned to the 5G core services| |1"
+    oneapp_ueran_network_mcc: O|text|Mobile Country Code value| |922
+    oneapp_ueran_network_mnc: O|text|Mobile Network Code value (2 or 3 digits)| |77
+    oneapp_ueran_cell_id: O|text|NR Cell Identity (36-bit)| |0x000000010
+    oneapp_ueran_gnb_id: O|text|NR gNB ID length in bits [22...32]| |32
+    oneapp_ueran_tac_id: O|text|Tracking Area Code| |1
+    oneapp_ueran_amf_ip: O|text|AMF IP Address| |127.0.0.1
+    oneapp_ueran_amf_port: O|text|AMF_PORT| |38412
+    oneapp_ueran_sst_id: O|text|List of supported S-NSSAIs by this gNB slices| |1
+    oneapp_ueran_ue_imsi: >-
+      O|text|IMSI number of the UE. IMSI = [MCC,MNC,MSISDN] (In total 15 digits)| |imsi-999700000000001
+    oneapp_ueran_subscriptoin_key: O|text|Permanent subscription key| |465B5CE8B199B49FAA5F0A2EE238A6BC
+    oneapp_ueran_operator_code: >-
+      O|text|Operator code (OP or OPC) of the UE| |E8ED289DEBA952E4283B54E88E6183CA
+    oneapp_ueran_vnf_ip: O|text|IP of the virtual router to connect to the OneKE cluster| |1
+    oneapp_ueran_core_subnet: O|text|Subnet assigned to the 5G core services| |1
 logo: ueransim.png
 images:
 - name: service_ueransim
-  url: https://opennebula-marketplace.s3.amazonaws.com/service_ueransim-6.10.0-2-20241218.qcow2
+  url: >-
+    https://opennebula-marketplace.s3.amazonaws.com/service_ueransim-6.10.0-3-20250128.qcow2
   type: OS
   dev_prefix: vd
   driver: qcow2
   size: 10737418240
   checksum:
-    md5: d73d7341edbe1af9592a2c8f11968a3f
-    sha256: f8d4f069785a11af5209b6140698ca19cdd4ed387dfea2de77acc5683227a4e5
+    md5: 155d09d9547b19561e2a04af0f0a8d6a
+    sha256: 5033f4a0536bee6d3aded6e3290f8dae1b3448a7b2c3304ffcb89ec18d6be3b4

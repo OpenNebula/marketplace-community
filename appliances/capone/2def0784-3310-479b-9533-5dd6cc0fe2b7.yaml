@@ -1,6 +1,6 @@
 ---
 name: CAPONE VNF
-version: 0.0.1-6.10.0-2-20241217
+version: 0.1.0-6.10.0-3-20250127
 publisher: OpenNebula Systems
 description: |-
   Appliance providing several Virtual Network Functions (routing, NAT, DNS)
@@ -15,9 +15,9 @@ tags:
 - service
 - vnf
 format: qcow2
-creation_time: 1734453805
+creation_time: 1733218834
 os-id: Alpine
-os-release: '3.18'
+os-release: '3.20'
 os-arch: x86_64
 hypervisor: ALL
 opennebula_version: '6.10'
@@ -26,10 +26,10 @@ opennebula_template:
     network: 'YES'
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
     oneapp_vnf_dns_enabled: 'YES'
-    oneapp_vnf_dns_nameservers: '1.1.1.1,8.8.8.8'
+    oneapp_vnf_dns_nameservers: 1.1.1.1,8.8.8.8
     oneapp_vnf_dns_use_rootservers: 'NO'
     oneapp_vnf_nat4_enabled: 'YES'
-    oneapp_vnf_nat4_interfaces_out: 'eth0'
+    oneapp_vnf_nat4_interfaces_out: eth0
     oneapp_vnf_router4_enabled: 'YES'
     token: 'YES'
   cpu: '1'
@@ -49,11 +49,12 @@ opennebula_template:
 logo: router.png
 images:
 - name: capone_vnf
-  url: https://d24fmfybwxpuhu.cloudfront.net/service_VRouter-6.10.0-2-20241203.qcow2
+  url: >-
+    https://d24fmfybwxpuhu.cloudfront.net/service_VRouter-6.10.0-3-20250127.qcow2
   type: OS
   dev_prefix: vd
   driver: qcow2
   size: 2147483648
   checksum:
-    md5: 7d4b1edb38cdfa6db7fb69ca9285be8e
-    sha256: 03cfac21780ff46ba9f7b2ab3f73d6c0d9e6ce3ad59e6bf94c21edd9de985436
+    md5: bcbda53610797849bb63b3e1a171bba1
+    sha256: d487ab513656077f1ddee33aa97725b24bd85f0b3b15152d4b01f0adf3687ec2

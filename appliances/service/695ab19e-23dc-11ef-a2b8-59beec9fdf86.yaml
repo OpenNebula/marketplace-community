@@ -1,6 +1,6 @@
 ---
 name: Service Lithops
-version: 6.10.0-1-20240606
+version: 6.10.0-3-20250128
 publisher: OpenNebula Systems
 description: |-
   Appliance with preinstalled [Lithops](https://lithops-cloud.github.io/docs/) and Docker for k8s backend.
@@ -14,11 +14,10 @@ tags:
 format: qcow2
 creation_time: 1717672311
 os-id: Ubuntu
-os-release: '22.04 LTS'
+os-release: 22.04 LTS
 os-arch: x86_64
 hypervisor: KVM
-opennebula_version: >-
-  6.2, 6.3, 6.4, 6.6, 6.8, 6.10
+opennebula_version: 6.2, 6.3, 6.4, 6.6, 6.8, 6.10
 opennebula_template:
   context:
     network: 'YES'
@@ -40,21 +39,22 @@ opennebula_template:
   os:
     arch: x86_64
   user_inputs:
-    oneapp_lithops_backend: "O|text|Compute backend| |localhost"
-    oneapp_lithops_storage: "O|text|Storage backend| |localhost"
-    oneapp_minio_endpoint: "O|text|MinIO endpoint URL| |"
-    oneapp_minio_access_key_id: "O|text|MinIO account user access key| |"
-    oneapp_minio_secret_access_key: "O|text|MinIO account user secret access key| |"
-    oneapp_minio_bucket: "O|text|MinIO bucket name| |"
-    oneapp_minio_endpoint_cert: "O|text64|CA certificate for MinIO connection| |"
+    oneapp_lithops_backend: O|text|Compute backend| |localhost
+    oneapp_lithops_storage: O|text|Storage backend| |localhost
+    oneapp_minio_endpoint: O|text|MinIO endpoint URL| |
+    oneapp_minio_access_key_id: O|text|MinIO account user access key| |
+    oneapp_minio_secret_access_key: O|text|MinIO account user secret access key| |
+    oneapp_minio_bucket: O|text|MinIO bucket name| |
+    oneapp_minio_endpoint_cert: O|text64|CA certificate for MinIO connection| |
 logo: lithops.png
 images:
 - name: service_Lithops
-  url: https://d24fmfybwxpuhu.cloudfront.net/service_Lithops-6.10.0-1-20240606.qcow2
+  url: >-
+    https://d24fmfybwxpuhu.cloudfront.net/service_Lithops-6.10.0-3-20250128.qcow2
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 778502144
+  size: 5242880000
   checksum:
-    md5: 9f91dc02538d80ed37ec378e98439ef3
-    sha256: 6b2a2e1b01470ed642d9936a6e03cb31095e8dd677741e7e3e4a52f4ed42a64b
+    md5: 70988b51e32a32897c2537f20c10433f
+    sha256: e75317ccf0019908fba93cb17fb77afd7c5ab74695c994b5d22d9356e75a6871
