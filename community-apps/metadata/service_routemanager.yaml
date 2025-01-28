@@ -36,7 +36,7 @@ opennebula_template:
     token: 'YES'
     oneapp_routemanager_apitoken: "$ONEAPP_ROUTEMANAGER_APITOKEN"
   cpu: '1'
-  vcpu: '1'
+  vcpu: '2'
   graphics:
     listen: 0.0.0.0
     type: vnc
@@ -44,7 +44,7 @@ opennebula_template:
     cpu_hot_add_enabled: 'YES'
     memory_hot_add_enabled: 'YES'
   hypervisor: kvm
-  memory: '512'
+  memory: '1024'
   memory_unit_cost: 'MB'
   memory_resize_mode: 'BALLOONING'
   os:
