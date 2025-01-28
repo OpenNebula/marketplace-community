@@ -22,7 +22,7 @@ tags:
 format: qcow2
 creation_time: 20241010
 os-id: Debian
-os-release: 3.20
+os-release: 12
 os-arch: x86_64
 hypervisor: KVM
 opennebula_version: >-
@@ -44,7 +44,7 @@ opennebula_template:
     cpu_hot_add_enabled: 'YES'
     memory_hot_add_enabled: 'YES'
   hypervisor: kvm
-  memory: '1024'
+  memory: '2048'
   memory_unit_cost: 'MB'
   memory_resize_mode: 'BALLOONING'
   os:
