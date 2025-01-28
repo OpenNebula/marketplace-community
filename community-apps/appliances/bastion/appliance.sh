@@ -296,7 +296,7 @@ configure_routemanager()
     fi
 
     msg info "Update APITOKEN for route-manager-api config file"
-    sed -i "s%^APITOKEN = .*%APITOKEN = ${ONEAPP_BASTION_ROUTEMANAGER_APITOKEN}%" /opt/route-manager-api/config/config.conf
+    sed -i "s%^APITOKEN = .*%APITOKEN = ${ONEAPP_BASTION_ROUTEMANAGER_APITOKEN}%" /opt/route-manager-api/.env
 
     msg info "Restart service route-manager-api"
     if ! systemctl restart route-manager-api.service ; then
