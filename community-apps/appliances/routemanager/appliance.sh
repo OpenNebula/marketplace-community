@@ -131,8 +131,7 @@ install_pkg_deps()
 clone_repo()
 {
     msg info "git clone route-manager-api repository"
-    if ! git clone https://github.com/6G-SANDBOX/route-manager-api -b develop /opt/route-manager-api ; then
-    # if ! git clone https://github.com/6G-SANDBOX/route-manager-api /opt/route-manager-api ; then    TODO: Remember reverting thic change
+    if ! git clone https://github.com/6G-SANDBOX/route-manager-api /opt/route-manager-api ; then
         msg error "Error cloning route-manager-api repository"
         exit 1
     fi
@@ -163,6 +162,8 @@ After=network.target
 
 [Service]
 Type=simple
+User=root
+Group=root
 ExecStart=/root/.local/bin/uv --directory /opt/route-manager-api/ run fastapi run --port 8172
 StandardOutput=append:/var/log/route_manager.log
 StandardError=append:/var/log/route_manager.log

@@ -1,5 +1,5 @@
 ---
-name: "[Testing] 6G-Sandbox route-manager-api"
+name: "route-manager-api v0.1.0"
 version: "20241010-1255"
 publisher: Telefonica Innovacion Digital
 description: |-
@@ -54,9 +54,9 @@ opennebula_template:
     oneapp_routemanager_apitoken: "O|password|ONEAPP_ROUTEMANAGER_APITOKEN: Bearer token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`."
 logo: routemanager.png
 images:
-  - name: "[Testing] 6G-Sandbox route-manager-api"
+  - name: "route-manager-api v0.1.0"
     url: >-
-      https://rawtest.mobilesandbox.cloud:9443/service_routemanager.qcow2
+      https://rawimages.mobilesandbox.cloud:9443/service_routemanager.qcow2
     type: OS
     dev_prefix: vd
     driver: qcow2

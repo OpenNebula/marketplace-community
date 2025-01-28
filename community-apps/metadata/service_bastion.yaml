@@ -1,5 +1,5 @@
 ---
-name: "[Testing] 6G-Sandbox bastion"
+name: "6G-Sandbox bastion"
 version: "20241125-1624"
 publisher: Telefonica Innovacion Digital
 description: |-
@@ -70,9 +70,9 @@ opennebula_template:
     oneapp_bastion_dns_domain:         "M|text|ONEAPP_BASTION_DNS_DOMAIN: For the Technitium DNS, domain name for creating the new zone."
     oneapp_bastion_routemanager_apitoken: "O|password|ONEAPP_BASTION_ROUTEMANAGER_APITOKEN: For the route-manager-api, Bearer token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`."
 images:
-  - name: "[Testing] 6G-Sandbox bastion"
+  - name: "6G-Sandbox bastion"
     url: >-
-      https://rawtest.mobilesandbox.cloud:9443/service_bastion.qcow2
+      https://rawimages.mobilesandbox.cloud:9443/service_bastion.qcow2
     type: OS
     dev_prefix: vd
     driver: qcow2
