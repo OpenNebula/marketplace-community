@@ -36,7 +36,7 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_TNLCM_JENKINS_TOKEN'           'configure'  'Token to authenticate while sending POST requests to the Jenkins Server API'                              'M|password'
     'ONEAPP_TNLCM_SITES_TOKEN'             'configure'  'Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault'     'M|password'
     'ONEAPP_TNLCM_ADMIN_USER'              'configure'  'Name of the TNLCM admin user. Default: tnlcm'                                                             'O|text'
-    'ONEAPP_TNLCM_ADMIN_PASSWORD'          'configure'  'Password of the TNLCM admin user. Default: tnlcm'                                                         'O|password'
+    'ONEAPP_TNLCM_ADMIN_PASSWORD'          'configure'  'Password of the TNLCM admin user'                                                                         'O|password'
 )
 
 ONEAPP_TNLCM_JENKINS_HOST="${ONEAPP_TNLCM_JENKINS_HOST:-127.0.0.1}"
