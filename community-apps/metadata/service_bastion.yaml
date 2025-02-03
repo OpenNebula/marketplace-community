@@ -1,5 +1,5 @@
 ---
-name: "6G-Sandbox bastion"
+name: "6G-Sandbox bastion v0.4.0"
 version: "20241125-1624"
 publisher: Telefonica Innovacion Digital
 description: |-
@@ -69,8 +69,9 @@ opennebula_template:
     oneapp_bastion_dns_forwarders:     "O|text|ONEAPP_BASTION_DNS_FORWARDERS: For the Technitium DNS, comma separated list of forwarders to be used by the DNS server.| |8.8.8.8,1.1.1.1"
     oneapp_bastion_dns_domain:         "M|text|ONEAPP_BASTION_DNS_DOMAIN: For the Technitium DNS, domain name for creating the new zone."
     oneapp_bastion_routemanager_apitoken: "O|password|ONEAPP_BASTION_ROUTEMANAGER_APITOKEN: For the route-manager-api, Bearer token to authenticate to the API. If not provided, a new one will be generated at instanciate time with `openssl rand -base64 32`."
+logo: ubuntu.png
 images:
-  - name: "6G-Sandbox bastion"
+  - name: "6G-Sandbox bastion v0.4.0"
     url: >-
       https://rawimages.mobilesandbox.cloud:9443/service_bastion.qcow2
     type: OS

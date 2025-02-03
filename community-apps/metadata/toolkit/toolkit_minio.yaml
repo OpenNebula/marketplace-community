@@ -1,5 +1,5 @@
 ---
-name: "[6G-Sandbox toolkit] MinIO"
+name: "[6G-Sandbox toolkit] MinIO v0.4.0"
 version: 1725448126   # date +%s
 publisher: Telefonica Innovacion Digital
 description: |-

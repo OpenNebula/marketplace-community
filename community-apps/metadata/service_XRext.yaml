@@ -1,5 +1,5 @@
 ---
-name: "XRext"
+name: "XRext v1.0.2"
 # version + date "%Y%M%d-%h%m"
 version: "1.0.2"
 publisher: NOKIA
@@ -80,7 +80,7 @@ opennebula_template:
     oneapp_xr_capif_api_name:      "O|text|CAPIF API name||nac_api"
 logo: nokia.png
 images:
-  - name: "XRext"
+  - name: "XRext v1.0.2"
     url: >-
       https://rawimages.mobilesandbox.cloud:9443/service_XRext.qcow2
     type: OS

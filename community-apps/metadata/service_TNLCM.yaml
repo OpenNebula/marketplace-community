@@ -1,5 +1,5 @@
 ---
-name: "6G-Sandbox TNLCM"
+name: "6G-Sandbox TNLCM v0.4.0"
 version: "20240705-1102"
 publisher: Telefonica Innovacion Digital
 description: |-
@@ -77,7 +77,7 @@ opennebula_template:
     oneapp_tnlcm_admin_password:    "O|password|ONEAPP_TNLCM_ADMIN_PASSWORD: Password of the TNLCM admin user. Default: tnlcm| |tnlcm"
 logo: tnlcm.png
 images:
-  - name: "6G-Sandbox TNLCM"
+  - name: "6G-Sandbox TNLCM v0.4.0"
     url: >-
       https://rawimages.mobilesandbox.cloud:9443/service_TNLCM.qcow2
     type: OS

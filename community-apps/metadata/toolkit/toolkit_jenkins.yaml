@@ -1,5 +1,5 @@
 ---
-name: "[6G-Sandbox toolkit] Jenkins"
+name: "[6G-Sandbox toolkit] Jenkins v0.4.0"
 version: 1725448126   # date +%s
 publisher: Telefonica Innovacion Digital
 description: |-
@@ -59,4 +59,4 @@ opennebula_template:
   user_inputs: {}
 logo: jenkins.png
 disks:
-- "6G-Sandbox Jenkins"
+- "6G-Sandbox Jenkins v0.4.0"

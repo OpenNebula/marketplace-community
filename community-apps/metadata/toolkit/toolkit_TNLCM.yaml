@@ -1,5 +1,5 @@
 ---
-name: "[6G-Sandbox toolkit] TNLCM"
+name: "[6G-Sandbox toolkit] TNLCM v0.4.0"
 version: 1725448126   # date +%s
 publisher: Telefonica Innovacion Digital
 description: |-
@@ -60,4 +60,4 @@ opennebula_template:
   user_inputs: {}
 logo: tnlcm.png
 disks:
-- "6G-Sandbox TNLCM"
+- "6G-Sandbox TNLCM v0.4.0"

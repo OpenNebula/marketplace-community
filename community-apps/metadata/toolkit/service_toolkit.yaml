@@ -1,5 +1,5 @@
 ---
-name: "6G-Sandbox Toolkit"
+name: "6G-Sandbox Toolkit v0.4.0"
 version: 1725448126   # date +%s
 publisher: Telefonica Innovacion Digital
 description: |-
@@ -32,9 +32,9 @@ os-arch: x86_64
 hypervisor: KVM
 opennebula_version: 6.0, 6.2, 6.4, 6.6, 6.8, 6.10
 roles:                        # "roles" is a crutial field and is also anywhere to be found documented. It is WHAT CONNECTS THE DIFFERENT ROLE TEMPLATES
-  minio: "[6G-Sandbox toolkit] MinIO"
-  jenkins: "[6G-Sandbox toolkit] Jenkins"
-  tnlcm: "[6G-Sandbox toolkit] TNLCM"
+  minio: "[6G-Sandbox toolkit] MinIO v0.4.0"
+  jenkins: "[6G-Sandbox toolkit] Jenkins v0.4.0"
+  tnlcm: "[6G-Sandbox toolkit] TNLCM v0.4.0"
 opennebula_template:
   name: 6G-Sandbox toolkit installer
   description: This service is ment to be deployed once per site. You can effectively delete this template after checking that the MinIO, Jenkins and TNLCM appliances are RUNNING.

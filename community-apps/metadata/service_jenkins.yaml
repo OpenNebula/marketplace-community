@@ -1,5 +1,5 @@
 ---
-name: 6G-Sandbox Jenkins 
+name: "6G-Sandbox Jenkins v0.4.0"
 version: "20240705-1102"
 publisher: Telefonica Innovacion Digital
 description: |-
@@ -77,7 +77,7 @@ opennebula_template:
     oneapp_jenkins_aws_secret_access_key:    "M|text|ONEAPP_JENKINS_AWS_SECRET_ACCESS_KEY: S3 Storage secret key. Same as used in the MinIO instance||" 
 logo: jenkins.png
 images:
-  - name: 6G-Sandbox Jenkins
+  - name: "6G-Sandbox Jenkins v0.4.0"
     url: >-
       https://rawimages.mobilesandbox.cloud:9443/service_jenkins.qcow2
     type: OS

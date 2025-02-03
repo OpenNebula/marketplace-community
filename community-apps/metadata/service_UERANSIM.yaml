@@ -1,5 +1,5 @@
 ---
-name: UERANSIM
+name: "UERANSIM v0.3.0"
 version: "20240724-1824"
 publisher: Telefonica Innovacion Digital
 description: |-
@@ -116,7 +116,7 @@ opennebula_template:
     ue_supi:        "O|text|UE_SUPI: UE IMSI number. IMSI = [MCC|MNC|MSISDN] (In total 15 digits)| |imsi-999700000000001"
 logo: ueransim.png
 images:
-  - name: UERANSIM
+  - name: "UERANSIM v0.3.0"
     url: >-
       https://rawimages.mobilesandbox.cloud:9443/service_UERANSIM.qcow2
     type: OS
