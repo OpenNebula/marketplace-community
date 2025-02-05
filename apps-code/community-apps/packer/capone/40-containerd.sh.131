@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 : "${CNI_PLUGINS_VERSION:=1.6.2}"
-: "${CONTAINERD_VERSION:=2.0.2}"
+: "${CONTAINERD_VERSION:=1.7.25}"
 : "${RUNC_VERSION:=1.2.4}"
 
 exec 1>&2
