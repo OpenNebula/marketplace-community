@@ -1,6 +1,6 @@
 ---
 name: CAPONE K8s node
-version: 0.1.0-6.10.0-3-20250128
+version: 0.1.0-6.10.0-3-20250205
 publisher: OpenNebula Systems
 description: |-
   CAPONE image and template for K8s nodes
@@ -11,7 +11,7 @@ tags:
 - ubuntu
 - capone
 format: qcow2
-creation_time: 1734453805
+creation_time: 1738778634
 os-id: Ubuntu
 os-release: 22.04 LTS
 os-arch: x86_64
@@ -37,11 +37,11 @@ opennebula_template:
 logo: kubernetes.png
 images:
 - name: capone_os
-  url: https://d24fmfybwxpuhu.cloudfront.net/capone-6.10.0-3-20250128.qcow2
+  url: https://d24fmfybwxpuhu.cloudfront.net/capone-6.10.0-3-20250205.qcow2
   type: OS
   dev_prefix: vd
   driver: qcow2
   size: 10737418240
   checksum:
-    md5: 43b345b6ebdfee04e3dc0e890256f2d6
-    sha256: 33abcaeb5224aaaf61a5725db4f4a1ff7d7882ee9b26a6c269eba2a2240ebd56
+    md5: 2b435f82abc31c7498a2b56ee755bb2b
+    sha256: 2ff5597fb2cb6ffd52547c8c85b21ff104238cef97c42d47de8cc0082a7f739d
