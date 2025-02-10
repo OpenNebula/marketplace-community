@@ -54,7 +54,7 @@ else
     BUILD_VERSION=$(date +"%Y%m%d-%H%M")                    # e.g. 20240723-1016
 fi
 IMAGE_NAME="${FULL_NAME} ${BUILD_VERSION}"
-IMAGE_URL="${URL_APPLIANCES}/${APP}.yaml"
+IMAGE_URL="${URL_APPLIANCES}/${APP}.qcow2"
 IMAGE_TIMESTAMP="$(stat -c %W "${DESTINATION}")"
 IMAGE_SIZE="$(qemu-img info "${DESTINATION}" | awk '/virtual size:/ {print $5}' | sed 's/[^0-9]*//g')"
 IMAGE_CHK_MD5="$(md5sum "${DESTINATION}" | cut -d' ' -f1)"
