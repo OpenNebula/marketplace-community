@@ -47,7 +47,7 @@ opennebula_template:
   custom_attrs:                   # Hash of custom attributes to use in the service. Initially meaningless. Has to also be specified in the role's vm_template_contents. custom_attrs_values serves the same purpose
     oneapp_minio_hostname:       "O|text|MinIO hostname for TLS certificate||localhost,minio-*.example.net"
     oneapp_minio_opts:           "O|text|Additional commandline options for MinIO server||--console-address :9001"
-    oneapp_minio_root_user:      "O|text|MinIO root user for MinIO server. At least 8 characters||myminioadmin"
+    oneapp_minio_root_user:      "O|text|MinIO root user for MinIO server. At least 5 characters||myminioadmin"
     oneapp_minio_root_password:  "M|password|MinIO root user password for MinIO server. At least 8 characters"
     oneapp_minio_tls_cert:       "O|text64|MinIO TLS certificate (.crt)||"
     oneapp_minio_tls_key:        "O|text64|MinIO TLS key (.key)||"
