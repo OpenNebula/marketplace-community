@@ -1,0 +1,83 @@
+---
+name: "OpenCAPIF"
+version: "autofill"
+software_version: "v2.0.0"
+publisher: Telefonica Innovación Digital
+description: |-
+  This appliance installs OpenCAPIF from ETSI. The OpenCAPIF version installed will be Release v2.0.0-release
+
+  After deploying the appliance, check the status of the deployment in /etc/one-appliance/status. You chan check the appliance logs in /var/log/one-appliance/.
+
+  Default client to onboard API invokers and API providers is client/password.
+
+  Remember to include in your local DNS the entry to resolve the hostname set for capif and register components of the appliance. Both services are available in the same IP address and same port (443).
+  
+  The appliance configuration can be customized via parameters:
+
+  * `ONEAPP_OCF_USER` - This will be the user created to register invoker and providers.
+  * `ONEAPP_OCF_PASSWORD` - Password associated to user created.
+  * `ONEAPP_OCF_CAPIF_HOSTNAME` - Hostname of OpenCAPIF core function.
+  * `ONEAPP_OCF_REGISTER_HOSTNAME` - Hostname of OpenCAPIF Register service.
+
+  **Note**: Remember to add a password variable in the template in order to have access to it, or make sure that your OpenNebula user has an SSH Public key preconfigured.
+  
+  **Note**: Remember to update the template in order to add a network after importing it.
+short_description: OpenCAPIF appliance for KVM
+tags:
+  - OpenCAPIF
+  - ocf
+  - ubuntu
+format: qcow2
+creation_time: "autofill"
+os-id: Ubuntu
+os-release: 22.04 LTS
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: >-
+  6.2, 6.3, 6.4, 6.6, 6.8, 6.10
+opennebula_template:
+  context:
+    network: 'YES'
+    set_hostname: "$NAME"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    netcfg_type: "interfaces"
+    token: 'YES'
+    oneapp_ocf_user: "$ONEAPP_OCF_USER"
+    oneapp_ocf_password: "$ONEAPP_OCF_PASSWORD"
+    oneapp_ocf_capif_hostname: "$ONEAPP_OCF_CAPIF_HOSTNAME"
+    oneapp_ocf_register_hostname: "$ONEAPP_OCF_REGISTER_HOSTNAME"
+  inputs_order: >-
+    ONEAPP_OCF_USER,ONEAPP_OCF_PASSWORD,ONEAPP_OCF_CAPIF_HOSTNAME,ONEAPP_OCF_REGISTER_HOSTNAME
+  cpu: '2'
+  vcpu: '2'
+  cpu_model:
+    model: "host-passthrough"
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  hot_resize:
+    cpu_hot_add_enabled: 'YES'
+    memory_hot_add_enabled: 'YES'
+  hypervisor: kvm
+  memory: '4096'
+  memory_unit_cost: 'MB'
+  memory_resize_mode: 'BALLOONING'
+  os:
+    arch: x86_64
+  logo: images/logos/ubuntu.png
+  user_inputs:
+    oneapp_ocf_user:                     "O|text|ONEAPP_OCF_USER: User to access the OpenCAPIF| |client"
+    oneapp_ocf_password:                 "O|password|ONEAPP_OCF_PASSWORD: Password to access the OpenCAPIF| |password"
+    oneapp_ocf_capif_hostname:           "O|text|ONEAPP_OCF_CAPIF_HOSTNAME: Hostname for OpenCAPIF| |capifcore"
+    oneapp_ocf_register_hostname:        "O|text|ONEAPP_OCF_REGISTER_HOSTNAME: Hostname for Register Service| |register"
+logo: OCF.png
+images:
+  - name: "autofill"
+    url: "autofill"
+    type: OS
+    dev_prefix: vd
+    driver: qcow2
+    size: "autofill"
+    checksum:
+      md5: "autofill"
+      sha256: "autofill"
