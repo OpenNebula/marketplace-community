@@ -41,7 +41,6 @@ opennebula_template:
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
     netcfg_type: "interfaces"
-    token: 'YES'
     oneapp_ocf_user: "$ONEAPP_OCF_USER"
     oneapp_ocf_password: "$ONEAPP_OCF_PASSWORD"
     oneapp_ocf_capif_hostname: "$ONEAPP_OCF_CAPIF_HOSTNAME"

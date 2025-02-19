@@ -58,6 +58,7 @@ opennebula_template:
     oneapp_vnf_router4_enabled: "$ONEAPP_VNF_ROUTER4_ENABLED"
     oneapp_vnf_router4_interfaces: "$ONEAPP_VNF_ROUTER4_INTERFACES"
   cpu: '2'    # CHANGED FOR 6G-SANDBOX
+  vcpu: "2"   # CHANGED FOR 6G-SANDBOX
   graphics:
     listen: 0.0.0.0
     type: vnc
