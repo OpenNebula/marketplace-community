@@ -44,18 +44,14 @@ opennebula_template:
     oneapp_minio_tls_key:       "$ONEAPP_MINIO_TLS_KEY"
   inputs_order: >-
     ONEAPP_MINIO_ROOT_USER,ONEAPP_MINIO_ROOT_PASSWORD,ONEAPP_MINIO_OPTS,ONEAPP_MINIO_HOSTNAME,ONEAPP_MINIO_TLS_CERT,ONEAPP_MINIO_TLS_KEY
-  cpu: '1'
-  vcpu: '1'
+  cpu: '2'
+  vcpu: '2'
   graphics:
     listen: 0.0.0.0
     type: vnc
-  hot_resize:
-    cpu_hot_add_enabled: 'YES'
-    memory_hot_add_enabled: 'YES'
   hypervisor: kvm
   memory: '2048'
   memory_unit_cost: 'MB'
-  memory_resize_mode: 'BALLOONING'
   os:
     arch: x86_64
   logo: images/logos/ubuntu.png

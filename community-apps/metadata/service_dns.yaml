@@ -48,13 +48,9 @@ opennebula_template:
   graphics:
     listen: 0.0.0.0
     type: vnc
-  hot_resize:
-    cpu_hot_add_enabled: 'YES'
-    memory_hot_add_enabled: 'YES'
   hypervisor: kvm
   memory: '2048'
   memory_unit_cost: 'MB'
-  memory_resize_mode: 'BALLOONING'
   os:
     arch: x86_64
   logo: images/logos/ubuntu.png

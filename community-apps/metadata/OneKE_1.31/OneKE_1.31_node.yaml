@@ -75,9 +75,6 @@ opennebula_template:
   graphics:
     listen: "0.0.0.0"
     type: vnc
-  hot_resize:                 # CHANGED FOR 6G-SANDBOX
-    cpu_hot_add_enabled: 'YES'
-    memory_hot_add_enabled: 'YES'
   inputs_order: ""
   memory: "3072"
   os:

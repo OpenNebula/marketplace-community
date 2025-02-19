@@ -48,7 +48,6 @@ opennebula_template:
     type: vnc
   memory: '512'
   memory_unit_cost: 'MB'
-  memory_resize_mode: 'BALLOONING'
   os:
     arch: x86_64
   logo: images/logos/ubuntu.png
