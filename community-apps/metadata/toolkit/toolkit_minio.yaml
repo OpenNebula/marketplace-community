@@ -58,5 +58,5 @@ opennebula_template:
   user_inputs: {}
 logo: minio.png
 disks:
-- "[6G-Sandbox toolkit] MinIO Disk"
+- "Service MinIO"
 - "Empty disk"

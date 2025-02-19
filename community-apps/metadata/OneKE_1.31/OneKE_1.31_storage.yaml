@@ -69,4 +69,4 @@ opennebula_template:
 logo: kubernetes.png
 disks:
 - "OneKE 1.31 OS disk"
-- "[6G-Sandbox OneKE 1.31] storage disk"
+- "OneKE 1.31 Storage disk"
