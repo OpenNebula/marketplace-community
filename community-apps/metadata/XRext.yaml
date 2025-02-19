@@ -37,6 +37,7 @@ opennebula_template:
     network: 'YES'
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    netcfg_type: "interfaces"
     oneapp_xr_nac_server_ip:       "$ONEAPP_XR_NAC_SERVER_IP"
     oneapp_xr_nac_server_port:     "$ONEAPP_XR_NAC_SERVER_PORT"
     oneapp_xr_nac_server_uname:    "$ONEAPP_XR_NAC_SERVER_UNAME"

@@ -32,6 +32,8 @@ tags:
   - Loadcore
 format: raw
 creation_time: "1730914825"
+os-id: Ubuntu
+os-release: 22.04 LTS
 os-arch: x86_64
 hypervisor: KVM
 opennebula_version: >-

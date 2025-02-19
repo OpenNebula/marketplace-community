@@ -16,7 +16,7 @@ tags:
 format: qcow2
 creation_time: "1718791248"
 os-id: Ubuntu
-os-release: '22.04'
+os-release: '22.04 LTS'
 os-arch: x86_64
 hypervisor: KVM 
 opennebula_version: >-
@@ -26,6 +26,7 @@ opennebula_template:
     network: 'YES'
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    netcfg_type: "interfaces"
   cpu: '2'
   vcpu: '2'
   graphics:
@@ -39,8 +40,7 @@ opennebula_template:
   memory_unit_cost: 'MB'
   os:
     arch: x86_64
-  logo: images/logos/opensand.png
-  lxd_security_privileged: 'true'
+  logo: images/logos/ubuntu.png
 logo: opensand.png
 images:
 - name: "6G-Sandbox OpenSAND v0.4.0-20240619-1200"

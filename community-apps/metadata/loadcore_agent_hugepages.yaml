@@ -32,6 +32,8 @@ tags:
   - Loadcore
 format: raw
 creation_time: "1733170911"
+os-id: Ubuntu
+os-release: 22.04 LTS
 os-arch: x86_64
 hypervisor: KVM
 opennebula_version: >-
@@ -63,7 +65,7 @@ logo: keysight.png
 images:
   - name: "LoadCore Agent Test Tool + hugepages v4.3.0.23-20241202-2121"
     url: >-
-      https://rawimages.mobilesandbox.cloud:9443/loadcore_agent_hugepages_4.3.0.23.raw
+      https://rawimages.mobilesandbox.cloud:9443/loadcore_agent_hugepages_v4.3.0.23.raw 
     type: OS
     dev_prefix: vd
     driver: qcow2

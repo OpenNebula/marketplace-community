@@ -42,9 +42,9 @@ opennebula_version: >-
 opennebula_template:
   context:
     network: 'YES'
-    netcfg_type: "interfaces"
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    netcfg_type: "interfaces"
     token: 'YES'
     oneapp_bastion_dns_password:       "$ONEAPP_BASTION_DNS_PASSWORD"
     oneapp_bastion_dns_forwarders:     "$ONEAPP_BASTION_DNS_FORWARDERS"

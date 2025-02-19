@@ -26,12 +26,12 @@ opennebula_version: >-
   6.2, 6.3, 6.4, 6.6, 6.8, 6.10
 opennebula_template:
   context:
-    service_id: "$SERVICE_ID"
     network: 'YES'
     set_hostname: "$NAME"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    netcfg_type: "interfaces"
     token: "YES"
     report_ready: "YES"
-    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
     start_script_base64: "IyEvYmluL2Jhc2gKb25lZ2F0ZSB2bSB1cGRhdGUgJChvbmVnYXRlIHZtIHNob3cgLWogfCBqcSAtciAnLlZNLklEJykgLS1kYXRhIEpFTktJTlNfVE9LRU49IiQoY2F0IC92YXIvbGliL2plbmtpbnMvY29uc3VsdF9tZS9qZW5raW5zX3RubGNtX3Rva2VuKSIKb25lZ2F0ZSB2bSB1cGRhdGUgJChvbmVnYXRlIHZtIHNob3cgLWogfCBqcSAtciAnLlZNLklEJykgLS1kYXRhIFNTSF9LRVk9IiQoY2F0IC92YXIvbGliL2plbmtpbnMvY29uc3VsdF9tZS9pZF9lZDI1NTE5LnB1Yiki"
     oneapp_jenkins_username:                 "$ONEAPP_JENKINS_USERNAME"
     oneapp_jenkins_password:                 "$ONEAPP_JENKINS_PASSWORD"

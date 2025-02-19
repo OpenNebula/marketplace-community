@@ -36,6 +36,7 @@ opennebula_template:
     network: 'YES'
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    netcfg_type: "interfaces"
     oneapp_elcm_influxdb_user:      "$ONEAPP_ELCM_INFLUXDB_USER"
     oneapp_elcm_influxdb_password:  "$ONEAPP_ELCM_INFLUXDB_PASSWORD"
     oneapp_elcm_influxdb_database:  "$ONEAPP_ELCM_INFLUXDB_DATABASE"

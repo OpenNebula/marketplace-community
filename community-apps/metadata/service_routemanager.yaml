@@ -31,9 +31,9 @@ opennebula_version: >-
 opennebula_template:
   context:
     network: 'YES'
-    netcfg_type: "interfaces"
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    netcfg_type: "interfaces"
     token: 'YES'
     oneapp_routemanager_apitoken: "$ONEAPP_ROUTEMANAGER_APITOKEN"
   cpu: '2'

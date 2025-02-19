@@ -55,6 +55,7 @@ opennebula_template:
     network: 'YES'
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    netcfg_type: "interfaces"
     gnb_amf_address: "$GNB_AMF_ADDRESS"
     gnb_mcc: "$GNB_MCC"
     gnb_mnc: "$GNB_MNC"

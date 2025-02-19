@@ -36,6 +36,7 @@ opennebula_template:
     network: 'YES'
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    netcfg_type: "interfaces"
     oneapp_ntp_servers: "$ONEAPP_NTP_SERVERS"
     oneapp_ntp_tz: "$ONEAPP_NTP_TZ"
   inputs_order: >-

@@ -46,6 +46,7 @@ opennebula_template:
     network: 'YES'
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    netcfg_type: "interfaces"
     oneapp_jenkins_username:                 "$ONEAPP_JENKINS_USERNAME"
     oneapp_jenkins_password:                 "$ONEAPP_JENKINS_PASSWORD"
     oneapp_jenkins_sites_token:              "$ONEAPP_JENKINS_SITES_TOKEN"
