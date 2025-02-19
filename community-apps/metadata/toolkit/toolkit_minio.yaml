@@ -1,6 +1,6 @@
 ---
 name: "[6G-Sandbox toolkit] MinIO"
-version: "v6.10.0-20250206-1511"
+version: "v6.10.0-20250219-1523"
 software_version: "v6.10.0"
 publisher: "Telefonica Innovacion Digital"
 description: |-
@@ -10,14 +10,18 @@ description: |-
   For appliance deployment logs, check /var/log/one-appliance/.
 short_description: 6G-Sandbox toolkit VM template for the MinIO appliance
 tags:
-- 6G-Sandbox
-- toolkit
-- service
-- minio
-- ubuntu
+  - service
+  - oneflow
+  - onegate
+  - VMTEMPLATE
+  - 6G-Sandbox
+  - 6G-Library
+  - toolkit
+  - ubuntu
+  - minio
 type: VMTEMPLATE
 format: qcow2
-creation_time: "1738851073"   # date +%s
+creation_time: "1739974996"   # date +%s
 os-id: Ubuntu
 os-release: 22.04 LTS
 os-arch: x86_64
@@ -58,5 +62,5 @@ opennebula_template:
   user_inputs: {}
 logo: minio.png
 disks:
-- "Service MinIO"
+- "[6G-Sandbox toolkit] MinIO Disk"
 - "Empty disk"

@@ -1,6 +1,6 @@
 ---
 name: "[6G-Sandbox OneKE 1.31] storage disk"
-version: 1.31.3-6.10.0-2-20250211
+version: 1.31.3-6.10.0-2-20250219-1523
 publisher: OpenNebula Systems
 description: |-
   OneKE 1.31 appliance Storage disk (empty).
@@ -8,11 +8,16 @@ description: |-
   See the dedicated [documentation](https://github.com/OpenNebula/one-apps/wiki).
 short_description: OneKE 1.31 appliance Storage disk
 tags:
-- disk
-- kubernetes
-- service
+  - service
+  - oneflow
+  - onegate
+  - disk
+  - 6G-Sandbox
+  - 6G-Library
+  - kubernetes
+  - storage
 format: qcow2
-creation_time: 1735662515
+creation_time: "1739974996"
 os-id: none
 os-arch: all
 hypervisor: ALL

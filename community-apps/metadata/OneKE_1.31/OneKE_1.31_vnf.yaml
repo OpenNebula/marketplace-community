@@ -1,6 +1,6 @@
 ---
 name: "[6G-Sandbox OneKE 1.31] VNF"
-version: 1.31.3-6.10.0-2-20250211
+version: 1.31.3-6.10.0-2-20250219-1523
 publisher: OpenNebula Systems
 description: |-
   Appliance providing several Virtual Network Functions (routing, NAT, DNS, DHCP)
@@ -9,12 +9,17 @@ description: |-
   See the dedicated [documentation](https://github.com/OpenNebula/one-apps/wiki).
 short_description: Appliance with several Virtual Network Functions to run as VM
 tags:
-- alpine
-- kubernetes
-- service
-- vnf
+  - service
+  - oneflow
+  - onegate
+  - vnf
+  - 6G-Sandbox
+  - 6G-Library
+  - kubernetes
+  - alpine
+  - networking
 format: qcow2
-creation_time: 1735662515
+creation_time: "1739974996"
 os-id: Alpine
 os-release: '3.18'
 os-arch: x86_64

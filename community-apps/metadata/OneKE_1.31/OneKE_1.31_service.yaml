@@ -1,6 +1,6 @@
 ---
 name: "[6G-Sandbox OneKE 1.31] Service"
-version: 1.31.3-6.10.0-2-20250211
+version: 1.31.3-6.10.0-2-20250219-1523
 publisher: OpenNebula Systems
 description: |-
   [RKE2](https://docs.rke2.io/) based multi-master Kubernetes 1.31 cluster for KVM hosts,
@@ -21,11 +21,14 @@ description: |-
   - [OneKE 1.31 Storage](/appliance/98df67fd-6dbd-49e3-a99d-9b8d8519c418)
 short_description: Multi-master Kubernetes 1.31 cluster for KVM hosts, orchestrated by OneFlow
 tags:
-- kubernetes
-- oneflow
-- service
-- ubuntu
-creation_time: 1735662515
+  - service
+  - oneflow
+  - onegate
+  - SERVICE_TEMPLATE
+  - 6G-Sandbox
+  - 6G-Library
+  - kubernetes
+creation_time: "1739974996"
 os-id: Ubuntu
 os-release: 22.04 LTS
 os-arch: x86_64

@@ -1,6 +1,6 @@
 ---
 name: "[6G-Sandbox toolkit] TNLCM"
-version: "v0.4.5-20250206-1511"
+version: "v0.4.5-20250219-1523"
 software_version: "v0.4.5"
 publisher: "University of Malaga"
 description: |-
@@ -13,14 +13,18 @@ description: |-
    change it to a CPU model similar to your host's CPU that supports [x86-64v2 or higher](https://www.qemu.org/docs/master/system/qemu-cpu-models.html).
 short_description: 6G-Sandbox toolkit VM template for the TNLCM appliance
 tags:
-- 6G-Sandbox
-- toolkit
-- service
-- TNLCM
-- ubuntu
+  - service
+  - oneflow
+  - onegate
+  - VMTEMPLATE
+  - 6G-Sandbox
+  - 6G-Library
+  - toolkit
+  - ubuntu
+  - TNLCM
 type: VMTEMPLATE
 format: qcow2
-creation_time: "1738851073"   # date +%s
+creation_time: "1739974996"   # date +%s
 os-id: Ubuntu
 os-release: 22.04 LTS
 os-arch: x86_64

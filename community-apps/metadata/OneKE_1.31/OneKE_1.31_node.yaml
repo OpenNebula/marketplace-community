@@ -1,6 +1,6 @@
 ---
 name: "[6G-Sandbox OneKE 1.31] node"
-version: 1.31.3-6.10.0-2-20250211
+version: 1.31.3-6.10.0-2-20250219-1523
 publisher: OpenNebula Systems
 description: |-
   OneKE 1.31 VM template for Master and Worker VMs.
@@ -8,12 +8,18 @@ description: |-
   See the dedicated [documentation](https://github.com/OpenNebula/one-apps/wiki).
 short_description: OneKE 1.31 VM template for Master and Worker VMs
 tags:
-- kubernetes
-- service
-- ubuntu
+  - service
+  - oneflow
+  - onegate
+  - VMTEMPLATE
+  - 6G-Sandbox
+  - 6G-Library
+  - kubernetes
+  - ubuntu
+  - control_plane
 type: VMTEMPLATE
 format: qcow2
-creation_time: 1735662515
+creation_time: "1739974996"
 os-id: Ubuntu
 os-release: "22.04 LTS"
 os-arch: x86_64
