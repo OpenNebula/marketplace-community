@@ -14,7 +14,8 @@ description: |-
 
   * `ONEAPP_ELCM_INFLUXDB_USER` - Username used to login into the InfluxDB.
   * `ONEAPP_ELCM_INFLUXDB_PASSWORD` - Password used to login into the InfluxDB.
-  * `ONEAPP_ELCM_INFLUXDB_DATABASE` - Database name.
+  * `ONEAPP_ELCM_INFLUXDB_ORG` - Organization name.
+  * `ONEAPP_ELCM_INFLUXDB_BUCKET` - Bucket name.
   * `ONEAPP_ELCM_GRAFANA_PASSWORD` - Password used to login into the Grafana.
 
   **Note**: Remember to add a password variable in the template in order to have access to it, or make sure that your OpenNebula user has an SSH Public key preconfigured.
@@ -39,10 +40,11 @@ opennebula_template:
     netcfg_type: "interfaces"
     oneapp_elcm_influxdb_user:      "$ONEAPP_ELCM_INFLUXDB_USER"
     oneapp_elcm_influxdb_password:  "$ONEAPP_ELCM_INFLUXDB_PASSWORD"
-    oneapp_elcm_influxdb_database:  "$ONEAPP_ELCM_INFLUXDB_DATABASE"
+    oneapp_elcm_influxdb_org:       "$ONEAPP_ELCM_INFLUXDB_ORG"
+    oneapp_elcm_influxdb_bucket:    "$ONEAPP_ELCM_INFLUXDB_BUCKET"
     oneapp_elcm_grafana_password:   "$ONEAPP_ELCM_GRAFANA_PASSWORD"
   inputs_order: >-
-    ONEAPP_ELCM_INFLUXDB_USER,ONEAPP_ELCM_INFLUXDB_PASSWORD,ONEAPP_ELCM_INFLUXDB_DATABASE,ONEAPP_ELCM_GRAFANA_PASSWORD
+    ONEAPP_ELCM_INFLUXDB_USER,ONEAPP_ELCM_INFLUXDB_PASSWORD,ONEAPP_ELCM_INFLUXDB_BUCKET,ONEAPP_ELCM_GRAFANA_PASSWORD
   cpu: '2'
   vcpu: '2'
   cpu_model:
@@ -59,7 +61,8 @@ opennebula_template:
   user_inputs:
     oneapp_elcm_influxdb_user:      "M|text|ONEAPP_ELCM_INFLUXDB_USER: Username used to login into the InfluxDB. | |admin"
     oneapp_elcm_influxdb_password:  "M|password|ONEAPP_ELCM_INFLUXDB_PASSWORD: Password used to login into the InfluxDB. | |admin"
-    oneapp_elcm_influxdb_database:  "M|text|ONEAPP_ELCM_INFLUXDB_DATABASE: Database name. | |elcmdb"
+    oneapp_elcm_influxdb_org:       "M|text|ONEAPP_ELCM_INFLUXDB_ORG: Organization name. | |elcmorg"
+    oneapp_elcm_influxdb_bucket:  "M|text|ONEAPP_ELCM_INFLUXDB_BUCKET: Database name. | |elcmbucket"
     oneapp_elcm_grafana_password:   "M|password|ONEAPP_ELCM_GRAFANA_PASSWORD: Password used to login into the Grafana. | |admin"
 logo: ubuntu.png
 images:
