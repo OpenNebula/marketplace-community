@@ -7,7 +7,7 @@ Please consult the [documentation](https://6g-sandbox.github.io/docs/category/ma
 This repository (as well as [its parent repository](https://github.com/OpenNebula/marketplace-community)) uses the [one-apps](https://github.com/OpenNebula/one-apps) repository as a git submodule. To clone everything correctly, run:
 
 ```bash
-$ git clone --recurse-submodules https://github.com/6G-SANDBOX/marketplace-community.git
+git clone --recurse-submodules https://github.com/6G-SANDBOX/marketplace-community.git
 ```
 
 ## Appliance Specific Notes
