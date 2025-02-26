@@ -50,7 +50,7 @@ logo: router.png
 images:
 - name: capone_vnf
   url: >-
-    https://opennebula-marketplace.s3.amazonaws.com/service_VRouter-6.10.0-3-20250218.qcow2
+    https://d24fmfybwxpuhu.cloudfront.net/service_VRouter-6.10.0-3-20250218.qcow2
   type: OS
   dev_prefix: vd
   driver: qcow2
