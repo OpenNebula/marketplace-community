@@ -9,22 +9,25 @@ set -o errexit -o pipefail
 ONE_SERVICE_RECONFIGURABLE=true
 
 ONEAPP_ELCM_INFLUXDB_USER="${ONEAPP_ELCM_INFLUXDB_USER:-admin}"
-ONEAPP_ELCM_INFLUXDB_PASSWORD="${ONEAPP_ELCM_INFLUXDB_PASSWORD:-admin}"
+# ONEAPP_ELCM_INFLUXDB_PASSWORD="${ONEAPP_ELCM_INFLUXDB_PASSWORD:-admin}"
+ONEAPP_ELCM_INFLUXDB_ORG="${ONEAPP_ELCM_INFLUXDB_ORG:-elcmorg}"
 ONEAPP_ELCM_INFLUXDB_HOST="127.0.0.1"
 ONEAPP_ELCM_INFLUXDB_PORT="8086"
-ONEAPP_ELCM_INFLUXDB_DATABASE="${ONEAPP_ELCM_INFLUXDB_DATABASE:-elcmdb}"
+ONEAPP_ELCM_INFLUXDB_BUCKET="${ONEAPP_ELCM_INFLUXDB_BUCKET:-elcmbucket}"
 ONEAPP_ELCM_GRAFANA_USER="admin"
-ONEAPP_ELCM_GRAFANA_PASSWORD="${ONEAPP_ELCM_GRAFANA_PASSWORD:-admin}"
+# ONEAPP_ELCM_GRAFANA_PASSWORD="${ONEAPP_ELCM_GRAFANA_PASSWORD:-admin}"
 ONEAPP_ELCM_GRAFANA_HOST="127.0.0.1"
 ONEAPP_ELCM_GRAFANA_PORT="3000"
 
 DEP_PKGS="build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev pkg-config wget apt-transport-https ca-certificates curl gnupg lsb-release software-properties-common libgtk-3-0 libwebkit2gtk-4.0-37 libjavascriptcoregtk-4.0-18"
-PYTHON_BACKEND_ELCM_VERSION="3.10.12"
-PYTHON_FRONTEND_ELCM_VERSION="3.7.9"
-INFLUXDB_VERSION="1.7.6"
-GRAFANA_VERSION="5.4.5"
-PYTHON_BACKEND_ELCM_BIN="/usr/local/bin/python${PYTHON_BACKEND_ELCM_VERSION%.*}"
-PYTHON_FRONTEND_ELCM_BIN="/usr/local/bin/python${PYTHON_FRONTEND_ELCM_VERSION%.*}"
+PYTHON_VERSION="3.10"
+PYTHON_BIN="python${PYTHON_VERSION}"
+OPENTAP_PATH="/opt/opentap"
+GRAFANA_VERSION="11.5.2"
+BACKEND_VERSION="v3.7.1"
+BACKEND_PATH="/opt/ELCM_BACKEND"
+FRONTEND_VERSION="v3.0.1"
+FRONTEND_PATH="/opt/ELCM_FRONTEND"
 
 
 # ------------------------------------------------------------------------------
@@ -35,84 +38,81 @@ PYTHON_FRONTEND_ELCM_BIN="/usr/local/bin/python${PYTHON_FRONTEND_ELCM_VERSION%.*
 
 service_install()
 {
-    export DEBIAN_FRONTEND=noninteractive
+  export DEBIAN_FRONTEND=noninteractive
 
-    # packages
-    install_pkg_deps
+  # packages
+  install_pkg_deps
 
-    # python elcm backend
-    install_python_backend_elcm
+  # python
+  install_python
 
-    # python elcm frontend
-    install_python_frontend_elcm
+  # TODO: opentap
+  # install_opentap
 
-    # opentap
-    install_opentap
+  # influxdb
+  install_influxdb
 
-    # influxdb
-    install_influxdb
+  # grafana
+  install_grafana
 
-    # grafana
-    install_grafana
+  # elcm backend
+  install_elcm_backend
 
-    # elcm backend
-    install_elcm_backend
+  # elcm frontend
+  install_elcm_frontend
 
-    # elcm frontend
-    install_elcm_frontend
+  systemctl daemon-reload
 
-    systemctl daemon-reload
+  # cleanup
+  postinstall_cleanup
 
-    # cleanup
-    postinstall_cleanup
+  msg info "INSTALLATION FINISHED"
 
-    msg info "INSTALLATION FINISHED"
-
-    return 0
+  return 0
 }
 
 service_configure()
 {
-    export DEBIAN_FRONTEND=noninteractive
+  export DEBIAN_FRONTEND=noninteractive
 
-    # configure user, password and database influxdb
-    configure_influxdb
+  # configure user, password and database influxdb
+  configure_influxdb
 
-    # configure user, password and datasource grafana
-    configure_grafana
+  # configure user, password and datasource grafana
+  configure_grafana
 
-    # create config file in ELCM backend
-    create_elcm_backend_config_file
+  # create config file in ELCM backend
+  create_elcm_backend_config_file
 
-    # create config file in ELCM frontend
-    create_elcm_frontend_config_file
+  # create config file in ELCM frontend
+  create_elcm_frontend_config_file
 
-    msg info "CONFIGURATION FINISHED"
-    return 0
+  msg info "CONFIGURATION FINISHED"
+  return 0
 }
 
 service_bootstrap()
 {
-    export DEBIAN_FRONTEND=noninteractive
+  export DEBIAN_FRONTEND=noninteractive
 
-    systemctl enable --now elcm-backend.service
-    if [ $? -ne 0 ]; then
-        msg error "Error starting elcm-backend.service, aborting..."
-        exit 1
-    else
-        msg info "elcm-backend.service was strarted..."
-    fi
+  systemctl enable --now elcm-backend.service
+  if [ $? -ne 0 ]; then
+    msg error "Error starting elcm-backend.service, aborting..."
+    exit 1
+  else
+    msg info "elcm-backend.service was strarted..."
+  fi
 
-    systemctl enable --now elcm-frontend.service
-    if [ $? -ne 0 ]; then
-        msg error "Error starting elcm-frontend.service, aborting..."
-        exit 1
-    else
-        msg info "elcm-frontend.service was strarted..."
-    fi
+  systemctl enable --now elcm-frontend.service
+  if [ $? -ne 0 ]; then
+    msg error "Error starting elcm-frontend.service, aborting..."
+    exit 1
+  else
+    msg info "elcm-frontend.service was strarted..."
+  fi
 
-    msg info "BOOTSTRAP FINISHED"
-    return 0
+  msg info "BOOTSTRAP FINISHED"
+  return 0
 }
 
 
@@ -124,92 +124,74 @@ service_bootstrap()
 
 install_pkg_deps()
 {
-    msg info "Run apt-get update"
-    apt-get update
+  msg info "Run apt-get update"
+  apt-get update
 
-    msg info "Install required packages for ELCM"
-    wait_for_dpkg_lock_release
-    if ! apt-get install -y ${DEP_PKGS} ; then
-        msg error "Package(s) installation failed"
-        exit 1
-    fi
+  msg info "Install required packages for ELCM"
+  wait_for_dpkg_lock_release
+  if ! apt-get install -y ${DEP_PKGS} ; then
+    msg error "Package(s) installation failed"
+    exit 1
+  fi
 }
 
-install_python_backend_elcm()
+install_python()
 {
-    msg info "Install python version ${PYTHON_BACKEND_ELCM_VERSION}"
-    wget "https://www.python.org/ftp/python/${PYTHON_BACKEND_ELCM_VERSION}/Python-${PYTHON_BACKEND_ELCM_VERSION}.tgz"
-    tar xvf Python-${PYTHON_BACKEND_ELCM_VERSION}.tgz
-    cd Python-${PYTHON_BACKEND_ELCM_VERSION}/
-    ./configure --enable-optimizations
-    make altinstall
-    ${PYTHON_BACKEND_ELCM_BIN} -m ensurepip --default-pip
-    ${PYTHON_BACKEND_ELCM_BIN} -m pip install --upgrade pip setuptools wheel
-    cd
-    rm -rf Python-${PYTHON_BACKEND_ELCM_VERSION}*
-}
-
-install_python_frontend_elcm()
-{
-    msg info "Install python version ${PYTHON_FRONTEND_ELCM_VERSION}"
-    wget "https://www.python.org/ftp/python/${PYTHON_FRONTEND_ELCM_VERSION}/Python-${PYTHON_FRONTEND_ELCM_VERSION}.tgz"
-    tar xvf Python-${PYTHON_FRONTEND_ELCM_VERSION}.tgz
-    cd Python-${PYTHON_FRONTEND_ELCM_VERSION}/
-    ./configure --enable-optimizations
-    make altinstall
-    ${PYTHON_FRONTEND_ELCM_BIN} -m ensurepip --default-pip
-    ${PYTHON_FRONTEND_ELCM_BIN} -m pip install --upgrade pip setuptools wheel
-    cd
-    rm -rf Python-${PYTHON_FRONTEND_ELCM_VERSION}*
+  msg info "Install python version ${PYTHON_VERSION}"
+  add-apt-repository ppa:deadsnakes/ppa -y
+  wait_for_dpkg_lock_release
+  apt-get install python${PYTHON_VERSION}-full -y
 }
 
 install_opentap()
 {
-    msg info "Install OpenTAP"
-    curl -Lo opentap.linux https://packages.opentap.io/4.0/Objects/www/OpenTAP?os=Linux
-    chmod +x ./opentap.linux
-    ./opentap.linux --quiet
-    rm opentap.linux
+  msg info "Install OpenTAP"
+  curl -Lo opentap.linux https://packages.opentap.io/4.0/Objects/www/OpenTAP?os=Linux
+  chmod +x ./opentap.linux
+  ./opentap.linux --quiet
+  rm opentap.linux
 }
 
 install_influxdb()
 {
-    msg info "Install InfluxDB version ${INFLUXDB_VERSION}"
-    wget https://dl.influxdata.com/influxdb/releases/influxdb_${INFLUXDB_VERSION}_amd64.deb
-    dpkg -i influxdb_${INFLUXDB_VERSION}_amd64.deb
-    systemctl enable --now influxdb
-    rm -rf influxdb_${INFLUXDB_VERSION}*
+  msg info "Install InfluxDB"
+  wget -q https://repos.influxdata.com/influxdata-archive_compat.key
+  echo '393e8779c89ac8d958f81f942f9ad7fb82a25e133faddaf92e15b16e6ac9ce4c influxdata-archive_compat.key' | sha256sum -c && cat influxdata-archive_compat.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg > /dev/null
+  echo 'deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg] https://repos.influxdata.com/debian stable main' | sudo tee /etc/apt/sources.list.d/influxdata.list
+  apt-get update
+  apt-get install -y influxdb2
+  systemctl enable --now influxdb
 }
 
 install_grafana()
 {
-    msg info "Install Grafana version ${GRAFANA_VERSION}"
-    apt-get install -y adduser libfontconfig1 musl
-    wget https://dl.grafana.com/oss/release/grafana_${GRAFANA_VERSION}_amd64.deb
-    dpkg -i grafana_${GRAFANA_VERSION}_amd64.deb
-    systemctl enable --now grafana-server
-    rm -rf grafana_${GRAFANA_VERSION}*
+  msg info "Install Grafana version ${GRAFANA_VERSION}"
+  apt-get install -y adduser libfontconfig1 musl
+  wget https://dl.grafana.com/oss/release/grafana_${GRAFANA_VERSION}_amd64.deb
+  dpkg -i grafana_${GRAFANA_VERSION}_amd64.deb
+  systemctl enable --now grafana-server
+  rm -rf grafana_${GRAFANA_VERSION}*
 }
 
 install_elcm_backend()
 {
-    msg info "Clone ELCM BACKEND Repository"
-    git clone https://github.com/6G-SANDBOX/ELCM /opt/ELCM
+  msg info "Clone ELCM BACKEND Repository"
+  git clone --depth 1 --branch ${BACKEND_VERSION} -c advice.detachedHead=false https://gitlab.com/morse-uma/elcm.git ${BACKEND_PATH}
 
-    msg info "Activate ELCM python virtual environment and install requirements"
-    ${PYTHON_BACKEND_ELCM_BIN} -m venv /opt/ELCM/venv
-    source /opt/ELCM/venv/bin/activate
-    pip install -r /opt/ELCM/requirements.txt
-    deactivate
+  msg info "Activate ELCM python virtual environment and install requirements"
+  ${PYTHON_BIN} -m venv ${BACKEND_PATH}/venv
+  source ${BACKEND_PATH}/venv/bin/activate
+  pip install -r ${BACKEND_PATH}/requirements.txt
+  deactivate
 
-    msg info "Define ELCM backend systemd service"
-    cat > /etc/systemd/system/elcm-backend.service << EOF
+  msg info "Define ELCM backend systemd service"
+  cat > /etc/systemd/system/elcm-backend.service << EOF
 [Unit]
 Description=ELCM Backend
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/ELCM
+WorkingDirectory=${BACKEND_PATH}
 Environment="SECRET_KEY=super secret"
 ExecStart=/bin/bash -c 'source venv/bin/activate && flask run --host 0.0.0.0 --port 5001'
 Restart=always
@@ -221,23 +203,23 @@ EOF
 
 install_elcm_frontend()
 {
-    msg info "Clone ELCM FRONTEND Repository"
-    git clone https://github.com/6G-SANDBOX/portal /opt/ELCM_FRONTEND
+  msg info "Clone ELCM FRONTEND Repository"
+  git clone --depth 1 --branch ${FRONTEND_VERSION} -c advice.detachedHead=false https://gitlab.com/morse-uma/elcm-portal.git ${FRONTEND_PATH}
 
-    msg info "Activate ELCM_FRONTEND python virtual environment and install requirements"
-    ${PYTHON_FRONTEND_ELCM_BIN} -m venv /opt/ELCM_FRONTEND/venv
-    source /opt/ELCM_FRONTEND/venv/bin/activate
-    pip install -r /opt/ELCM_FRONTEND/requirements.txt
-    deactivate
+  msg info "Activate ELCM_FRONTEND python virtual environment and install requirements"
+  ${PYTHON_BIN} -m venv ${FRONTEND_PATH}/venv
+  source ${FRONTEND_PATH}/venv/bin/activate
+  pip install -r ${FRONTEND_PATH}/requirements.txt
+  deactivate
 
-    msg info "Define ELCM frontend systemd service"
-    cat > /etc/systemd/system/elcm-frontend.service << EOF
+  msg info "Define ELCM frontend systemd service"
+  cat > /etc/systemd/system/elcm-frontend.service << EOF
 [Unit]
 Description=ELCM Frontend
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/ELCM_FRONTEND
+WorkingDirectory=${FRONTEND_PATH}
 Environment="SECRET_KEY=super secret"
 ExecStart=/bin/bash -c 'source venv/bin/activate && flask run --host 0.0.0.0 --port 5000'
 Restart=always
@@ -249,60 +231,89 @@ EOF
 
 configure_influxdb()
 {
-    # create database
-    /usr/bin/influx -execute "CREATE DATABASE ${ONEAPP_ELCM_INFLUXDB_DATABASE}"
-    # create user
-    /usr/bin/influx -execute "CREATE USER ${ONEAPP_ELCM_INFLUXDB_USER} WITH PASSWORD '${ONEAPP_ELCM_INFLUXDB_PASSWORD}' WITH ALL PRIVILEGES"
+  influx setup --host http://${ONEAPP_ELCM_INFLUXDB_HOST}:${ONEAPP_ELCM_INFLUXDB_PORT} --org ${ONEAPP_ELCM_INFLUXDB_ORG} --bucket ${ONEAPP_ELCM_INFLUXDB_BUCKET} --username ${ONEAPP_ELCM_INFLUXDB_USER} --password ${ONEAPP_ELCM_INFLUXDB_PASSWORD} --force
+  INFLUXDB_USER_TOKEN=$(influx auth list --host http://${ONEAPP_ELCM_INFLUXDB_HOST}:${ONEAPP_ELCM_INFLUXDB_PORT} --json | jq -r '.[0].token')
+  # influx auth create --org ${ONEAPP_ELCM_INFLUXDB_ORG} --all-access --description "Admin ELCM token" --host http://${ONEAPP_ELCM_INFLUXDB_HOST}:${ONEAPP_ELCM_INFLUXDB_PORT}
 }
 
 configure_grafana()
 {
-    if [ "${ONEAPP_ELCM_GRAFANA_PASSWORD}" != "admin" ]; then
-        ONEAPP_ELCM_GRAFANA_UPDATE_PASSWORD_JSON=$(cat <<EOF
-    {
-    "oldPassword": "admin",
-    "newPassword": "${ONEAPP_ELCM_GRAFANA_PASSWORD}",
-    "confirmNew": "${ONEAPP_ELCM_GRAFANA_PASSWORD}"
-    }
-EOF
-)
-    curl -X PUT -H "Content-Type: application/json;charset=UTF-8" -d "${ONEAPP_ELCM_GRAFANA_UPDATE_PASSWORD_JSON}" http://${ONEAPP_ELCM_GRAFANA_USER}:admin@${ONEAPP_ELCM_GRAFANA_HOST}:${ONEAPP_ELCM_GRAFANA_PORT}/api/user/password
-    # grafana-cli admin reset-admin-password --homepath "/usr/share/grafana" ${ONEAPP_ELCM_GRAFANA_PASSWORD}
+  if [ "${ONEAPP_ELCM_GRAFANA_PASSWORD}" != "admin" ]; then
+#     ONEAPP_ELCM_GRAFANA_UPDATE_PASSWORD_JSON=$(cat <<EOF
+#   {
+#   "oldPassword": "admin",
+#   "newPassword": "${ONEAPP_ELCM_GRAFANA_PASSWORD}",
+#   "confirmNew": "${ONEAPP_ELCM_GRAFANA_PASSWORD}"
+#   }
+# EOF
+# )
+  # curl -X PUT -H "Content-Type: application/json;charset=UTF-8" -d "${ONEAPP_ELCM_GRAFANA_UPDATE_PASSWORD_JSON}" http://${ONEAPP_ELCM_GRAFANA_USER}:admin@${ONEAPP_ELCM_GRAFANA_HOST}:${ONEAPP_ELCM_GRAFANA_PORT}/api/user/password
+  grafana-cli admin reset-admin-password ${ONEAPP_ELCM_GRAFANA_PASSWORD}
 fi
 
-    # connect grafana with influxdb
-    ONEAPP_ELCM_GRAFANA_INFLUXDB_DATASOURCE_JSON=$(cat <<EOF
-    {
-    "name": "${ONEAPP_ELCM_INFLUXDB_DATABASE}",
-    "type": "influxdb",
-    "access": "proxy",
-    "url": "http://${ONEAPP_ELCM_INFLUXDB_HOST}:${ONEAPP_ELCM_INFLUXDB_PORT}",
-    "password": "${ONEAPP_ELCM_INFLUXDB_PASSWORD}",
-    "user": "${ONEAPP_ELCM_INFLUXDB_USER}",
-    "database": "${ONEAPP_ELCM_INFLUXDB_DATABASE}",
-    "basicAuth": true,
-    "isDefault": true
-    }
+  # connect grafana with influxdb
+  INFLUXDB_DATASOURCE_JSON=$(cat <<EOF
+{
+  "name": "${ONEAPP_ELCM_INFLUXDB_BUCKET}",
+  "type": "influxdb",
+  "access": "proxy",
+  "url": "http://${ONEAPP_ELCM_INFLUXDB_HOST}:${ONEAPP_ELCM_INFLUXDB_PORT}",
+  "isDefault": true,
+  "jsonData": {
+    "version": "Flux",
+    "organization": "${ONEAPP_ELCM_INFLUXDB_ORG}",
+    "defaultBucket": "${ONEAPP_ELCM_INFLUXDB_BUCKET}",
+    "httpMode": "POST"
+  },
+  "secureJsonData": {
+    "token": "${INFLUXDB_USER_TOKEN}"
+  }
+}
 EOF
 )
-    curl -X POST -H "Content-Type: application/json" -d "${ONEAPP_ELCM_GRAFANA_INFLUXDB_DATASOURCE_JSON}" http://${ONEAPP_ELCM_GRAFANA_USER}:admin@${ONEAPP_ELCM_GRAFANA_HOST}:${ONEAPP_ELCM_GRAFANA_PORT}/api/datasources
+  curl -X POST -H "Content-Type: application/json" -d "${INFLUXDB_DATASOURCE_JSON}" http://${ONEAPP_ELCM_GRAFANA_USER}:${ONEAPP_ELCM_GRAFANA_PASSWORD}@${ONEAPP_ELCM_GRAFANA_HOST}:${ONEAPP_ELCM_GRAFANA_PORT}/api/datasources
 
-    # generate API Key in grafana
-    ONEAPP_ELCM_GRAFANA_API_KEY=$(cat <<EOF
-    {
-    "name":"elcmapikey",
-    "role":"Admin"
-    }
+  # generate service account in grafana
+  SERVICE_ACCOUNT_PAYLOAD=$(cat <<EOF
+{
+  "name": "elcmsa",
+  "role": "Admin",
+  "isDisabled": false
+}
 EOF
 )
-    ONEAPP_ELCM_API_KEY=$(curl -X POST -H "Content-Type: application/json" -d "${ONEAPP_ELCM_GRAFANA_API_KEY}" http://${ONEAPP_ELCM_GRAFANA_USER}:admin@${ONEAPP_ELCM_GRAFANA_HOST}:${ONEAPP_ELCM_GRAFANA_PORT}/api/auth/keys)
-    ONEAPP_ELCM_API_KEY=$(echo "${ONEAPP_ELCM_API_KEY}" | grep -o '"key":"[^"]*"' | sed 's/"key":"\([^"]*\)"/\1/')
+  SERVICE_ACCOUNT_RESPONSE=$(curl -X POST \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic $(echo -n "${ONEAPP_ELCM_GRAFANA_USER}:${ONEAPP_ELCM_GRAFANA_PASSWORD}" | base64)" \
+  -d "${SERVICE_ACCOUNT_PAYLOAD}" \
+  "http://${ONEAPP_ELCM_GRAFANA_HOST}:${ONEAPP_ELCM_GRAFANA_PORT}/api/serviceaccounts")
+
+  SERVICE_ACCOUNT_ID=$(echo "${SERVICE_ACCOUNT_RESPONSE}" | grep -o '"id":[0-9]*' | cut -d ':' -f2)
+
+  # generate token to service account
+  SA_TOKEN_PAYLOAD=$(cat <<EOF
+{
+  "name": "elcmsa-token",
+  "secondsToLive": 0
+}
+EOF
+)
+
+  SA_TOKEN_RESPONSE=$(curl -X POST \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic $(echo -n "${ONEAPP_ELCM_GRAFANA_USER}:${ONEAPP_ELCM_GRAFANA_PASSWORD}" | base64)" \
+  -d "${SA_TOKEN_PAYLOAD}" \
+  "http://${ONEAPP_ELCM_GRAFANA_HOST}:${ONEAPP_ELCM_GRAFANA_PORT}/api/serviceaccounts/${SERVICE_ACCOUNT_ID}/tokens")
+
+  GRAFANA_USER_TOKEN=$(echo "${SA_TOKEN_RESPONSE}" | grep -o '"key":"[^"]*"' | sed 's/"key":"\([^"]*\)"/\1/')
 }
 
 create_elcm_backend_config_file()
 {
-    msg info "Create file config in ELCM backend"
-    cat > /opt/ELCM/config.yml << EOF
+  msg info "Create file config in ELCM backend"
+  cat > ${BACKEND_PATH}/config.yml << EOF
 TempFolder: 'Temp'
 ResultsFolder: 'Results'
 VerdictOnError: 'Error'
@@ -329,15 +340,17 @@ Grafana:
   Enabled: True
   Host: "${ONEAPP_ELCM_GRAFANA_HOST}"
   Port: ${ONEAPP_ELCM_GRAFANA_PORT}
-  Bearer: ${ONEAPP_ELCM_API_KEY}
-ReportGenerator:
+  Bearer: ${GRAFANA_USER_TOKEN}
+  ReportGenerator:
 InfluxDb:
   Enabled: True
   Host: "${ONEAPP_ELCM_INFLUXDB_HOST}"
   Port: ${ONEAPP_ELCM_INFLUXDB_PORT}
   User: ${ONEAPP_ELCM_INFLUXDB_USER}
   Password: ${ONEAPP_ELCM_INFLUXDB_PASSWORD}
-  Database: ${ONEAPP_ELCM_INFLUXDB_DATABASE}
+  Database: ${ONEAPP_ELCM_INFLUXDB_BUCKET}
+  Token: ${INFLUXDB_USER_TOKEN}
+  Org: ${ONEAPP_ELCM_INFLUXDB_ORG}
 Metadata:
   HostIp: "127.0.0.1"
   Facility:
@@ -356,41 +369,30 @@ EOF
 
 create_elcm_frontend_config_file()
 {
-    msg info "Create file config in ELCM frontend"
-    cat > /opt/ELCM_FRONTEND/config.yml << EOF
-Dispatcher:
-  Host: '127.0.0.1'
-  Port: 5001
-
-TestCases:
-  - TESTBEDVALIDATION
-  - REMOTEPINGSSH
-  - EXOPLAYERTEST
-  - REMOTEPINGSSHTOCSVRETURNANDUPLOAD
-
-Slices:
-  - Slice1
-  - Slice2
-
-UEs:
-  UE_S0_IN:
-    OS: Android
-  UE_S0_OUT:
-    OS: Android
-
-Grafana URL:
-  http://${ONEAPP_ELCM_GRAFANA_HOST}:${ONEAPP_ELCM_GRAFANA_PORT}
-
-Platform:
-  UMA
-
-Description:
-  6GSANDBOX
-
+  msg info "Create file config in ELCM frontend"
+  cat > ${FRONTEND_PATH}/config.yml << EOF
 Logging:
   Folder: 'Logs'
   AppLevel: INFO
   LogLevel: DEBUG
+ELCM:
+  Host: '127.0.0.1'
+  Port: 5001
+Grafana URL: http://${ONEAPP_ELCM_GRAFANA_HOST}:${ONEAPP_ELCM_GRAFANA_PORT}
+EastWest:
+  Enabled: False
+  Remotes: {}  # One key for each remote Portal, each key containing 'Host' and 'Port' values
+Analytics:
+  Enabled: False
+  URL: <Internet address>/dash # External URL of the Analytics Dashboard
+  Secret: # Secret key shared with the Analytics Dashboard, used in order to create secure URLs
+Branding:
+  Platform: 'Untitled'
+  Description: 'Untitled ELCM Portal'
+  DescriptionPage: 'platform.html'
+  FavIcon: 'header.png'
+  Header: 'header.png'
+  Logo: 'logo.png'
 EOF
 }
 
@@ -414,8 +416,8 @@ wait_for_dpkg_lock_release()
 
 postinstall_cleanup()
 {
-    msg info "Delete cache and stored packages"
-    apt-get autoclean
-    apt-get autoremove
-    rm -rf /var/lib/apt/lists/*
+  msg info "Delete cache and stored packages"
+  apt-get autoclean
+  apt-get autoremove
+  rm -rf /var/lib/apt/lists/*
 }
