@@ -9,11 +9,11 @@ set -o errexit -o pipefail
 ONEAPP_JENKINS_USERNAME="${ONEAPP_JENKINS_USERNAME:-admin}"
 ONEAPP_JENKINS_OPENNEBULA_INSECURE="${ONEAPP_JENKINS_OPENNEBULA_INSECURE:-YES}"
 
-DEP_PKGS="fontconfig openjdk-21-jre-headless gnupg software-properties-common gpg python3-pip"
+DEP_PKGS="fontconfig openjdk-21-jre-headless gnupg software-properties-common gpg python3-pip ruby-dev"
+DEP_RUBY="opennebula-cli"
 DEP_PIP="boto3 botocore pyone==6.8.3 netaddr"
 ANSIBLE_COLLECTIONS="amazon.aws kubernetes.core community.general"
 CONSULT_ME_DIR="/var/lib/jenkins/consult_me/"
-
 
 
 # ------------------------------------------------------------------------------
@@ -28,12 +28,12 @@ service_install()
     systemctl stop unattended-upgrades
 
     # packages
-    install_pkg_deps
+    install_deps
 
     # jenkins
     install_jenkins
 
-    # pip modules
+    # pip modules for jenkins user
     install_pip_deps
 
     # ansible and terraform
@@ -45,8 +45,9 @@ service_install()
     # plugins
     install_plugins_jenkins
 
-    # pipelines
-    import_pipelines
+    # import pipelines casc
+    source /etc/one-appliance/service.d/import_casc.sh
+    import_pipelines_casc
 
     # cleanup
     postinstall_cleanup
@@ -66,8 +67,11 @@ service_configure()
     # sshd
     generate_ssh_keys
 
-    # credentials
-    import_credentials
+    # import credentials casc
+    source /etc/one-appliance/service.d/import_casc.sh
+    import_credentials_casc
+
+    configure_jenkins_bashrc
 
     systemctl restart jenkins
 
@@ -89,7 +93,7 @@ service_bootstrap()
 # ------------------------------------------------------------------------------
 
 
-install_pkg_deps()
+install_deps()
 {
     msg info "Run apt-get update"
     apt-get update
@@ -99,6 +103,14 @@ install_pkg_deps()
     if ! apt-get install -y ${DEP_PKGS} ; then
         msg error "Package(s) installation failed"
         exit 1
+    fi
+
+    if [ -n "${DEP_RUBY}" ]; then
+        msg info "Install required ruby gems"
+        if ! gem install ${DEP_RUBY} ; then
+            msg error "ruby gem(s) installation failed"
+            exit 1
+        fi
     fi
 }
 
@@ -194,26 +206,30 @@ create_admin_user()
     url=http://localhost:8080
     password=$(cat /var/lib/jenkins/secrets/initialAdminPassword)
 
-    # ADMIN CREDENTIALS URL ENCODED USING PYTHON
+    msg info "URL encode admin credentials using python"
     username=$(python3 -c "import urllib.parse; print(urllib.parse.quote(input(), safe=''))" <<< "admin")
     new_password=$(python3 -c "import urllib.parse; print(urllib.parse.quote(input(), safe=''))" <<< "admin")
     fullname=$(python3 -c "import urllib.parse; print(urllib.parse.quote(input(), safe=''))" <<< "admin")
     email=$(python3 -c "import urllib.parse; print(urllib.parse.quote(input(), safe=''))" <<< "hello@world.com")
 
-    # GET THE CRUMB AND COOKIE
+    msg info "Get crumb and cookie for Jenkins API"
     cookie_jar="$(mktemp)"
+    msg info "Variable cookie_jar set to ${cookie_jar}"
     full_crumb=$(curl -u "admin:${password}" --cookie-jar "${cookie_jar}" ${url}/crumbIssuer/api/xml?xpath=concat\(//crumbRequestField,%22:%22,//crumb\))
+    msg info "Variable full_crumb set to ${full_crumb}"
     arr_crumb=(${full_crumb//:/ })
-    only_crumb=$(echo ${arr_crumb[1]})
+    msg info "Variable arr_crumb set to ${arr_crumb[0]}"
+    only_crumb="$(echo ${arr_crumb[1]})"
+    msg info "Variable only_crumb set to ${only_crumb}"
 
-    # MAKE THE REQUEST TO CREATE AN ADMIN USER
+    msg info "Send API request to create the 'admin' user"
     curl -X POST -u "admin:${password}" ${url}/setupWizard/createAdminUser \
             -H "Connection: keep-alive" \
             -H "Accept: application/json, text/javascript" \
             -H "X-Requested-With: XMLHttpRequest" \
             -H "${full_crumb}" \
             -H "Content-Type: application/x-www-form-urlencoded" \
-            --cookie ${cookie_jar} \
+            --cookie "${cookie_jar}" \
             --data-raw "username=${username}&password1=${new_password}&password2=${new_password}&fullname=${fullname}&email=${email}&Jenkins-Crumb=${only_crumb}&json=%7B%22username%22%3A%20%22${username}%22%2C%20%22password1%22%3A%20%22${new_password}%22%2C%20%22%24redact%22%3A%20%5B%22password1%22%2C%20%22password2%22%5D%2C%20%22password2%22%3A%20%22${new_password}%22%2C%20%22fullname%22%3A%20%22${fullname}%22%2C%20%22email%22%3A%20%22${email}%22%2C%20%22Jenkins-Crumb%22%3A%20%22${only_crumb}%22%7D&core%3Aapply=&Submit=Save&json=%7B%22username%22%3A%20%22${username}%22%2C%20%22password1%22%3A%20%22${new_password}%22%2C%20%22%24redact%22%3A%20%5B%22password1%22%2C%20%22password2%22%5D%2C%20%22password2%22%3A%20%22${new_password}%22%2C%20%22fullname%22%3A%20%22${fullname}%22%2C%20%22email%22%3A%20%22${email}%22%2C%20%22Jenkins-Crumb%22%3A%20%22${only_crumb}%22%7D"
 }
 
@@ -223,18 +239,21 @@ install_plugins_jenkins()
     msg info "Install required jenkins plugins"
     url=http://localhost:8080
     url_urlEncoded=$(python3 -c "import urllib.parse; print(urllib.parse.quote(input(), safe=''))" <<< "${url}")
-    user=admin
-    password=admin
+    user="admin"
+    password="admin"
     plugin_list=$(cat /etc/one-appliance/service.d/jenkins_plugins.txt | awk '{print "'"'"'" $0 "'"'"'"}' | paste -sd,)
     mapfile -t plugins_map < "/etc/one-appliance/service.d/jenkins_plugins.txt"
 
-    # GET THE CRUMB AND COOKIE
+    msg info "Get crumb and cookie for Jenkins API"
     cookie_jar="$(mktemp)"
+    msg info "Variable cookie_jar set to ${cookie_jar}"
     full_crumb=$(curl -u "${user}:${password}" --cookie-jar "${cookie_jar}" ${url}/crumbIssuer/api/xml?xpath=concat\(//crumbRequestField,%22:%22,//crumb\))
+    msg info "Variable full_crumb set to ${full_crumb}"
     arr_crumb=(${full_crumb//:/ })
+    msg info "Variable arr_crumb set to ${arr_crumb[0]}"
     only_crumb=$(echo ${arr_crumb[1]})
 
-    msg info "Make the request to download and install required modules"
+    msg info "Send API request to download and install the required plugins"
     curl -X POST -u "${user}:${password}" ${url}/pluginManager/installPlugins \
         -H 'Connection: keep-alive' \
         -H 'Accept: application/json, text/javascript, */*; q=0.01' \
@@ -245,7 +264,8 @@ install_plugins_jenkins()
         --cookie ${cookie_jar} \
         --data-raw "{'dynamicLoad':true,'plugins':[${plugin_list}],'Jenkins-Crumb':'${only_crumb}'}"
 
-    msg info "Send the request to confirm the url for the WebUI"
+    # TODO: probably incorrect, as warning appears afterwards
+    msg info "Send API request to confirm the WebUI URL"
     curl -X POST -u "${user}:${password}" ${url}/setupWizard/configureInstance \
         -H 'Connection: keep-alive' \
         -H 'Accept: application/json, text/javascript, */*; q=0.01' \
@@ -285,30 +305,28 @@ check_plugins_installed() {
     return 0
 }
 
-import_pipelines(){
-    msg info "Import starting jenkins pipelines"
-    cp /etc/one-appliance/service.d/jobs.yaml /var/lib/jenkins/casc_configs/jobs.yaml
-    chown jenkins:jenkins /var/lib/jenkins/casc_configs/jobs.yaml
-    chmod u=r,go= /var/lib/jenkins/casc_configs/jobs.yaml
-}
-
 update_admin_user()
 {
     msg info "Update admin username and password in jenkins"
     url=http://localhost:8080
 
+    msg info "URL encode admin credentials using python"
     username=$(python3 -c "import urllib.parse; print(urllib.parse.quote(input(), safe=''))" <<< "${ONEAPP_JENKINS_USERNAME}")
     password=$(python3 -c "import urllib.parse; print(urllib.parse.quote(input(), safe=''))" <<< "${ONEAPP_JENKINS_PASSWORD}")
     fullname=$(python3 -c "import urllib.parse; print(urllib.parse.quote(input(), safe=''))" <<< "${ONEAPP_JENKINS_USERNAME}")
     email=$(python3 -c "import urllib.parse; print(urllib.parse.quote(input(), safe=''))" <<< "hello@world.com")
 
-    # GET THE CRUMB AND COOKIE
+    msg info "Get crumb and cookie for Jenkins API"
     cookie_jar="$(mktemp)"
+    msg info "Variable cookie_jar set to ${cookie_jar}"
     full_crumb=$(curl -u "admin:admin" --cookie-jar "$cookie_jar" ${url}/crumbIssuer/api/xml?xpath=concat\(//crumbRequestField,%22:%22,//crumb\))
+    msg info "Variable full_crumb set to ${full_crumb}"
     arr_crumb=(${full_crumb//:/ })
-    only_crumb=$(echo ${arr_crumb[1]})
+    msg info "Variable arr_crumb set to ${arr_crumb[0]}"
+    only_crumb="$(echo ${arr_crumb[1]})"
 
     # MAKE THE REQUEST TO CREATE AN ADMIN USER
+    msg info "Send API request to create another Admin user"
     curl -X POST -u "admin:admin" $url/setupWizard/createAdminUser \
         -H "Connection: keep-alive" \
         -H "Accept: application/json, text/javascript" \
@@ -330,6 +348,14 @@ update_admin_user()
     echo "${jenkins_tnlcm_token}" > "${CONSULT_ME_DIR}jenkins_tnlcm_token"
     chown jenkins:jenkins "${CONSULT_ME_DIR}jenkins_tnlcm_token"
     chmod u=r,go= "${CONSULT_ME_DIR}jenkins_tnlcm_token"
+    
+    msg info "Allow SSH access to the jenkins Linux user with the Jenkins Admin Password"
+    echo "jenkins:${ONEAPP_JENKINS_PASSWORD}" | chpasswd
+    cat > /etc/ssh/sshd_config.d/jenkins.conf << 'EOF'
+Match User jenkins
+    PasswordAuthentication yes
+EOF
+    systemctl restart sshd
 }
 
 generate_ssh_keys()
@@ -344,71 +370,6 @@ Host *
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
 EOF"
-}
-
-import_credentials()
-{
-    cat > /var/lib/jenkins/casc_configs/credentials.yaml << EOF
-credentials:
-  system:
-    domainCredentials:
-      - credentials:
-          - string:
-              scope: GLOBAL
-              id: "SSH_PRIVATE_KEY"
-              secret: "$(cat /var/lib/jenkins/.ssh/id_ed25519)"
-              description: "SSH private key to access VM components"
-      - credentials:
-          - string:
-              scope: GLOBAL
-              id: "ANSIBLE_VAULT_PASSWORD"
-              secret: "$(echo ${ONEAPP_JENKINS_SITES_TOKEN} | xargs)"
-              description: "Password to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault"
-      - credentials:
-          - string:
-              scope: GLOBAL
-              id: "OPENNEBULA_ENDPOINT"
-              secret: "$(echo ${ONEAPP_JENKINS_OPENNEBULA_ENDPOINT} | xargs)"
-              description: "The URL of your OpenNebula XML-RPC Endpoint API (for example,'http://example.com:2633/RPC2')"
-      - credentials:
-          - string:
-              scope: GLOBAL
-              id: "OPENNEBULA_FLOW_ENDPOINT"
-              secret: "$(echo ${ONEAPP_JENKINS_OPENNEBULA_FLOW_ENDPOINT} | xargs)"
-              description: "The URL of your OneFlow HTTP Endpoint API (for example,'http://example.com:2474')"
-      - credentials:
-          - string:
-              scope: GLOBAL
-              id: "OPENNEBULA_USERNAME"
-              secret: "$(echo ${ONEAPP_JENKINS_OPENNEBULA_USERNAME} | xargs)"
-              description: "The OpenNebula username used to deploy each component (for example,'jenkins')"
-      - credentials:
-          - string:
-              scope: GLOBAL
-              id: "OPENNEBULA_PASSWORD"
-              secret: "$(echo ${ONEAPP_JENKINS_OPENNEBULA_PASSWORD} | xargs)"
-              description: "The OpenNebula password matching OPENNEBULA_USERNAME"
-      - credentials:
-          - string:
-              scope: GLOBAL
-              id: "OPENNEBULA_INSECURE"
-              secret: "$(if [ \"${ONEAPP_JENKINS_OPENNEBULA_INSECURE}\" = \"YES\" ]; then echo true; else echo false; fi)"
-              description: "Allow insecure connexion into the OpenNebula XML-RPC Endpoint API (skip TLS verification)"
-      - credentials:
-          - string:
-              scope: GLOBAL
-              id: "AWS_ACCESS_KEY_ID"
-              secret: "$(echo ${ONEAPP_JENKINS_AWS_ACCESS_KEY_ID} | xargs)"
-              description: "S3 Storage access key. Same as used in the MinIO instance"
-      - credentials:
-          - string:
-              scope: GLOBAL
-              id: "AWS_SECRET_ACCESS_KEY"
-              secret: "$(echo ${ONEAPP_JENKINS_AWS_SECRET_ACCESS_KEY} | xargs)"
-              description: "S3 Storage secret key. Same as used in the MinIO instance"
-EOF
-    chown jenkins:jenkins /var/lib/jenkins/casc_configs/credentials.yaml
-    chmod u=r,go= /var/lib/jenkins/casc_configs/credentials.yaml
 }
 
 wait_for_dpkg_lock_release()
