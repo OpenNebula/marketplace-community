@@ -80,7 +80,7 @@ opennebula_template:
     elasticity_policies: []
     scheduled_policies: []
   - name: master
-    parents":
+    parents:
     - vnf
     cardinality: 1
     min_vms: 1
@@ -115,7 +115,7 @@ opennebula_template:
     elasticity_policies: []
     scheduled_policies: []
   - name: worker
-    parents":
+    parents:
     - vnf
     cardinality: 1
     vm_template_contents: |
@@ -145,7 +145,7 @@ opennebula_template:
     elasticity_policies: []
     scheduled_policies: []
   - name: minio
-    parents":
+    parents:
     - vnf
     cardinality: 1
     vm_template_contents: |
@@ -163,10 +163,10 @@ opennebula_template:
     elasticity_policies: []
     scheduled_policies: []
   - name: lithops
-    parents":
+    parents:
     - vnf
-      master
-      minio
+    - master
+    - minio
     cardinality: 1
     vm_template_contents: |
       NIC = [

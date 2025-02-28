@@ -41,10 +41,9 @@ opennebula_template:
     oneapp_onebe_kubecfg_path: '$ONEAPP_ONEBE_KUBECFG_PATH'
     oneapp_onebe_runtime_cpu: '$ONEAPP_ONEBE_RUNTIME_CPU'
     oneapp_onebe_runtime_memory: '$ONEAPP_ONEBE_RUNTIME_MEMORY'
-    report_ready: 'YES'
+    token: 'YES'
     start_script_base64: "bWtkaXIgL21udC9jb250ZXh0Cm1vdW50IC9kZXYvY2Ryb20gL21udC9jb250ZXh0"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
-    token: 'YES'
   cpu: '1'
   graphics:
     listen: 0.0.0.0

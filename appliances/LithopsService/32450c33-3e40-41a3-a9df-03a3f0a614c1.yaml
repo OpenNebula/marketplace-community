@@ -32,7 +32,7 @@ opennebula_template:
     oneapp_minio_tls_enabled: "$ONEAPP_MINIO_TLS_ENABLED"
     oneapp_minio_tls_cert: "$ONEAPP_MINIO_TLS_CERT"
     oneapp_minio_tls_key: "$ONEAPP_MINIO_TLS_KEY"
-    report_ready: 'YES'
+    token: 'YES'
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
   cpu: '1'
   graphics:
