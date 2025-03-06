@@ -107,13 +107,30 @@ install_o5gc()
     fi
 }
 
+wait_for_dpkg_lock_release()
+{
+  local lock_file="/var/lib/dpkg/lock-frontend"
+  local timeout=600
+  local interval=5
+
+  for ((i=0; i<timeout; i+=interval)); do
+    if ! lsof "${lock_file}" &>/dev/null; then
+      return 0
+    fi
+    msg info "Could not get lock ${lock_file} due to unattended-upgrades. Retrying in ${interval} seconds..."
+    sleep "${interval}"
+  done
+
+  msg error "Error: 10m timeout without ${lock_file} being released by unattended-upgrades"
+  exit 1
+}
 
 postinstall_cleanup()
 {
     msg info "Delete cache and stored packages"
+    wait_for_dpkg_lock_release
     apt-get autoclean
     apt-get autoremove
     rm -rf /var/lib/apt/lists/*
     rm -rf /root/phoenix.deb
 }
-

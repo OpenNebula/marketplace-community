@@ -430,8 +430,9 @@ wait_for_dpkg_lock_release()
 
 postinstall_cleanup()
 {
-  msg info "Delete cache and stored packages"
-  apt-get autoclean
-  apt-get autoremove
-  rm -rf /var/lib/apt/lists/*
+    msg info "Delete cache and stored packages"
+    wait_for_dpkg_lock_release
+    apt-get autoclean
+    apt-get autoremove
+    rm -rf /var/lib/apt/lists/*
 }

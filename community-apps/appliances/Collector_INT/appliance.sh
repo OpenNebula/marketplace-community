@@ -85,6 +85,7 @@ install_kernel()
 
     # Install specific kernel
     msg info "Installing kernel ${DESIRED_KERNEL}..."
+    wait_for_dpkg_lock_release
     apt-get update
     apt-get install -y linux-image-${DESIRED_KERNEL} linux-headers-${DESIRED_KERNEL}
 
@@ -133,6 +134,7 @@ install_deps()
     apt-get update
 
     msg info "Install required packages for bcc, influxDB and Grafana"
+    wait_for_dpkg_lock_release
     if ! apt-get install -y ${DEP_PKGS} ; then
         msg error "Package(s) installation failed"
         exit 1
@@ -189,9 +191,28 @@ install_grafana()
     systemctl enable grafana-server.service
 }
 
+wait_for_dpkg_lock_release()
+{
+  local lock_file="/var/lib/dpkg/lock-frontend"
+  local timeout=600
+  local interval=5
+
+  for ((i=0; i<timeout; i+=interval)); do
+    if ! lsof "${lock_file}" &>/dev/null; then
+      return 0
+    fi
+    msg info "Could not get lock ${lock_file} due to unattended-upgrades. Retrying in ${interval} seconds..."
+    sleep "${interval}"
+  done
+
+  msg error "Error: 10m timeout without ${lock_file} being released by unattended-upgrades"
+  exit 1
+}
+
 postinstall_cleanup()
 {
     msg info "Delete cache and stored packages"
+    wait_for_dpkg_lock_release
     apt-get autoclean
     apt-get autoremove
     rm -rf /var/lib/apt/lists/*
