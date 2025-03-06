@@ -94,9 +94,13 @@ build {
   ###  BEGIN BLOCK:      UERANSIM-specific steps to configure the appliance   #####################
   #################################################################################################
 
-  # Import the appliance.sh script to the appliance VM.
+  # Import the appliance.sh along with some helper files to the appliance VM.
   provisioner "file" {
-    source      = "appliances/UERANSIM/appliance.sh"
+    sources     = [
+      "appliances/UERANSIM/appliance.sh",
+      "appliances/UERANSIM/gnb-mappings.json",
+      "appliances/UERANSIM/ue-mappings.json",
+      ]
     destination = "/etc/one-appliance/service.d/"
   }
 

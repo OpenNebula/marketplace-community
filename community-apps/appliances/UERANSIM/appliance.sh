@@ -161,7 +161,7 @@ EOF
 
 config_gnb()
 {
-    GNB_ORIGINAL_CONFIG_FILE=/etc/ueransim/open5gs-gnb-bak.yaml
+    GNB_ORIGINAL_CONFIG_FILE=/etc/ueransim/open5gs-gnb-original.yaml
     GNB_CONFIG_FILE=/etc/ueransim/open5gs-gnb.yaml
     GNB_MAPPINGS_FILE=/etc/one-appliance/service.d/gnb-mappings.yaml
 
@@ -173,7 +173,7 @@ config_gnb()
 
 config_ue()
 {
-    UE_ORIGINAL_CONFIG_FILE=/etc/ueransim/open5gs-ue-bak.yaml
+    UE_ORIGINAL_CONFIG_FILE=/etc/ueransim/open5gs-ue-original.yaml
     UE_CONFIG_FILE=/etc/ueransim/open5gs-ue.yaml
     UE_MAPPINGS_FILE=/etc/one-appliance/service.d/ue-mappings.yaml
 
