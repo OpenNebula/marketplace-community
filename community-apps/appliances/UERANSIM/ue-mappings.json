@@ -34,7 +34,7 @@
   "type": "string"
 }
 {
-  "path": ".sessions[0].silce.sst",
+  "path": ".sessions[0].slice.sst",
   "env_var": "ONEAPP_UERANSIM_UE_SESSION_SST",
   "type": "int"
 }
@@ -44,22 +44,22 @@
   "type": "string"
 }
 {
-  "path": ".configured-nssai.sst",
+  "path": ".configured-nssai[0].sst",
   "env_var": "ONEAPP_UERANSIM_UE_SESSION_SST",
   "type": "int"
 }
 {
-  "path": ".configured-nssai.sd",
+  "path": ".configured-nssai[0].sd",
   "env_var": "ONEAPP_UERANSIM_UE_SESSION_SD",
   "type": "string"
 }
 {
-  "path": ".default-nssai.sst",
+  "path": ".default-nssai[0].sst",
   "env_var": "ONEAPP_UERANSIM_UE_SESSION_SST",
   "type": "int"
 }
 {
-  "path": ".default-nssai.sd",
+  "path": ".default-nssai[0].sd",
   "env_var": "ONEAPP_UERANSIM_UE_SESSION_SD",
   "type": "string"
 }
