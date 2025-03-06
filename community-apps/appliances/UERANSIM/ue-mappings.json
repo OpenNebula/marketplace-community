@@ -1,0 +1,65 @@
+{
+  "path": ".supi",
+  "env_var": "SUPI",
+  "type": "string"
+}
+{
+  "path": ".mcc",
+  "env_var": "ONEAPP_UERANSIM_UE_MCC",
+  "type": "string"
+}
+{
+  "path": ".mnc",
+  "env_var": "ONEAPP_UERANSIM_UE_MMC",
+  "type": "string"
+}
+{
+  "path": ".key",
+  "env_var": "ONEAPP_UERANSIM_UE_KEY",
+  "type": "string"
+}
+{
+  "path": ".op",
+  "env_var": "ONEAPP_UERANSIM_UE_OPC",
+  "type": "string"
+}
+{
+  "path": "gnbSearchList",
+  "env_var": "GNBSEARCHLIST",
+  "type": "list"
+}
+{
+  "path": ".sessions[0].apn",
+  "env_var": "ONEAPP_UERANSIM_UE_SESSION_APN",
+  "type": "string"
+}
+{
+  "path": ".sessions[0].silce.sst",
+  "env_var": "ONEAPP_UERANSIM_UE_SESSION_SST",
+  "type": "int"
+}
+{
+  "path": ".sessions[0].slice.sd",
+  "env_var": "ONEAPP_UERANSIM_UE_SESSION_SD",
+  "type": "string"
+}
+{
+  "path": ".configured-nssai.sst",
+  "env_var": "ONEAPP_UERANSIM_UE_SESSION_SST",
+  "type": "int"
+}
+{
+  "path": ".configured-nssai.sd",
+  "env_var": "ONEAPP_UERANSIM_UE_SESSION_SD",
+  "type": "string"
+}
+{
+  "path": ".default-nssai.sst",
+  "env_var": "ONEAPP_UERANSIM_UE_SESSION_SST",
+  "type": "int"
+}
+{
+  "path": ".default-nssai.sd",
+  "env_var": "ONEAPP_UERANSIM_UE_SESSION_SD",
+  "type": "string"
+}

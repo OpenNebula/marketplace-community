@@ -1,0 +1,41 @@
+
+{
+  "path": ".mcc",
+  "env_var": "ONEAPP_UERANSIM_GNB_MCC",
+  "type": "string"
+}
+{
+  "path": ".mnc",
+  "env_var": "ONEAPP_UERANSIM_GNB_MNC",
+  "type": "string"
+}
+{
+  "path": ".tac",
+  "env_var": "ONEAPP_UERANSIM_GNB_TAC",
+  "type": "int"
+}
+{
+  "path": ".linkIp",
+  "env_var": "LOCAL_IP",
+  "type": "string"
+}
+{
+  "path": ".ngapIp",
+  "env_var": "LOCAL_IP",
+  "type": "string"
+}
+{
+  "path": ".gtpIp",
+  "env_var": "LOCAL_IP",
+  "type": "string"
+}
+{
+  "path": ".amfConfigs[0].address",
+  "env_var": "ONEAPP_UERANSIM_GNB_AMF_IP",
+  "type": "string"
+}
+{
+  "path": ".amfConfigs[0].sst",
+  "env_var": "ONEAPP_UERANSIM_GNB_SLICES_SST",
+  "type": "int"
+}

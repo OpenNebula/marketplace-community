@@ -90,7 +90,7 @@ opennebula_template:
   logo: images/logos/ubuntu.png
   user_inputs:
     oneapp_ueransim_run_gnb:         "O|boolean|ONEAPP_UERANSIM_RUN_GNB: Start and enable systemd service `ueransim-gnb.service` at boot. ||NO"
-    oneapp_ueransim_gnb_amf_ip:      "O|text|ONEAPP_UERANSIM_GNB_AMF_IP: In gNB simulation, IPv4 address of the Access and Mobility Management Function (AMF) in the 5G core network. ||"
+    oneapp_ueransim_gnb_amf_ip:      "O|text|ONEAPP_UERANSIM_GNB_AMF_IP: In gNB simulation, IPv4 address of the Access and Mobility Management Function (AMF) in the 5G core network. ||127.0.0.5"
     oneapp_ueransim_gnb_tac:         "O|number|ONEAPP_UERANSIM_GNB_TAC: In gNB simulation, Tracking Area Code (TAC) of the PLMN. ||1"
     oneapp_ueransim_gnb_mcc:         "O|text|ONEAPP_UERANSIM_GNB_MCC: In gNB simulation, Mobile Country Code (MCC) used in the Public Land Mobile Network (PLMN). 3 digits inside quotes. ||999"
     oneapp_ueransim_gnb_mnc:         "O|text|ONEAPP_UERANSIM_GNB_MNC: In gNB simulation, Mobile Network Code (MNC) used in the Public Land Mobile Network (PLMN). 2 or 3 digits inside quotes. ||70"

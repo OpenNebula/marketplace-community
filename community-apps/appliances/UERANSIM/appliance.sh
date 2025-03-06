@@ -6,22 +6,25 @@ set -o errexit -o pipefail
 # Contextualization and global variables
 # ------------------------------------------------------------------------------
 
-GNB_MCC="${GNB_MCC:-999}"
-GNB_MNC="${GNB_MNC:-70}"
-GNB_SLICES_SD="${GNB_SLICES_SD:-000001}"
-GNB_SLICES_SST="${GNB_SLICES_SST:-1}"
-GNB_TAC="${GNB_TAC:-1}"
-UE_CONFIGURED_NSSAI_SST="${UE_CONFIGURED_NSSAI_SST:-1}"
-UE_DEFAULT_NSSAI_SD="${UE_DEFAULT_NSSAI_SD:-000001}"
-UE_DEFAULT_NSSAI_SST="${UE_DEFAULT_NSSAI_SST:-1}"
-UE_GNBSEARCHLIST="${UE_GNBSEARCHLIST:-127.0.0.1}"
-UE_KEY="${UE_KEY:-465B5CE8B199B49FAA5F0A2EE238A6BC}"
-UE_MCC="${UE_MCC:-999}"
-UE_MNC="${UE_MNC:-70}"
-UE_OP="${UE_OP:-E8ED289DEBA952E4283B54E88E6183CA}"
-UE_SESSION_APN="${UE_SESSION_APN:-internet}"
-UE_SESSION_SST="${UE_SESSION_SST:-1}"
-UE_SUPI="${UE_SUPI:-imsi-999700000000001}"
+### Let's see if OpenNebula's template defaults are enough!
+# ONEAPP_UERANSIM_RUN_GNB="${ONEAPP_UERANSIM_RUN_GNB:-NO}"
+# ONEAPP_UERANSIM_GNB_AMF_IP="${ONEAPP_UERANSIM_GNB_AMF_IP:-127.0.0.5}"
+# ONEAPP_UERANSIM_GNB_TAC="${ONEAPP_UERANSIM_GNB_TAC:-1}"
+# ONEAPP_UERANSIM_GNB_MCC="${ONEAPP_UERANSIM_GNB_MCC:-999}"
+# ONEAPP_UERANSIM_GNB_MNC="${ONEAPP_UERANSIM_GNB_MNC:-70}"
+# ONEAPP_UERANSIM_GNB_SLICES_SST="${ONEAPP_UERANSIM_GNB_SLICES_SST:-1}"
+# ONEAPP_UERANSIM_GNB_SLICES_SD="${ONEAPP_UERANSIM_GNB_SLICES_SD:-000001}"
+
+# ONEAPP_UERANSIM_RUN_UE="${ONEAPP_UERANSIM_RUN_UE:-NO}"
+# ONEAPP_UERANSIM_UE_GNBSEARCHLIST="${ONEAPP_UERANSIM_UE_GNBSEARCHLIST:-localhost}"
+# ONEAPP_UERANSIM_UE_MCC="${ONEAPP_UERANSIM_UE_MCC:-999}"
+# ONEAPP_UERANSIM_UE_MNC="${ONEAPP_UERANSIM_UE_MNC:-70}"
+# ONEAPP_UERANSIM_UE_MSIN="${ONEAPP_UERANSIM_UE_MSIN:-imsi-0000000001}"
+# ONEAPP_UERANSIM_UE_KEY="${ONEAPP_UERANSIM_UE_KEY:-465B5CE8B199B49FAA5F0A2EE238A6BC}"
+# ONEAPP_UERANSIM_UE_OPC="${ONEAPP_UERANSIM_UE_OPC:-E8ED289DEBA952E4283B54E88E6183CA}"
+# ONEAPP_UERANSIM_UE_SESSION_APN="${ONEAPP_UERANSIM_UE_SESSION_APN:-internet}"
+# ONEAPP_UERANSIM_UE_SESSION_SST="${ONEAPP_UERANSIM_UE_SESSION_SST:-1}"
+# ONEAPP_UERANSIM_UE_SESSION_SD="${ONEAPP_UERANSIM_UE_SESSION_SD:-000001}"
 
 DEP_PKGS="libsctp-dev lksctp-tools iproute2 wget moreutils"
 
@@ -37,16 +40,10 @@ service_install()
     export DEBIAN_FRONTEND=noninteractive
     systemctl stop unattended-upgrades
 
-    # packages
     install_pkg_deps
 
-    # yaml query
-    install_yq
-
-    # services
     define_services
 
-    # cleanup
     postinstall_cleanup
 
     msg info "INSTALLATION FINISHED"
@@ -54,66 +51,26 @@ service_install()
     return 0
 }
 
-
-# ------------------------------------------------------------------------------
-# Configuration Stage => Senerates gNodeB and UE config files
-# ------------------------------------------------------------------------------
 service_configure()
 {
     export DEBIAN_FRONTEND=noninteractive
 
-    # Environmental values and the yaml paths to change
-    declare -A gnb_variables=(
-        [".mcc"]="GNB_MCC"
-        [".mnc"]="GNB_MNC"
-        [".tac"]="GNB_TAC"
-        [".linkIp"]="GNB_LINKIP"
-        [".ngapIp"]="GNB_NGAPIP"
-        [".gtpIp"]="GNB_GTPIP"
-        [".amfConfigs[0].address"]="GNB_AMF_ADDRESS"
-        [".slices[0].sst"]="GNB_SLICES_SST"
-        [".slices[0].sd"]="GNB_SLICES_SD"
-    )
-    declare -A ue_variables=(
-        [".supi"]="UE_SUPI"
-        [".mcc"]="UE_MCC"
-        [".mnc"]="UE_MNC"
-        [".key"]="UE_KEY"
-        [".op"]="UE_OP"
-        [".gnbSearchList[0]"]="UE_GNBSEARCHLIST"
-        [".sessions[0].apn"]="UE_SESSION_APN"
-        [".sessions[0].slice.sst"]="UE_SESSION_SST"
-        [".sessions[0].slice.sd"]="UE_SESSION_SD"
-        [".configured-nssai[0].sst"]="UE_CONFIGURED_NSSAI_SST"
-        [".configured-nssai[0].sd"]="UE_CONFIGURED_NSSAI_SD"
-        [".default-nssai[0].sst"]="UE_DEFAULT_NSSAI_SST"
-        [".default-nssai[0].sd"]="UE_DEFAULT_NSSAI_SD"
-    )
-
-    ### gNB local IP and UE gnbSearchList will be by default the address from eth0
-    GNB_LINKIP=$(hostname -I | awk '{print $1}')
-    GNB_NGAPIP=$(hostname -I | awk '{print $1}')
-    GNB_GTPIP=$(hostname -I | awk '{print $1}')
-    if [ -z "${UE_GNBSEARCHLIST}" ]; then
-      UE_GNBSEARCHLIST=$(hostname -I | awk '{print $1}')
-    fi
+    LOCAL_IP=$(hostname -I | awk '{print $1}')
 
     config_gnb
 
     config_ue
 
-    amf_route
-
     msg info "CONFIGURATION FINISHED"
     return 0
 }
 
-# Will start gNB and UE
+
 service_bootstrap()
 {
     export DEBIAN_FRONTEND=noninteractive
 
-    if [ -n "${RUN_GNB}" ] && [ "${RUN_GNB}" = "YES" ]; then
+    if [ -n "${ONEAPP_UERANSIM_RUN_GNB}" ] && [ "${ONEAPP_UERANSIM_RUN_GNB}" = "YES" ]; then
         if ! systemctl enable --now ueransim-gnb.service ; then
             msg error "Error starting ueransimb-gnb.service"
             exit 1
@@ -124,7 +81,7 @@ service_bootstrap()
 
     sleep 5
 
-    if [ -n "${RUN_UE}" ] && [ "${RUN_UE}" = "YES" ]; then
+    if [ -n "${ONEAPP_UERANSIM_RUN_UE}" ] && [ "${ONEAPP_UERANSIM_RUN_UE}" = "YES" ]; then
         if ! systemctl enable --now ueransim-ue.service ; then
             msg error "Error starting ueransimb-ue.service"
             exit 1
@@ -155,12 +112,9 @@ install_pkg_deps()
         msg error "Package(s) installation failed"
         exit 1
     fi
-}
 
-install_yq()
-{
     msg info "Download yq binary"
-    if ! wget https://github.com/mikefarah/yq/releases/download/v4.44.2/yq_linux_amd64 -O /usr/bin/yq ; then
+    if ! wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq ; then
         msg error "yq binary download failed"
         exit 1
     fi
@@ -205,59 +159,86 @@ EOF
 }
 
 
-
 config_gnb()
 {
-    gnb_config_bak=/etc/ueransim/open5gs-gnb-bak.yaml
-    gnb_config=/etc/ueransim/open5gs-gnb.yaml
+    GNB_ORIGINAL_CONFIG_FILE=/etc/ueransim/open5gs-gnb-bak.yaml
+    GNB_CONFIG_FILE=/etc/ueransim/open5gs-gnb.yaml
+    GNB_MAPPINGS_FILE=/etc/one-appliance/service.d/gnb-mappings.yaml
 
-    msg info "Modify variables from file ${gnb_config}"
-    cp ${gnb_config_bak} ${gnb_config}
+    msg info "GNB_CONFIGURATION: Create file ${GNB_CONFIG_FILE} and replace its variables"
+    cp ${GNB_ORIGINAL_CONFIG_FILE} ${GNB_CONFIG_FILE}
 
-    for path in "${!gnb_variables[@]}"; do
-        yq_replacements_chain ${path} ${gnb_variables[${path}]} ${gnb_config}
-    done
+    yq_replacements "${GNB_CONFIG_FILE}" "${GNB_MAPPINGS_FILE}"
 }
 
 config_ue()
 {
-    ue_config_bak=/etc/ueransim/open5gs-ue-bak.yaml
-    ue_config=/etc/ueransim/open5gs-ue.yaml
+    UE_ORIGINAL_CONFIG_FILE=/etc/ueransim/open5gs-ue-bak.yaml
+    UE_CONFIG_FILE=/etc/ueransim/open5gs-ue.yaml
+    UE_MAPPINGS_FILE=/etc/one-appliance/service.d/ue-mappings.yaml
 
-    msg info "Modify variables from file ${ue_config}"
-    cp ${ue_config_bak} ${ue_config}
+    msg info "UE_CONFIGURATION: Create file ${UE_CONFIG_FILE} and replace its variables"
+    cp ${UE_ORIGINAL_CONFIG_FILE} ${UE_CONFIG_FILE}
 
-    for path in "${!ue_variables[@]}"; do
-        yq_replacements_chain ${path} ${ue_variables[${path}]} ${ue_config}
+    SUPI="${ONEAPP_UERANSIM_UE_MCC}${ONEAPP_UERANSIM_UE_MNC}${ONEAPP_UERANSIM_UE_MSIN}"
+    if [ ${#SUPI} -gt 15 ]; then
+        msg warning "SUPI (MCC+MNC+MSIN) exceeds 15 characters (${#SUPI}). Truncating..."
+        SUPI="${SUPI:0:15}"
+    fi
+
+    if [ "$ONEAPP_UERANSIM_UE_GNBSEARCHLIST" == "localhost" ]; then
+        GNBSEARCHLIST="$LOCAL_IP"
+    else
+        GNBSEARCHLIST="$ONEAPP_UERANSIM_UE_GNBSEARCHLIST"
+    fi
+
+    yq_replacements "${UE_CONFIG_FILE}" "${UE_MAPPINGS_FILE}"
+}
+
+
+yq_replacements()
+{
+    local config_file="${1}"
+    local mappings_file="${2}"
+
+    for dict in $(jq -c '.' "${mappings_file}"); do
+        path=$(echo "${dict}" | jq -r '.path')
+        env_var=$(echo "${dict}" | jq -r '.env_var')
+        type=$(echo "${dict}" | jq -r '.type')
+
+        value="${!env_var}"
+        if [ -z "$value" ]; then
+            msg info "    Variable ${env_var} is not defined. Skipping..."
+            continue
+        fi
+
+        case "${type}" in
+            int|bool)
+                msg info "    Change variable ${env_var} with value ${value} (${type})"
+                yq -i "${path} = ${value}" "${config_file}"
+                ;;
+            string)
+                msg info "    Change variable ${env_var} with value '${value}' (${type})"
+                yq -i "${path} = \"${value}\"" "${config_file}"
+                ;;
+            list)
+                msg info "    Change variable ${env_var} (${type})"
+                yq -i "${path} = []" "${config_file}"
+
+                IFS=',' read -ra item_list <<< "${value}"
+                for index in "${!item_list[@]}"; do
+                    item="${item_list[${index}]}"
+                    msg info "        Append item [${index}]: ${item}"
+                    yq -i "${path[${index}]} = ${item}" "${config_file}"
+                done
+                ;;
+            *)
+                msg warning "    Variable ${env_var} has unknown type: (${type}). Skipping..."
+                ;;
+        esac
     done
 }
 
-yq_replacements_chain()
-{
-    local path="$1"
-    local value="$2"
-    local configfile="$3"
-
-    if [ -z "${!value}" ]; then
-        msg info "    Variable ${value} not defined"
-    else
-        cat ${configfile} | yq "${path} = \"${!value}\"" | sponge ${configfile}
-        msg info "    Variable ${value} succesfully modified"
-    fi
-}
-
-amf_route()
-{
-    if [ -n "${ONEKE_VNF}" ] && [ -n "${GNB_AMF_ADDRESS}" ]; then
-        oneke_subnet=$(echo ${GNB_AMF_ADDRESS} | cut -d '.' -f 1-3).0/24
-        line="ExecStartPre=/usr/sbin/ip route replace ${oneke_subnet} via ${ONEKE_VNF}"
-
-        msg info "Configure routing to the AMF from the gnb service file"
-        sed -i "/^ExecStart=/i ${line}" "/etc/systemd/system/ueransim-gnb.service"
-    else
-        msg info "Either the ONEKE_VNF=${ONEKE_VNF} or the GNB_AMF_ADDRESS=${GNB_AMF_ADDRESS} are not defined so no routing to the AMF has been configured in the gnb service file"
-    fi
-}
 
 wait_for_dpkg_lock_release()
 {
