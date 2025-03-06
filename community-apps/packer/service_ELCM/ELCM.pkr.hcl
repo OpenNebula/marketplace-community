@@ -94,6 +94,20 @@ build {
   }
 
   provisioner "shell" {
+    inline = [
+      "mkdir -p /var/lib/misc/logos"
+    ]
+  }
+
+  provisioner "file" {
+    sources     = [
+      "appliances/ELCM/header.png",
+      "appliances/ELCM/logo.png",
+      ]
+    destination = "/var/lib/misc/logos/"
+  }
+
+  provisioner "shell" {
     scripts = ["${var.input_dir}/82-configure-context.sh"]
   }
 
