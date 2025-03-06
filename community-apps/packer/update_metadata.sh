@@ -19,12 +19,6 @@ fi
 METADATA=${DIR_METADATA}/${APP}.yaml             # e.g. /opt/marketplace-community/marketplace/appliances/debian11.yaml
 
 
-if [ ! -f "${ORIGIN}" ]; then
-    echo "<ERROR>: A newly generated image was not found at ${ORIGIN}." >> ${LOGFILE}
-    exit 1
-fi
-
-
 echo "------------------New build--------------------------" >> ${LOGFILE}
 
 ### Ensure yq is installed
@@ -34,6 +28,11 @@ then
     install_yq
 else
     echo "<INFO>: command yq found." >> ${LOGFILE}
+fi
+
+if [ ! -f "${ORIGIN}" ]; then
+    echo "<ERROR>: A newly generated image was not found at ${ORIGIN}." >> ${LOGFILE}
+    exit 1
 fi
 
 ### Define second set of execution variables

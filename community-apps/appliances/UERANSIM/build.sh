@@ -46,6 +46,6 @@ cd - > /dev/null
 
 echo "Copy files into previously existing directories"
 rm -f "${FILES_PATH}/build/.placeholder"
-cp -r "${REPOSITORY_PATH}/build/*" "${FILES_PATH}/build"
+cp -r "${REPOSITORY_PATH}/build/" "${FILES_PATH}/build"
 rm -f "${FILES_PATH}/config/.placeholder"
-cp -r "${REPOSITORY_PATH}/config/*" "${FILES_PATH}/config"
+cp -r "${REPOSITORY_PATH}/config/" "${FILES_PATH}/config"
