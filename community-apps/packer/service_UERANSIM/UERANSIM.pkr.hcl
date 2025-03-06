@@ -1,5 +1,26 @@
 source "null" "null" { communicator = "none" }
 
+build {
+  sources = ["source.null.null"]
+
+  # Compile the latest UERANSIM binaries if not present, or their source code changed.t
+  provisioner "shell-local" {
+    inline = [
+      "appliances/UERANSIM/build.sh",
+    ]
+  }
+
+  # Generate temporal CONTEXT .iso file to be able to login into the source VM.
+  provisioner "shell-local" {
+    inline = [
+      "mkdir -p ${var.input_dir}/context",
+      "${var.input_dir}/gen_context > ${var.input_dir}/context/context.sh",
+      "mkisofs -o ${var.input_dir}/${var.appliance_name}-context.iso -V CONTEXT -J -R ${var.input_dir}/context",
+    ]
+  }
+}
+
+
 source "qemu" "UERANSIM" {
   cpus        = 2
   memory      = 2048
@@ -35,28 +56,6 @@ source "qemu" "UERANSIM" {
   shutdown_command = "poweroff"
   vm_name          = "${var.appliance_name}"
 }
-
-
-build {
-  sources = ["source.null.null"]
-
-  # Compile the latest UERANSIM binaries if not present, or their source code changed.t
-  provisioner "shell-local" {
-    inline = [
-      "appliances/UERANSIM/build.sh",
-    ]
-  }
-
-  # Generate temporal CONTEXT .iso file to be able to login into the source VM.
-  provisioner "shell-local" {
-    inline = [
-      "mkdir -p ${var.input_dir}/context",
-      "${var.input_dir}/gen_context > ${var.input_dir}/context/context.sh",
-      "mkisofs -o ${var.input_dir}/${var.appliance_name}-context.iso -V CONTEXT -J -R ${var.input_dir}/context",
-    ]
-  }
-}
-
 
 build {
   sources = ["source.qemu.UERANSIM"]

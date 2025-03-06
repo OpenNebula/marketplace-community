@@ -1,6 +1,21 @@
 # null source, equivalent as applying configuration into localhost.
 source "null" "null" { communicator = "none" }
 
+# This SETUP build step targets localhost
+build {
+  sources = ["source.null.null"]
+
+  # Generate temporal CONTEXT .iso file to be able to login into the source VM.
+  provisioner "shell-local" {
+    inline = [
+      "mkdir -p ${var.input_dir}/context",
+      "${var.input_dir}/gen_context > ${var.input_dir}/context/context.sh",
+      "mkisofs -o ${var.input_dir}/${var.appliance_name}-context.iso -V CONTEXT -J -R ${var.input_dir}/context",
+    ]
+  }
+}
+
+
 # QEMU sets up a temporal VM from a base .qcow2/.raw image, with the specified resources. 
 source "qemu" "example" {
   cpus        = 2 
@@ -38,21 +53,7 @@ source "qemu" "example" {
   vm_name          = "${var.appliance_name}"
 }
 
-# SETUP configuration targets localhost
-build {
-  sources = ["source.null.null"]
-
-  # Generate temporal CONTEXT .iso file to be able to login into the source VM.
-  provisioner "shell-local" {
-    inline = [
-      "mkdir -p ${var.input_dir}/context",
-      "${var.input_dir}/gen_context > ${var.input_dir}/context/context.sh",
-      "mkisofs -o ${var.input_dir}/${var.appliance_name}-context.iso -V CONTEXT -J -R ${var.input_dir}/context",
-    ]
-  }
-}
-
-# INSTALL configuration targets the temporal QEMU VM.
+# This INSTALL build step targets the temporal QEMU VM.
 # Essentially, a bunch of scripts are pulled from ./appliances and placed inside the Guest OS
 # There are shared libraries for ruby and bash. bash is used in this example.
 build {
