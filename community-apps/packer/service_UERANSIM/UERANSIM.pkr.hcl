@@ -90,6 +90,7 @@ build {
     destination = "/etc/one-appliance/service"
   }
 
+
   #################################################################################################
   ###  BEGIN BLOCK:      UERANSIM-specific steps to configure the appliance   #####################
   #################################################################################################
@@ -118,7 +119,7 @@ build {
 
   # Import UERANSIM sample config files to the appliance VM.
   provisioner "file" {
-    source      = "appliances/config/UERANSIM/config"
+    source      = "appliances/UERANSIM/UERANSIM/config"
     destination = "/tmp/.UERANSIM/config"
   }
   # Move the sample config files to their right path.
@@ -135,6 +136,7 @@ build {
   #################################################################################################
   ###  END BLOCK:      UERANSIM-specific steps to configure the appliance   #######################
   #################################################################################################
+
 
   provisioner "shell" {
     scripts = ["${var.input_dir}/82-configure-context.sh"]
