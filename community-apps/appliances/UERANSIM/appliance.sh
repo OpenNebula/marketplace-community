@@ -227,7 +227,7 @@ yq_replacements()
                 for index in "${!item_list[@]}"; do
                     item="${item_list[${index}]}"
                     msg info "        Append item [${index}]: ${item}"
-                    yq -i "${path}[${index}] = \"${item}"\"" "${config_file}"
+                    yq -i "${path}[${index}] = \"${item}\"" "${config_file}"
                 done
                 ;;
             *)
