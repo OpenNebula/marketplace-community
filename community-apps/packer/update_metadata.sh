@@ -11,7 +11,7 @@ fi
 ORIGIN=${3}                                     # e.g. export/debian11
 DESTINATION=${DIR_APPLIANCES}/${APP}.qcow2      # e.g. /var/lib/one/6gsandbox-marketplace/debian11.qcow2
 if [ -f "${DESTINATION}" ]; then
-    mkdir "${DIR_APPLIANCES}/backup/"
+    test -d "${DIR_APPLIANCES}/backup/" || mkdir -p "${DIR_APPLIANCES}/backup/"
     BACKUP=${DIR_APPLIANCES}/backup/${APP}-$(stat -c %y "${DESTINATION}" | awk '{print $1}' | sed 's/-//g').qcow2   # e.g. /var/lib/one/6gsandbox-marketplace/backup/debian11-20240723.qcow2
 else
     BACKUP=None
@@ -85,6 +85,7 @@ IMAGE_CHK_SHA256="$(sha256sum "${DESTINATION}" | cut -d' ' -f1)"
 
 
 ### Write final metadata file
+test -d "${DIR_METADATA}/" || mkdir -p "${DIR_METADATA}/"
 cat "metadata/${APP}.yaml" | yq eval "
   .version = \"${BUILD_VERSION}\" |
   .creation_time = \"${IMAGE_TIMESTAMP}\" |
