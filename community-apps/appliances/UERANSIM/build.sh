@@ -3,32 +3,37 @@
 set -o errexit -o pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-BUILD_PACKAGES="make gcc g++ cmake"
+REPO_URL="https://github.com/aligungr/UERANSIM"
+REQUIRED_PACKAGES=("make" "gcc" "g++" "cmake" "curl" "libsctp-dev" "lksctp-tools" "iproute2")
 BUILD_PATH="appliances/UERANSIM/UERANSIM"
 
-if [ ! -d "${BUILD_PATH}" ]; then
-    git clone https://github.com/aligungr/UERANSIM ${BUILD_PATH}
-fi
+cleanup(){
+  echo ""
+  echo "ERROR: Something unexpected happened during the binary build script."
+  exit 1
+}
+trap cleanup ERR
 
-if ! ls "${BUILD_PATH}"/build/nr-* &> /dev/null; then
-    echo "UERANSIM binaries could not be found. Proceeding to make the necessary steps to build them..."
 
-    echo "Install required packages"
-    apt-get update
-    if ! apt-get install -y ${BUILD_PACKAGES} curl libsctp-dev lksctp-tools iproute2; then
-        echo "ERROR: Package(s) installation failed"
-        exit 1
-    fi
-    
-    echo "Build UERANSIM"
-    cd ${BUILD_PATH}
-    if ! make -j ; then
-       echo "ERROR: Error building UERANSIM binaries"
-       exit 1
-    fi
-
-    chmod +x build/nr-*
-
+echo "Clone or update the UERANSIM repository"
+if [ ! -d "${BUILD_PATH}/.git" ]; then
+    echo "Cloning UERANSIM at ${BUILD_PATH}..."
+    git clone "${REPO_URL}" "${BUILD_PATH}"
 else
-    echo "UERANSIM binaries found. Proceeding..."
+    echo "Pulling latest changes from origin to local..."
+    cd "${BUILD_PATH}"
+    git reset --hard HEAD
+    git pull --rebase
+    cd - > /dev/null
 fi
+
+echo "Install or update the required .deb packages"
+apt-get update
+for pkg in "${REQUIRED_PACKAGES[@]}"; do
+    apt-get install -y "${pkg}"
+done
+
+echo "Build UERANSIM binaries"
+cd ${BUILD_PATH}
+make -j
+chmod +x build/nr-*

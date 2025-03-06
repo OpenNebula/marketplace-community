@@ -1,21 +1,7 @@
+# null source, equivalent as applying configuration into localhost.
 source "null" "null" { communicator = "none" }
 
-# Prior to setting up the appliance or distro, the context packages need to be generated first
-# These will then be installed as part of the setup process
-build {
-  sources = ["source.null.null"]
-
-  provisioner "shell-local" {
-    inline = [
-      "mkdir -p ${var.input_dir}/context",
-      "${var.input_dir}/gen_context > ${var.input_dir}/context/context.sh",
-      "mkisofs -o ${var.input_dir}/${var.appliance_name}-context.iso -V CONTEXT -J -R ${var.input_dir}/context",
-    ]
-  }
-}
-
-# A Virtual Machine is created with qemu in order to run the setup from the ISO on the CD-ROM
-# Here are the details about the VM virtual hardware
+# QEMU sets up a temporal VM from a base .qcow2/.raw image, with the specified resources. 
 source "qemu" "example" {
   cpus        = 2 
   memory      = 2048
@@ -52,21 +38,32 @@ source "qemu" "example" {
   vm_name          = "${var.appliance_name}"
 }
 
-# Once the VM launches the following logic will be executed inside it to customize what happens inside
+# SETUP configuration targets localhost
+build {
+  sources = ["source.null.null"]
+
+  # Generate temporal CONTEXT .iso file to be able to login into the source VM.
+  provisioner "shell-local" {
+    inline = [
+      "mkdir -p ${var.input_dir}/context",
+      "${var.input_dir}/gen_context > ${var.input_dir}/context/context.sh",
+      "mkisofs -o ${var.input_dir}/${var.appliance_name}-context.iso -V CONTEXT -J -R ${var.input_dir}/context",
+    ]
+  }
+}
+
+# INSTALL configuration targets the temporal QEMU VM.
 # Essentially, a bunch of scripts are pulled from ./appliances and placed inside the Guest OS
-# There are shared libraries for ruby and bash. Bash is used in this example
+# There are shared libraries for ruby and bash. bash is used in this example.
 build {
   sources = ["source.qemu.example"]
 
-  # revert insecure ssh options done by context start_script
+  # Revert the insecure ssh configuration aplied by the by the initial 'shell-local' in order to be able to log in to the VM
   provisioner "shell" {
     scripts = ["${var.input_dir}/81-configure-ssh.sh"]       # Set /etc/ssh/sshd_config with: PasswordAuthentication no, PermitRootLogin without-password, UseDNS no
   }
 
-  ##############################################
-  # BEGIN placing script logic inside Guest OS #
-  ##############################################
-
+  # Create directories for the new appliance files.
   provisioner "shell" {
     inline_shebang = "/bin/bash -e"
     inline = [
@@ -75,16 +72,16 @@ build {
     ]
   }
 
-  # Script Required by a further step
+  # Import network configuration scripts for OpenNebula CONTEXT.
   provisioner "file" {
     sources = [
-      "../one-apps/appliances/scripts/net-90-service-appliance",     # script to execute '/etc/one-appliance/service configure' and 'bootstrap'
-      "../one-apps/appliances/scripts/net-99-report-ready",          # when $REPORT_READY is YES, execute 'onegate vm update --data READY=YES' or a curl/wget equivalent
+      "../one-apps/appliances/scripts/net-90-service-appliance",     # Script to run '/etc/one-appliance/service configure' and 'bootstrap'.
+      "../one-apps/appliances/scripts/net-99-report-ready",          # When $REPORT_READY is YES, run 'onegate vm update --data READY=YES' or a curl/wget equivalent.
     ]
     destination = "/etc/one-appliance/"
   }
 
-  # Bash libraries for easier custom implementation in bash logic. Contains multiple functions
+  # Import bash libraries scripts with multiple custom functions for appliances.
   provisioner "file" {
     sources = [
       "../one-apps/appliances/lib/common.sh",
@@ -93,7 +90,7 @@ build {
     destination = "/etc/one-appliance/lib/"
   }
 
-  # Contains the appliance service management tool, used to invoke the previous functions
+  # Import the appliance service management script, which invokes the previous functions.
   # https://github.com/OpenNebula/one-apps/wiki/apps_intro#appliance-life-cycle  
   provisioner "file" {
     source      = "../one-apps/appliances/service.sh"
@@ -101,8 +98,9 @@ build {
   }
   
   #################################################################################################
-  ###### Pull your own custom files here !!!!!!!!!!!!!!!!!!!!!!!!!!!! #############################
+  ###  BEGIN BLOCK:      'example'-specific steps to configure the appliance   ####################
   #################################################################################################
+
   provisioner "file" {
     sources     = [                                   # locations of the file in the git repo. Flexible
       "appliances/.example/appliance.sh",                   # main configuration script.
@@ -112,20 +110,24 @@ build {
     destination = "/etc/one-appliance/service.d/"          # path in the Guest OS. Strict, always the same
   }
 
-  #######################################################################
-  # Setup appliance: Execute install step                               #
-  # https://github.com/OpenNebula/one-apps/wiki/apps_intro#installation #
-  #######################################################################
+
+  #################################################################################################
+  ###  END BLOCK:      'example'-specific steps to configure the appliance   ######################
+  #################################################################################################
+
+  # Move files net-*0 and net-99 to /etc/one-context and edit their permissions.
   provisioner "shell" {
-    scripts = ["${var.input_dir}/82-configure-context.sh"]   # move files net-*0 and net-99 to /etc/one-context and edit permissions
+    scripts = ["${var.input_dir}/82-configure-context.sh"]
   }
 
+  # Run the previously imported appliance service management script, which rus the 'install()' function of your appliance.sh file.
+  # https://github.com/OpenNebula/one-apps/wiki/apps_intro#installation
   provisioner "shell" {
     inline_shebang = "/bin/bash -e"
-    inline         = ["/etc/one-appliance/service install && sync"]   # execute '/etc/one-appliance/service install'
+    inline         = ["/etc/one-appliance/service install && sync"]
   }
 
-  # Remove machine ID from the VM and get it ready for continuous cloud use
+  # Remove the machine ID from the VM and prepare it for cloud-continuum usage.
   # https://github.com/OpenNebula/one-apps/wiki/tool_dev#appliance-build-process
   post-processor "shell-local" {
     execute_command = ["bash", "-c", "{{.Vars}} {{.Script}}"]
