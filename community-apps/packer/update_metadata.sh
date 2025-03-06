@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 ### Define first set of execution variables
 LOGFILE=packer/update_metadata.log
 APP=${1}                                        # e.g. debian
@@ -44,8 +43,8 @@ if [ ! -f "${ORIGIN}" ]; then
 fi
 
 ### Define second set of execution variables
-FULL_NAME="${APPLIANCE_PREFIX:+$APPLIANCE_PREFIX }$(cat "metadata/${APP}.yaml" | yq '.name')"            # 6G-Sandbox bastion
-SW_VERSION=$(cat "metadata/${APP}.yaml" | yq '.software_version')   # v0.4.0  
+FULL_NAME="${APPLIANCE_PREFIX:+$APPLIANCE_PREFIX }$(cat "metadata/${APP}.yaml" | yq '.name')"  # e.g. 6G-Sandbox bastion
+SW_VERSION=$(cat "metadata/${APP}.yaml" | yq '.software_version')                              # e.g. v0.4.0  
 
 
 {
@@ -97,7 +96,7 @@ IMAGE_CHK_SHA256="$(sha256sum "${DESTINATION}" | cut -d' ' -f1)"
 ### Write final metadata file
 test -d "${DIR_METADATA}/" || mkdir -p "${DIR_METADATA}/"
 cat "metadata/${APP}.yaml" | yq eval "
-  .name = \"${APPLIANCE_PREFIX}\˝ |
+  .name = \"${FULL_NAME}\" |
   .version = \"${BUILD_VERSION}\" |
   .creation_time = \"${IMAGE_TIMESTAMP}\" |
   .images[0].name = \"${IMAGE_NAME}\" |
