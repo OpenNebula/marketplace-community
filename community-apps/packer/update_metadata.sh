@@ -31,10 +31,8 @@ install_yq()
 
 if ! command -v yq &> /dev/null
 then
-    echo "<WARNING>: command yq was not found. Installing..." >> ${LOGFILE}
+    echo "<WARNING>: command yq was not found. Installing at /usr/bin/yq" >> ${LOGFILE}
     install_yq
-else
-    echo "<INFO>: command yq found." >> ${LOGFILE}
 fi
 
 if [ ! -f "${ORIGIN}" ]; then
