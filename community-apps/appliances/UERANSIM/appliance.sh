@@ -185,6 +185,7 @@ config_ue()
             msg warning "SUPI (MCC+MNC+MSIN) exceeds 15 characters (${#SUPI}). Truncating..."
             SUPI="${SUPI:0:15}"
         fi
+        SUPI="supi-${SUPI}"
     fi
 
     if [ -n "${ONEAPP_UERANSIM_UE_GNBSEARCHLIST}" ]; then
