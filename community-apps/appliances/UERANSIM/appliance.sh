@@ -184,10 +184,10 @@ config_ue()
         SUPI="${SUPI:0:15}"
     fi
 
-    if [ "$ONEAPP_UERANSIM_UE_GNBSEARCHLIST" == "localhost" ]; then
-        GNBSEARCHLIST="$LOCAL_IP"
+    if [ "${ONEAPP_UERANSIM_UE_GNBSEARCHLIST}" == "localhost" ]; then
+        GNBSEARCHLIST="${LOCAL_IP}"
     else
-        GNBSEARCHLIST="$ONEAPP_UERANSIM_UE_GNBSEARCHLIST"
+        GNBSEARCHLIST="${ONEAPP_UERANSIM_UE_GNBSEARCHLIST}"
     fi
 
     yq_replacements "${UE_CONFIG_FILE}" "${UE_MAPPINGS_FILE}"
@@ -227,7 +227,7 @@ yq_replacements()
                 for index in "${!item_list[@]}"; do
                     item="${item_list[${index}]}"
                     msg info "        Append item [${index}]: ${item}"
-                    yq -i "${path[${index}]} = ${item}" "${config_file}"
+                    yq -i "${path}[${index}] = ${item}" "${config_file}"
                 done
                 ;;
             *)

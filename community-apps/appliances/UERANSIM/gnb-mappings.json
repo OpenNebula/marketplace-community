@@ -35,7 +35,7 @@
   "type": "string"
 }
 {
-  "path": ".amfConfigs[0].sst",
+  "path": ".slices[0].sst",
   "env_var": "ONEAPP_UERANSIM_GNB_SLICES_SST",
   "type": "int"
 }

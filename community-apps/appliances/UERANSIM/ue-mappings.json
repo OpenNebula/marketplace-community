@@ -10,7 +10,7 @@
 }
 {
   "path": ".mnc",
-  "env_var": "ONEAPP_UERANSIM_UE_MMC",
+  "env_var": "ONEAPP_UERANSIM_UE_MNC",
   "type": "string"
 }
 {
@@ -24,7 +24,7 @@
   "type": "string"
 }
 {
-  "path": "gnbSearchList",
+  "path": ".gnbSearchList",
   "env_var": "GNBSEARCHLIST",
   "type": "list"
 }
