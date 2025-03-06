@@ -22,6 +22,14 @@ METADATA=${DIR_METADATA}/${APP}.yaml             # e.g. /opt/marketplace-communi
 echo "------------------New build--------------------------" >> ${LOGFILE}
 
 ### Ensure yq is installed
+install_yq()
+{
+    sudo apt-get update && sudo apt-get install -y wget
+    sudo wget https://github.com/mikefarah/yq/releases/download/v4.44.2/yq_linux_amd64 -O /usr/bin/yq
+    sudo chmod +x /usr/bin/yq
+    echo "Command yq installed successfully" >> ${LOGFILE}
+}
+
 if ! command -v yq &> /dev/null
 then
     echo "<WARNING>: command yq was not found. Installing..." >> ${LOGFILE}
@@ -104,10 +112,3 @@ sleep 10
 systemctl restart appmarket-simple.service
 
 
-install_yq()
-{
-    sudo apt-get update && sudo apt-get install -y wget
-    sudo wget https://github.com/mikefarah/yq/releases/download/v4.44.2/yq_linux_amd64 -O /usr/bin/yq
-    sudo chmod +x /usr/bin/yq
-    echo "Command yq installed successfully" >> ${LOGFILE}
-}
