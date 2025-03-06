@@ -105,7 +105,7 @@ build {
 
   # Import UERANSIM binaries and libraries to the appliance VM.
   provisioner "file" {
-    source      = "appliances/UERANSIM/UERANSIM/build"
+    source      = "appliances/UERANSIM/UERANSIM/build/"
     destination = "/tmp/.UERANSIM/build"
   }
   # Move the binaries and libraries to their right path.
@@ -118,7 +118,7 @@ build {
 
   # Import UERANSIM sample config files to the appliance VM.
   provisioner "file" {
-    source      = "appliances/UERANSIM/UERANSIM/config"
+    source      = "appliances/UERANSIM/UERANSIM/config/"
     destination = "/tmp/.UERANSIM/config"
   }
   # Move the sample config files to their right path.

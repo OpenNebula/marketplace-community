@@ -1,20 +1,21 @@
 #!/bin/bash
 
-### Verify yq is installed
-if ! command -v yq &> /dev/null
+LOGFILE=packer/update_metadata.log
+
+### Ensure yq is installed
+if ! command -v /usr/bin/yq &> /dev/null
 then
     install_yq
 fi
 
 ### Define execution variables
-LOGFILE=packer/update_metadata.log
 APP=${1}                                        # e.g. debian
 APP_VER=${2}                                    # e.g. 11
 if [ -n "${APP_VER}" ]; then
     APP=${APP}${APP_VER}                        # e.g. debian11 
 fi
-FULL_NAME=$(cat "metadata/${APP}.yaml" | yq '.name')            # 6G-Sandbox bastion
-SW_VERSION=$(cat "metadata/${APP}.yaml" | yq '.software_version')   # v0.4.0  
+FULL_NAME=$(cat "metadata/${APP}.yaml" | /usr/bin/yq '.name')            # 6G-Sandbox bastion
+SW_VERSION=$(cat "metadata/${APP}.yaml" | /usr/bin/yq '.software_version')   # v0.4.0  
 ORIGIN=${3}                                     # e.g. export/debian11
 DESTINATION=${DIR_APPLIANCES}/${APP}.qcow2      # e.g. /var/lib/one/6gsandbox-marketplace/debian11.qcow2
 if [ -f "${DESTINATION}" ]; then
@@ -75,7 +76,7 @@ IMAGE_CHK_SHA256="$(sha256sum "${DESTINATION}" | cut -d' ' -f1)"
 
 
 ### Write final metadata file
-cat "metadata/${APP}.yaml" | yq eval "
+cat "metadata/${APP}.yaml" | /usr/bin/yq eval "
   .version = \"${BUILD_VERSION}\" |
   .creation_time = \"${IMAGE_TIMESTAMP}\" |
   .images[0].name = \"${IMAGE_NAME}\" |
