@@ -18,16 +18,14 @@ else
 fi
 METADATA=${DIR_METADATA}/${APP}.yaml             # e.g. /opt/marketplace-community/marketplace/appliances/debian11.yaml
 
-{
-  echo "------------------New build--------------------------"
-  echo "APP=\"${APP}\""
-  echo "APP_VER=\"${APP_VER}\""
-  echo "ORIGIN=\"${ORIGIN}\""
-  echo "DESTINATION=\"${DESTINATION}\""
-  echo "BACKUP=\"${BACKUP}\""
-  echo "METADATA=\"${METADATA}\""
-} >> ${LOGFILE}
 
+if [ ! -f "${ORIGIN}" ]; then
+    echo "<ERROR>: A newly generated image was not found at ${ORIGIN}." >> ${LOGFILE}
+    exit 1
+fi
+
+
+echo "------------------New build--------------------------" >> ${LOGFILE}
 
 ### Ensure yq is installed
 if ! command -v yq &> /dev/null
@@ -39,14 +37,20 @@ else
 fi
 
 ### Define second set of execution variables
-LOGFILE=packer/update_metadata.log
-FULL_NAME=$(cat "metadata/${APP}.yaml" | yq '.name')            # 6G-Sandbox bastion
+FULL_NAME="${APPLIANCE_PREFIX:+$APPLIANCE_PREFIX }$(cat "metadata/${APP}.yaml" | yq '.name')"            # 6G-Sandbox bastion
 SW_VERSION=$(cat "metadata/${APP}.yaml" | yq '.software_version')   # v0.4.0  
+
+
 {
+  echo "APP=\"${APP}\""
+  echo "APP_VER=\"${APP_VER}\""
   echo "FULL_NAME=\"${FULL_NAME}\""
   echo "SW_VERSION=\"${SW_VERSION}\""
+  echo "ORIGIN=\"${ORIGIN}\""
+  echo "DESTINATION=\"${DESTINATION}\""
+  echo "BACKUP=\"${BACKUP}\""
+  echo "METADATA=\"${METADATA}\""
 } >> ${LOGFILE}
-
 
 
 
@@ -73,7 +77,6 @@ IMAGE_CHK_SHA256="$(sha256sum "${DESTINATION}" | cut -d' ' -f1)"
 
 ### Log build variables
 {
-  echo "DESTINATION=\"${DESTINATION}\""
   echo "BUILD_VERSION=\"${BUILD_VERSION}\""
   echo "IMAGE_NAME=\"${IMAGE_NAME}\""
   echo "IMAGE_URL=\"${IMAGE_URL}\""
@@ -87,6 +90,7 @@ IMAGE_CHK_SHA256="$(sha256sum "${DESTINATION}" | cut -d' ' -f1)"
 ### Write final metadata file
 test -d "${DIR_METADATA}/" || mkdir -p "${DIR_METADATA}/"
 cat "metadata/${APP}.yaml" | yq eval "
+  .name = \"${APPLIANCE_PREFIX}\˝ |
   .version = \"${BUILD_VERSION}\" |
   .creation_time = \"${IMAGE_TIMESTAMP}\" |
   .images[0].name = \"${IMAGE_NAME}\" |
