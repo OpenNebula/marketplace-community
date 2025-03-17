@@ -39,3 +39,8 @@
   "env_var": "ONEAPP_UERANSIM_GNB_SLICES_SST",
   "type": "int"
 }
+{
+  "path": ".slices[0].sd",
+  "env_var": "ONEAPP_UERANSIM_GNB_SLICES_SD",
+  "type": "string"
+}
