@@ -180,12 +180,12 @@ config_ue()
     cp ${UE_ORIGINAL_CONFIG_FILE} ${UE_CONFIG_FILE}
 
     if [ -n "${ONEAPP_UERANSIM_UE_MCC}" ] && [ -n "${ONEAPP_UERANSIM_UE_MNC}" ] && [ -n "${ONEAPP_UERANSIM_UE_MSIN}" ]; then
-        SUPI="${ONEAPP_UERANSIM_UE_MCC}${ONEAPP_UERANSIM_UE_MNC}${ONEAPP_UERANSIM_UE_MSIN}"
-        if [ ${#SUPI} -gt 15 ]; then
-            msg warning "SUPI (MCC+MNC+MSIN) exceeds 15 characters (${#SUPI}). Truncating..."
-            SUPI="${SUPI:0:15}"
+        IMSI="${ONEAPP_UERANSIM_UE_MCC}${ONEAPP_UERANSIM_UE_MNC}${ONEAPP_UERANSIM_UE_MSIN}"
+        if [ ${#IMSI} -gt 15 ]; then
+            msg warning "IMSI (MCC+MNC+MSIN) exceeds 15 characters (${#IMSI}). Truncating..."
+            IMSI="${IMSI:0:15}"
         fi
-        SUPI="supi-${SUPI}"
+        SUPI="imsi-${IMSI}"
     fi
 
     if [ -n "${ONEAPP_UERANSIM_UE_GNBSEARCHLIST}" ]; then
