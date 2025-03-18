@@ -20,8 +20,13 @@ $(DIR_EXPORT)/%.qcow2:
 	$(eval DISTRO_VER  := $(shell echo $* | sed 's/^.[^0-9]*\(.*\)/\1/'))
 	packer/build.sh '$(DISTRO_NAME)' '$(DISTRO_VER)' $@
 
+#clean:
+#	-if [ -d '$(DIR_EXPORT)' ]; then rm -rf $(DIR_EXPORT)/*; fi
 clean:
 	-if [ -d '$(DIR_EXPORT)' ]; then rm -rf $(DIR_EXPORT)/*; fi
+	-if [ -d 'build/service_phoenix' ]; then echo "Keeping build/service_phoenix"; fi
+
+
 
 help:
 	@echo 'Usage examples:'
