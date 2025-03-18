@@ -1,0 +1,96 @@
+2025/03/17 17:23:14 [INFO] Packer version: 1.12.0 [go1.22.9 linux amd64]
+2025/03/17 17:23:14 [INFO] PACKER_CONFIG env var not set; checking the default config file path
+2025/03/17 17:23:14 [INFO] PACKER_CONFIG env var set; attempting to open config file: /root/.packerconfig
+2025/03/17 17:23:14 [WARN] Config file doesn't exist: /root/.packerconfig
+2025/03/17 17:23:14 [INFO] Setting cache directory: /root/.cache/packer
+2025/03/17 17:23:14 [TRACE] listing potential installations for <nil> that match "". plugingetter.ListInstallationsOptions{PluginDirectory:"/root/.config/packer/plugins", BinaryInstallationOptions:plugingetter.BinaryInstallationOptions{APIVersionMajor:"5", APIVersionMinor:"0", OS:"linux", ARCH:"amd64", Ext:"", Checksummers:[]plugingetter.Checksummer{plugingetter.Checksummer{Type:"sha256", Hash:(*sha256.digest)(0xc0004a6080)}}, ReleasesOnly:false}}
+2025/03/17 17:23:14 [INFO] found external [-packer-default-plugin-name-] builders from qemu plugin
+2025/03/17 17:23:14 [TRACE] Using protobuf for communication with plugins
+2025/03/17 17:23:14 [INFO] Starting external plugin /usr/bin/packer execute --protobuf packer-builder-null
+2025/03/17 17:23:14 Starting plugin: /usr/bin/packer []string{"/usr/bin/packer", "execute", "--protobuf", "packer-builder-null"}
+2025/03/17 17:23:14 Waiting for RPC address for: /usr/bin/packer
+2025/03/17 17:23:14 packer-builder-null plugin: [INFO] Packer version: 1.12.0 [go1.22.9 linux amd64]
+2025/03/17 17:23:14 packer-builder-null plugin: [INFO] PACKER_CONFIG env var not set; checking the default config file path
+2025/03/17 17:23:14 packer-builder-null plugin: [INFO] PACKER_CONFIG env var set; attempting to open config file: /root/.packerconfig
+2025/03/17 17:23:14 packer-builder-null plugin: [WARN] Config file doesn't exist: /root/.packerconfig
+2025/03/17 17:23:14 packer-builder-null plugin: [INFO] Setting cache directory: /root/.cache/packer
+2025/03/17 17:23:14 Received unix RPC address for /usr/bin/packer: addr is /tmp/packer-plugin2136744583
+2025/03/17 17:23:14 packer-builder-null plugin: Plugin address: unix /tmp/packer-plugin2136744583
+2025/03/17 17:23:14 packer-builder-null plugin: Waiting for connection...
+2025/03/17 17:23:14 packer-builder-null plugin: Serving a plugin connection...
+2025/03/17 17:23:14 packer-builder-null plugin: [DEBUG] - common: sending ConfigSpec as protobuf
+2025/03/17 17:23:14 [DEBUG] - common: receiving ConfigSpec as protobuf
+2025/03/17 17:23:14 packer-builder-null plugin: [DEBUG] - common: sending ConfigSpec as protobuf
+2025/03/17 17:23:14 [DEBUG] - common: receiving ConfigSpec as protobuf
+2025/03/17 17:23:14 [INFO] Starting external plugin /usr/bin/packer execute --protobuf packer-provisioner-shell-local
+2025/03/17 17:23:14 Starting plugin: /usr/bin/packer []string{"/usr/bin/packer", "execute", "--protobuf", "packer-provisioner-shell-local"}
+2025/03/17 17:23:14 Waiting for RPC address for: /usr/bin/packer
+2025/03/17 17:23:15 packer-provisioner-shell-local plugin: [INFO] Packer version: 1.12.0 [go1.22.9 linux amd64]
+2025/03/17 17:23:15 packer-provisioner-shell-local plugin: [INFO] PACKER_CONFIG env var not set; checking the default config file path
+2025/03/17 17:23:15 packer-provisioner-shell-local plugin: [INFO] PACKER_CONFIG env var set; attempting to open config file: /root/.packerconfig
+2025/03/17 17:23:15 packer-provisioner-shell-local plugin: [WARN] Config file doesn't exist: /root/.packerconfig
+2025/03/17 17:23:15 packer-provisioner-shell-local plugin: [INFO] Setting cache directory: /root/.cache/packer
+2025/03/17 17:23:15 packer-provisioner-shell-local plugin: Plugin address: unix /tmp/packer-plugin3734319015
+2025/03/17 17:23:15 packer-provisioner-shell-local plugin: Waiting for connection...
+2025/03/17 17:23:15 Received unix RPC address for /usr/bin/packer: addr is /tmp/packer-plugin3734319015
+2025/03/17 17:23:15 packer-provisioner-shell-local plugin: Serving a plugin connection...
+2025/03/17 17:23:15 packer-provisioner-shell-local plugin: [DEBUG] - common: sending ConfigSpec as protobuf
+2025/03/17 17:23:15 [DEBUG] - common: receiving ConfigSpec as protobuf
+2025/03/17 17:23:15 [INFO] Starting external plugin /root/.config/packer/plugins/github.com/hashicorp/qemu/packer-plugin-qemu_v1.1.1_x5.0_linux_amd64 start builder --protobuf -packer-default-plugin-name-
+2025/03/17 17:23:15 Starting plugin: /root/.config/packer/plugins/github.com/hashicorp/qemu/packer-plugin-qemu_v1.1.1_x5.0_linux_amd64 []string{"/root/.config/packer/plugins/github.com/hashicorp/qemu/packer-plugin-qemu_v1.1.1_x5.0_linux_amd64", "start", "builder", "--protobuf", "-packer-default-plugin-name-"}
+2025/03/17 17:23:15 Waiting for RPC address for: /root/.config/packer/plugins/github.com/hashicorp/qemu/packer-plugin-qemu_v1.1.1_x5.0_linux_amd64
+2025/03/17 17:23:15 Received unix RPC address for /root/.config/packer/plugins/github.com/hashicorp/qemu/packer-plugin-qemu_v1.1.1_x5.0_linux_amd64: addr is /tmp/packer-plugin26401648
+2025/03/17 17:23:15 packer-plugin-qemu_v1.1.1_x5.0_linux_amd64 plugin: 2025/03/17 17:23:15 Plugin address: unix /tmp/packer-plugin26401648
+2025/03/17 17:23:15 packer-plugin-qemu_v1.1.1_x5.0_linux_amd64 plugin: 2025/03/17 17:23:15 Waiting for connection...
+2025/03/17 17:23:15 packer-plugin-qemu_v1.1.1_x5.0_linux_amd64 plugin: 2025/03/17 17:23:15 Serving a plugin connection...
+2025/03/17 17:23:15 packer-plugin-qemu_v1.1.1_x5.0_linux_amd64 plugin: 2025/03/17 17:23:15 [TRACE] starting builder -packer-default-plugin-name-
+2025/03/17 17:23:15 packer-plugin-qemu_v1.1.1_x5.0_linux_amd64 plugin: 2025/03/17 17:23:15 [DEBUG] - common: sending ConfigSpec as protobuf
+2025/03/17 17:23:15 [DEBUG] - common: receiving ConfigSpec as protobuf
+2025/03/17 17:23:15 ui error: Error: Failed preparing provisioner-block "shell-local" ""
+
+  on phoenix.pkr.hcl line 6:
+  (source code not available)
+
+phoenix.pkr.hcl:8,22-32: Unsupported attribute; This object does not have an
+attribute named "input_dir"., and 5 other diagnostic(s)
+
+Error: Unsupported attribute
+
+  on phoenix.pkr.hcl line 37:
+  (source code not available)
+
+This object does not have an attribute named "output_dir".
+
+Error: Unsupported attribute
+
+  on phoenix.pkr.hcl line 41:
+  (source code not available)
+
+This object does not have an attribute named "input_dir".
+
+Error: Unsupported attribute
+
+  on phoenix.pkr.hcl line 41:
+  (source code not available)
+
+This object does not have an attribute named "appliance_name".
+
+Error: Unsupported attribute
+
+  on phoenix.pkr.hcl line 27:
+  (source code not available)
+
+This object does not have an attribute named "headless".
+
+Error: Unsupported attribute
+
+  on phoenix.pkr.hcl line 51:
+  (source code not available)
+
+This object does not have an attribute named "appliance_name".
+
+2025/03/17 17:23:15 [INFO] (telemetry) Finalizing.
+2025/03/17 17:23:15 waiting for all plugin processes to complete...
+2025/03/17 17:23:15 /root/.config/packer/plugins/github.com/hashicorp/qemu/packer-plugin-qemu_v1.1.1_x5.0_linux_amd64: plugin process exited
+2025/03/17 17:23:15 /usr/bin/packer: plugin process exited
+2025/03/17 17:23:15 /usr/bin/packer: plugin process exited
