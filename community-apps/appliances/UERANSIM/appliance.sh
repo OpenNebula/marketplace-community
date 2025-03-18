@@ -75,10 +75,9 @@ service_bootstrap()
             exit 1
         else
             msg info "ueransimb-gnb.service was started"
+            sleep 15    # Force wait time to avoid career condition which provokes a Duplicated Request to the UPF (cannot handle PFCP message type[50] (../src/upf/pfcp-sm.c:150))
         fi
     fi
-
-    sleep 5
 
     if [ -n "${ONEAPP_UERANSIM_RUN_UE}" ] && [ "${ONEAPP_UERANSIM_RUN_UE}" = "YES" ]; then
         if ! systemctl enable --now ueransim-ue.service ; then
