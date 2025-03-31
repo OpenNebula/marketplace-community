@@ -104,6 +104,15 @@ build {
     destination = "/etc/one-appliance/service.d/"
   }
 
+  # Check build.sh lock file to ensure that the binaries are correctly compiled first.
+  provisioner "shell-local" {
+    inline = [
+      "echo 'Ensuring that build.sh has already finished running...'",
+      "while [ -f /tmp/ueransim_build.lock ]; do sleep 5; done",
+      "echo 'build.sh has finished running...'",
+    ]
+  }
+
   # Create directories for UERANSIM files.
   provisioner "shell" { inline = ["mkdir -p /etc/ueransim /tmp/.UERANSIM/build /tmp/.UERANSIM/config"] }
 

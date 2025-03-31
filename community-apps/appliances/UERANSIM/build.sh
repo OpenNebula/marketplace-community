@@ -7,10 +7,19 @@ REPO_URL="https://github.com/aligungr/UERANSIM"
 REQUIRED_PACKAGES=("make" "gcc" "g++" "cmake" "curl" "libsctp-dev" "lksctp-tools" "iproute2")
 REPOSITORY_PATH="appliances/UERANSIM/.repository"
 FILES_PATH="appliances/UERANSIM/.files"
+LOCK_FILE="/tmp/ueransim_build.lock"
+
+# Avoid parallel executions of the script
+if [ -f "$LOCK_FILE" ]; then
+    echo "Another UERANSIM build process is already running. Exiting."
+    exit 1
+fi
+touch "${LOCK_FILE}"
 
 cleanup(){
   echo ""
   echo "ERROR: Something unexpected happened during the binary build script."
+  rm -f "${LOCK_FILE}"
   exit 1
 }
 trap cleanup ERR
@@ -45,7 +54,10 @@ cd - > /dev/null
 
 
 echo "Copy files into previously existing directories"
-rm -f "${FILES_PATH}/build/.placeholder"
+# rm -f "${FILES_PATH}/build/.placeholder"
 cp -r "${REPOSITORY_PATH}/build/." "${FILES_PATH}/build/"
-rm -f "${FILES_PATH}/config/.placeholder"
+# rm -f "${FILES_PATH}/config/.placeholder"
 cp -r "${REPOSITORY_PATH}/config/." "${FILES_PATH}/config/"
+
+# Remove the lock file
+rm -f "${LOCK_FILE}"
