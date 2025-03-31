@@ -1,7 +1,7 @@
 ---
 name: "6G-Sandbox Toolkit"
-version: "v0.4.0-20250219-2235"   # date +"%Y%m%d-%H%M" -d @EPOCH
-software_version: "v0.4.0"
+version: "v0.5.0-20250331-1459"   # date +"%Y%m%d-%H%M" -d @EPOCH
+software_version: "v0.5.0"
 publisher: "Telefonica Innovacion Digital"
 description: |-
   OpenNebula Service used as part of the [toolkit-installer](https://github.com/6G-SANDBOX/toolkit-installer) orchestrated by
@@ -30,7 +30,7 @@ tags:
   - toolkit
 type: SERVICE_TEMPLATE        # Choices are <none> (default), SERVICE_TEMPLATE and VMTEMPLATE (shown in Sunstone as IMAGE, SERVICE and VM respectively)
 # format: qcow2
-creation_time: "1740004546"   # date +%s
+creation_time: "1743425985"   # date +%s
 # os-id: Ubuntu
 # os-release: 22.04 LTS
 os-arch: x86_64
@@ -55,7 +55,7 @@ opennebula_template:
     oneapp_minio_tls_key:        "O|text64|MinIO TLS key (.key)||"
     oneapp_jenkins_username:                  "O|text|The username for the Jenkins admin user. At least 5 characters||admin"
     oneapp_jenkins_password:                  "M|password|The password for the Jenkins admin user. At least 8 characters"
-    oneapp_jenkins_sites_token:               "M|password|Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault. At least 15 characters, with uppercase, lowercase, numbers and skip special characters \"'`´#$&..."
+    oneapp_jenkins_sites_token:               "M|password|Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault"
     oneapp_jenkins_opennebula_endpoint:       "M|text|The URL of your OpenNebula XML-RPC Endpoint API (for example, 'http://example.com:2633/RPC2')"
     oneapp_jenkins_opennebula_flow_endpoint:  "M|text|The URL of your OneFlow HTTP Endpoint API (for example, 'http://example.com:2474')"
     oneapp_jenkins_opennebula_username:       "M|text|The OpenNebula username used by Jenkins to deploy each component"
