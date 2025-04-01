@@ -63,6 +63,8 @@ opennebula_template:
     oneapp_jenkins_opennebula_insecure:       "O|boolean|Allow insecure connexions into the OpenNebula XML-RPC Endpoint API (skip TLS verification)||YES"
     oneapp_tnlcm_admin_user:                  "O|text|Name of the TNLCM admin user. At least 5 characters||tnlcm"
     oneapp_tnlcm_admin_password:              "M|password|Password of the TNLCM admin user. At least 8 characters"
+    oneapp_tnlcm_sites_branch:                "O|text|Name of the branch in 6G-Sandbox-Sites repository to deploy the trial networks"
+    oneapp_tnlcm_deployment_site:             "O|text|Name of directory in branch ONEAPP_TNLCM_SITES_BRANCH to deploy the trial networks"
   networks:                        # Hash of virtual networks to use in the service.
     Public: "M|network|Public||id:"
   roles:
@@ -111,12 +113,14 @@ opennebula_template:
         NIC = [
           NAME = "NIC0",
           NETWORK_ID = "$Public" ]
-        ONEAPP_TNLCM_JENKINS_HOST     = "${jenkins.template.context.eth0_ip}"
-        ONEAPP_TNLCM_JENKINS_USERNAME = "$oneapp_jenkins_username"
-        ONEAPP_TNLCM_JENKINS_PASSWORD = "$oneapp_jenkins_password"
-        ONEAPP_TNLCM_SITES_TOKEN      = "$oneapp_jenkins_sites_token"
-        ONEAPP_TNLCM_ADMIN_USER       = "$oneapp_tnlcm_admin_user"
-        ONEAPP_TNLCM_ADMIN_PASSWORD   = "$oneapp_tnlcm_admin_password"
+        ONEAPP_TNLCM_JENKINS_HOST          = "${jenkins.template.context.eth0_ip}"
+        ONEAPP_TNLCM_JENKINS_USERNAME      = "$oneapp_jenkins_username"
+        ONEAPP_TNLCM_JENKINS_PASSWORD      = "$oneapp_jenkins_password"
+        ONEAPP_TNLCM_ADMIN_USER            = "$oneapp_tnlcm_admin_user"
+        ONEAPP_TNLCM_ADMIN_PASSWORD        = "$oneapp_tnlcm_admin_password"
+        ONEAPP_TNLCM_SITES_BRANCH          = "$oneapp_tnlcm_sites_branch"
+        ONEAPP_TNLCM_DEPLOYMENT_SITE       = "$oneapp_tnlcm_deployment_site"
+        ONEAPP_TNLCM_DEPLOYMENT_SITE_TOKEN = "$oneapp_jenkins_sites_token"
       cooldown: 120
       elasticity_policies: []
       scheduled_policies: []

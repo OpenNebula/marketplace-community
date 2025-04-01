@@ -14,11 +14,13 @@ description: |-
 
   * `ONEAPP_TNLCM_JENKINS_HOST` - IP address of the Jenkins server used to deploy the Trial Networks. Default `127.0.0.1`
   * `ONEAPP_TNLCM_JENKINS_USERNAME` - Username used to login into the Jenkins server to access and retrieve pipeline info. Default: `admin`
-  * `ONEAPP_TNLCM_JENKINS_PASSWORD` - Password used to login into the Jenkins server to access and retrieve pipeline info. Default: `admin`
+  * `ONEAPP_TNLCM_JENKINS_PASSWORD` - Password used to login into the Jenkins server to access and retrieve pipeline info.
   * `ONEAPP_TNLCM_JENKINS_TOKEN` - Token to authenticate while sending POST requests to the Jenkins Server API.
-  * `ONEAPP_TNLCM_SITES_TOKEN` - Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault.
   * `ONEAPP_TNLCM_ADMIN_USER` - Name of the TNLCM admin user. Default: `tnlcm`
   * `ONEAPP_TNLCM_ADMIN_PASSWORD` - ONEAPP_TNLCM_ADMIN_PASSWORD: Password of the TNLCM admin user. Default: `tnlcm`
+  * `ONEAPP_TNLCM_SITES_BRANCH` - Name of the branch IN 6G-Sandbox-Sites repository to deploy the trial networks.
+  * `ONEAPP_TNLCM_DEPLOYMENT_SITE` - Name of directory in branch ONEAPP_TNLCM_SITES_BRANCH to deploy the trial networks.
+  * `ONEAPP_TNLCM_DEPLOYMENT_SITE_TOKEN` - Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault.
 
   **Note**: This appliance does not permit recontextualization. Modifying the context variables will not have any real efects on the running instance.
   
@@ -46,15 +48,17 @@ opennebula_template:
     set_hostname: "$NAME"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
     netcfg_type: "interfaces"
-    oneapp_tnlcm_jenkins_host:      "$ONEAPP_TNLCM_JENKINS_HOST"
-    oneapp_tnlcm_jenkins_username:  "$ONEAPP_TNLCM_JENKINS_USERNAME"
-    oneapp_tnlcm_jenkins_password:  "$ONEAPP_TNLCM_JENKINS_PASSWORD"
-    oneapp_tnlcm_jenkins_token:     "$ONEAPP_TNLCM_JENKINS_TOKEN"
-    oneapp_tnlcm_sites_token:       "$ONEAPP_TNLCM_SITES_TOKEN"
-    oneapp_tnlcm_admin_user:        "$ONEAPP_TNLCM_ADMIN_USER"
-    oneapp_tnlcm_admin_password:    "$ONEAPP_TNLCM_ADMIN_PASSWORD"
+    oneapp_tnlcm_jenkins_host:                "$ONEAPP_TNLCM_JENKINS_HOST"
+    oneapp_tnlcm_jenkins_username:            "$ONEAPP_TNLCM_JENKINS_USERNAME"
+    oneapp_tnlcm_jenkins_password:            "$ONEAPP_TNLCM_JENKINS_PASSWORD"
+    oneapp_tnlcm_jenkins_token:               "$ONEAPP_TNLCM_JENKINS_TOKEN"
+    oneapp_tnlcm_admin_user:                  "$ONEAPP_TNLCM_ADMIN_USER"
+    oneapp_tnlcm_admin_password:              "$ONEAPP_TNLCM_ADMIN_PASSWORD"
+    oneapp_tnlcm_sites_branch:                "$ONEAPP_TNLCM_SITES_BRANCH"
+    oneapp_tnlcm_deployment_site:             "$ONEAPP_TNLCM_DEPLOYMENT_SITE"
+    oneapp_tnlcm_deployment_site_token:       "$ONEAPP_TNLCM_DEPLOYMENT_SITE_TOKEN"
   inputs_order: >-
-    ONEAPP_TNLCM_JENKINS_HOST,ONEAPP_TNLCM_JENKINS_USERNAME,ONEAPP_TNLCM_JENKINS_PASSWORD,ONEAPP_TNLCM_JENKINS_TOKEN,ONEAPP_TNLCM_SITES_TOKEN,ONEAPP_TNLCM_ADMIN_USER,ONEAPP_TNLCM_ADMIN_PASSWORD
+    ONEAPP_TNLCM_JENKINS_HOST,ONEAPP_TNLCM_JENKINS_USERNAME,ONEAPP_TNLCM_JENKINS_PASSWORD,ONEAPP_TNLCM_JENKINS_TOKEN,ONEAPP_TNLCM_ADMIN_USER,ONEAPP_TNLCM_ADMIN_PASSWORD,ONEAPP_TNLCM_SITES_BRANCH,ONEAPP_TNLCM_DEPLOYMENT_SITE,ONEAPP_TNLCM_DEPLOYMENT_SITE_TOKEN
   cpu: '2'
   vcpu: '2'
   cpu_model:
@@ -69,13 +73,15 @@ opennebula_template:
     arch: x86_64
   logo: images/logos/ubuntu.png
   user_inputs:
-    oneapp_tnlcm_jenkins_host:      "O|text|ONEAPP_TNLCM_JENKINS_HOST: IP address of the Jenkins server used to deploy the Trial Networks||127.0.0.1"
-    oneapp_tnlcm_jenkins_username:  "O|text|ONEAPP_TNLCM_JENKINS_USERNAME: Username used to login into the Jenkins server to access and retrieve pipeline info||admin"
-    oneapp_tnlcm_jenkins_password:  "M|password|ONEAPP_TNLCM_JENKINS_PASSWORD: Password used to login into the Jenkins server to access and retrieve pipeline info"
-    oneapp_tnlcm_jenkins_token:     "M|password|ONEAPP_TNLCM_JENKINS_TOKEN: Token to authenticate while sending POST requests to the Jenkins Server API"
-    oneapp_tnlcm_sites_token:       "M|password|ONEAPP_TNLCM_SITES_TOKEN: Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault"
-    oneapp_tnlcm_admin_user:        "O|text|ONEAPP_TNLCM_ADMIN_USER: Name of the TNLCM admin user. At least 5 characters||tnlcm"
-    oneapp_tnlcm_admin_password:    "M|password|ONEAPP_TNLCM_ADMIN_PASSWORD: Password of the TNLCM admin user. At least 8 characters"
+    oneapp_tnlcm_jenkins_host:                "O|text|ONEAPP_TNLCM_JENKINS_HOST: IP address of the Jenkins server used to deploy the Trial Networks||127.0.0.1"
+    oneapp_tnlcm_jenkins_username:            "O|text|ONEAPP_TNLCM_JENKINS_USERNAME: Username used to login into the Jenkins server to access and retrieve pipeline info||admin"
+    oneapp_tnlcm_jenkins_password:            "M|password|ONEAPP_TNLCM_JENKINS_PASSWORD: Password used to login into the Jenkins server to access and retrieve pipeline info"
+    oneapp_tnlcm_jenkins_token:               "M|password|ONEAPP_TNLCM_JENKINS_TOKEN: Token to authenticate while sending POST requests to the Jenkins Server API"
+    oneapp_tnlcm_admin_user:                  "O|text|ONEAPP_TNLCM_ADMIN_USER: Name of the TNLCM admin user. At least 5 characters||tnlcm"
+    oneapp_tnlcm_admin_password:              "M|password|ONEAPP_TNLCM_ADMIN_PASSWORD: Password of the TNLCM admin user. At least 8 characters"
+    oneapp_tnlcm_sites_branch:                "O|text|ONEAPP_TNLCM_SITES_BRANCH: Name of the branch IN 6G-Sandbox-Sites repository to deploy the trial networks"
+    oneapp_tnlcm_deployment_site:             "O|text|ONEAPP_TNLCM_DEPLOYMENT_SITE: Name of directory in branch ONEAPP_TNLCM_SITES_BRANCH to deploy the trial networks"
+    oneapp_tnlcm_deployment_site_token:       "M|password|ONEAPP_TNLCM_DEPLOYMENT_SITE_TOKEN: Token to encrypt and decrypt the 6G-Sandbox-Sites repository files for your site using Ansible Vault"
 logo: tnlcm.png
 images:
   - name: "autofill"

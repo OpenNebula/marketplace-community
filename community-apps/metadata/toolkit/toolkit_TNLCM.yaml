@@ -40,14 +40,16 @@ opennebula_template:
     token: "YES"
     report_ready: "YES"
     start_script_base64: "IyEvYmluL2Jhc2gKCnNvdXJjZSAvZXRjL29uZS1hcHBsaWFuY2Uvc2VydmljZS5kL3Rvb2xraXRfc2NyaXB0LnNoID4gL3Zhci9sb2cvb25lLWFwcGxpYW5jZS9zdGFydF9zY3JpcHQubG9nIDI+JjE="
-    oneapp_tnlcm_jenkins_host:      "$ONEAPP_TNLCM_JENKINS_HOST"
-    oneapp_tnlcm_jenkins_username:  "$ONEAPP_TNLCM_JENKINS_USERNAME"
-    oneapp_tnlcm_jenkins_password:  "$ONEAPP_TNLCM_JENKINS_PASSWORD"
-    oneapp_tnlcm_sites_token:       "$ONEAPP_TNLCM_SITES_TOKEN"
-    oneapp_tnlcm_admin_user:        "$ONEAPP_TNLCM_ADMIN_USER"
-    oneapp_tnlcm_admin_password:    "$ONEAPP_TNLCM_ADMIN_PASSWORD"
+    oneapp_tnlcm_jenkins_host:                "$ONEAPP_TNLCM_JENKINS_HOST"
+    oneapp_tnlcm_jenkins_username:            "$ONEAPP_TNLCM_JENKINS_USERNAME"
+    oneapp_tnlcm_jenkins_password:            "$ONEAPP_TNLCM_JENKINS_PASSWORD"
+    oneapp_tnlcm_admin_user:                  "$ONEAPP_TNLCM_ADMIN_USER"
+    oneapp_tnlcm_admin_password:              "$ONEAPP_TNLCM_ADMIN_PASSWORD"
+    oneapp_tnlcm_sites_branch:                "$ONEAPP_TNLCM_SITES_BRANCH"
+    oneapp_tnlcm_deployment_site:             "$ONEAPP_TNLCM_DEPLOYMENT_SITE"
+    oneapp_tnlcm_deployment_site_token:       "$ONEAPP_TNLCM_DEPLOYMENT_SITE_TOKEN"
   inputs_order: >-
-    ONEAPP_TNLCM_JENKINS_HOST,ONEAPP_TNLCM_JENKINS_USERNAME,ONEAPP_TNLCM_JENKINS_PASSWORD,ONEAPP_TNLCM_SITES_TOKEN,ONEAPP_TNLCM_ADMIN_USER,ONEAPP_TNLCM_ADMIN_PASSWORD
+    ONEAPP_TNLCM_JENKINS_HOST,ONEAPP_TNLCM_JENKINS_USERNAME,ONEAPP_TNLCM_JENKINS_PASSWORD,ONEAPP_TNLCM_ADMIN_USER,ONEAPP_TNLCM_ADMIN_PASSWORD,ONEAPP_TNLCM_SITES_BRANCH,ONEAPP_TNLCM_DEPLOYMENT_SITE,ONEAPP_TNLCM_DEPLOYMENT_SITE_TOKEN
   cpu: '4'
   vcpu: '4'
   cpu_model:
