@@ -11,7 +11,7 @@ jobs:
           stringParam('COMPONENT_TYPE', '', '6G Library Component type. MANDATORY')
           stringParam('CUSTOM_NAME', '', 'Custom name for the component inside the Trial Network. Valid characters are A-Z, a-z, 0-9 and underscore _. MANDATORY except for tn_init (including tn_vxlan and tn_bastion)')
           stringParam('DEPLOYMENT_SITE', '', 'Site where the deployment is being made. E.g. uma, athens, fokus, oulu... MANDATORY')
-          stringParam('TNLCM_CALLBACK', 'http://tnlcm-ip:5000/tnlcm/callback/', 'URL of the TNLCM to notify the results. MANDATORY')
+          stringParam('TNLCM_CALLBACK', 'http://tnlcm-ip:5000/api/v1/callback', 'URL of the TNLCM to notify the results. MANDATORY')
           stringParam('LIBRARY_URL', 'https://github.com/6G-SANDBOX/6G-Library.git', '6G-Library repository HTTPS URL. Leave it as-is unless you want to test your own fork')
           stringParam('LIBRARY_BRANCH', 'refs/tags/v0.5.1', 'LIBRARY_URL checkout to use. Valid inputs can be refs/heads/<branchName>, refs/tags/<tagName> or <commitId>. Leave it as-is unless you want to test alternative releases/branches/commits.')
           stringParam('SITES_URL', 'https://github.com/6G-SANDBOX/6G-Sandbox-Sites.git', '6G-Library-Sites repository HTTP URL. Leave it as-is unless you want to test your own fork')
@@ -41,7 +41,7 @@ jobs:
         parameters {
           stringParam('TN_ID', '', 'Trial Network Identifier. MANDATORY')
           stringParam('DEPLOYMENT_SITE', '', 'Site where the deployment is being made. E.g. uma, athens, fokus, oulu... MANDATORY')
-          stringParam('TNLCM_CALLBACK', 'http://tnlcm-ip:5000/tnlcm/callback/', 'URL of the TNLCM to notify the results. MANDATORY')
+          stringParam('TNLCM_CALLBACK', 'http://tnlcm-ip:5000/api/v1/callback', 'URL of the TNLCM to notify the results. MANDATORY')
           stringParam('LIBRARY_URL', 'https://github.com/6G-SANDBOX/6G-Library.git', '6G-Library repository HTTPS URL. Leave it as-is unless you want to test your own fork')
           stringParam('LIBRARY_BRANCH', 'refs/tags/v0.5.1', 'LIBRARY_URL checkout to use. Valid inputs can be refs/heads/<branchName>, refs/tags/<tagName> or <commitId>. Default value can purge TNs from previous 6G-Library version.')
           stringParam('SITES_URL', 'https://github.com/6G-SANDBOX/6G-Sandbox-Sites.git', '6G-Library-Sites repository HTTP URL. Leave it as-is unless you want to test your own fork')
