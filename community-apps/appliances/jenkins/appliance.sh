@@ -124,7 +124,7 @@ install_ruby_deps()
 {
     if [ -n "${DEP_RUBY}" ]; then
         msg info "Install required ruby gems for jenkins user"
-        if ! sudo -H -u jenkins bash -c "gem install --user-install ${DEP_RUBY}" ; then
+        if ! sudo -H -u jenkins bash -c "cd ~ && gem install --user-install ${DEP_RUBY}" ; then
             msg error "ruby gem(s) installation failed"
             exit 1
         fi
