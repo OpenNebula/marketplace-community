@@ -1,7 +1,7 @@
 ---
 name: "6G-Sandbox Toolkit"
-version: "v0.5.0-20250331-1459"   # date +"%Y%m%d-%H%M" -d @EPOCH
-software_version: "v0.5.0"
+version: "v0.5.1-20250411-1309"   # date +"%Y%m%d-%H%M" -d @EPOCH
+software_version: "v0.5.1"
 publisher: "Telefonica Innovacion Digital"
 description: |-
   OpenNebula Service used as part of the [toolkit-installer](https://github.com/6G-SANDBOX/toolkit-installer) orchestrated by
@@ -30,7 +30,7 @@ tags:
   - toolkit
 type: SERVICE_TEMPLATE        # Choices are <none> (default), SERVICE_TEMPLATE and VMTEMPLATE (shown in Sunstone as IMAGE, SERVICE and VM respectively)
 # format: qcow2
-creation_time: "1743425985"   # date +%s
+creation_time: "1744369762"   # date +%s
 # os-id: Ubuntu
 # os-release: 22.04 LTS
 os-arch: x86_64
@@ -125,4 +125,4 @@ opennebula_template:
       elasticity_policies: []
       scheduled_policies: []
 logo: sandbox.png
-images: []   # ?? found in https://github.com/OpenNebula/marketplace/blob/master/appliances/MinIOMulti/54e46892-6315-456b-9bfe-5ebd7cff2662.yaml
+# images: []   # ?? found in https://github.com/OpenNebula/marketplace/blob/master/appliances/MinIOMulti/54e46892-6315-456b-9bfe-5ebd7cff2662.yaml
