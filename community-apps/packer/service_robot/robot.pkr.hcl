@@ -99,7 +99,7 @@ build {
   provisioner "file" {
     sources     = [
       "appliances/robot/tests",
-      "appliances/robot/tools"
+      "appliances/robot/tools",
       "appliances/robot/run_robot_tests.sh",
       "appliances/robot/variables.sh"
       ]
