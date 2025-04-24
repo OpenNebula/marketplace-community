@@ -10,10 +10,7 @@ Resource        /opt/robot-tests/tests/resources/common/basicRequests.robot
 
 *** Keywords ***
 Reset Testing Environment
-    Log    Db capif.invokerdetails collection will be removed in order to isolate each test.
-
-    # Clean Test Information By HTTP Requests
-    Clean Test Information
+    Log   Reset testing environment
 
 Check Response Variable Type And Values
     [Arguments]    ${resp}    ${status_code}    ${variable_type}    &{input_parameters}
