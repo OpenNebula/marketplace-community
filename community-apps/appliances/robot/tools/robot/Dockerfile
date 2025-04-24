@@ -52,7 +52,9 @@ RUN apt-get install -y --no-install-recommends  \
     libldap2-dev libsasl2-dev ldap-utils slapd tox lcov valgrind \
     tshark \
     nodejs \
-    npm
+    npm \
+    gnupg2 \
+    gpg-agent
 
 RUN add-apt-repository -y ppa:deadsnakes/ppa
 RUN apt-get update
