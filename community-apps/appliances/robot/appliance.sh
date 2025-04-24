@@ -16,7 +16,7 @@ REGISTRY_BASE_URL="example.com:5050/one/robot-tests"
 BASE_DIR=/etc/one-appliance/service.d/
 VARIABLES_FILE="${BASE_DIR}/variables.sh"
 DOCKER_ROBOT_IMAGE="${REGISTRY_BASE_URL}/robot-tests-image"
-DOCKER_ROBOT_IMAGE_VERSION=1.0
+DOCKER_ROBOT_IMAGE_VERSION="1.0"
 IPERF3_PORT=5000
 
 
@@ -39,6 +39,9 @@ service_install()
 
     # install iperf3
     install_iperf
+
+    # install netstat
+    install_netstat
 
     # Create docker image for Robot Framework
     create_robot_docker_image
@@ -115,7 +118,15 @@ install_yq()
 install_iperf()
 {
     msg info "Install iperf3"
+    apt update
     apt install -y --no-install-recommends iperf3
+}
+
+install_netstat()
+{
+    msg info "Install net-tools"
+    apt update
+    apt install -y --no-install-recommends net-tools
 }
 
 create_robot_docker_image()
@@ -127,17 +138,9 @@ create_robot_docker_image()
 setup_environment()
 {
     msg info "Setup Robot Framework environment"
-    # msg info "Setup OpenCAPIF environment"
-    # sed -i "s|^export REGISTRY_BASE_URL=.*|export REGISTRY_BASE_URL=\"$REGISTRY_BASE_URL\"|" "$VARIABLES_FILE"
-    # sed -i "s|^export OCF_VERSION=.*|export OCF_VERSION=\"$OCF_VERSION\"|" "$VARIABLES_FILE"
-    # sed -i "s|^export CAPIF_HOSTNAME=.*|export CAPIF_HOSTNAME=\"$ONEAPP_OCF_CAPIF_HOSTNAME\"|" "$VARIABLES_FILE"
-    # sed -i "s|^export CAPIF_HTTPS_PORT=.*|export CAPIF_HTTPS_PORT=\"443\"|" "$VARIABLES_FILE"
-    # sed -i "s|^export CAPIF_REGISTER=.*|export CAPIF_REGISTER=\"$ONEAPP_OCF_REGISTER_HOSTNAME\"|" "$VARIABLES_FILE"
-    # sed -i "s|^export CAPIF_REGISTER_PORT=.*|export CAPIF_REGISTER_PORT=\"443\"|" "$VARIABLES_FILE"
-    # sed -i "s|^export BUILD_DOCKER_IMAGES=.*|export BUILD_DOCKER_IMAGES=false|" "$VARIABLES_FILE"
-    # sed -i "s|^export DOCKER_ROBOT_IMAGE_VERSION=.*|export DOCKER_ROBOT_IMAGE_VERSION=$DOCKER_ROBOT_IMAGE_VERSION|" "$VARIABLES_FILE"
-    # sed -i "s|^export DOCKER_ROBOT_IMAGE=.*|export DOCKER_ROBOT_IMAGE=$DOCKER_ROBOT_IMAGE|" "$VARIABLES_FILE"
-    # sed -i "s|^export DOCKER_ROBOT_TTY_OPTIONS=.*|export DOCKER_ROBOT_TTY_OPTIONS="-i"|" "$VARIABLES_FILE"
+    sed -i "s|^export REGISTRY_BASE_URL=.*|export REGISTRY_BASE_URL=\"$REGISTRY_BASE_URL\"|" "$VARIABLES_FILE"
+    sed -i "s|^export DOCKER_ROBOT_IMAGE_VERSION=.*|export DOCKER_ROBOT_IMAGE_VERSION=$DOCKER_ROBOT_IMAGE_VERSION|" "$VARIABLES_FILE"
+    sed -i "s|^export DOCKER_ROBOT_IMAGE=.*|export DOCKER_ROBOT_IMAGE=$DOCKER_ROBOT_IMAGE|" "$VARIABLES_FILE"
 
     # # Edit docker-compose-capif to expose nginx on port 8443 and leave 443 for ingress nginx
     # msg info "Expose OpenCAPIF services on port 8080 and 8443"

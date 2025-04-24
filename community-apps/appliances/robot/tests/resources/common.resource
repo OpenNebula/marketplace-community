@@ -1,11 +1,8 @@
 *** Settings ***
 Library         /opt/robot-tests/tests/libraries/helpers.py
-Library         /opt/robot-tests/tests/libraries/interrupt_listener.py
 Library    Process
 Library    Collections
-Variables       /opt/robot-tests/tests/libraries/environment.py
 Resource        /opt/robot-tests/tests/resources/common/basicRequests.robot
-Resource        /opt/robot-tests/tests/resources/common/expectedMessages.robot
 
 
 *** Variables ***
