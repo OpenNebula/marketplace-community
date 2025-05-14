@@ -1,10 +1,10 @@
 ---
-name: Lithops Service Template
-version: 6.10.0-2-20241018
+name: Lithops Service
+version: 6.10.0-3-20250513
 publisher: OpenNebula Systems
 description: |-
-  Lithops Service deployment using OneKE as compute backend and MinIO as storage backend, orchestrated by
-  [OneFlow](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/appflow_elasticity.html)
+  Lithops Service deployment using RabbitMQ as message broker, Lithops Workers as compute backend and MinIO as storage backend,
+  orchestrated by [OneFlow](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/appflow_elasticity.html)
 
   Requires
   [OneFlow](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/overview.html)
@@ -15,11 +15,12 @@ description: |-
   See the dedicated [documentation](https://github.com/OpenNebula/marketplace-community/wiki/lithops-service).
 
   Based on VM templates
-  - [Lithops-Service](/appliance/01076f79-94be-4c8f-b57f-dec96d5d15a4)
+  - [Lithops - Client](https://community-marketplace.opennebula.io/appliance/01076f79-94be-4c8f-b57f-dec96d5d15a4.yaml)
+  - [Lithops - Worker](https://community-marketplace.opennebula.io/appliance/8628d1b9-0868-469b-9edc-2384a898dddf.yaml)
+  - [Service Virtual Router](https://marketplace.opennebula.io/appliance/cc96d537-f6c7-499f-83f1-15ac4058750e)
   - [MinIO Multi-Node](32450c33-3e40-41a3-a9df-03a3f0a614c1)
-  - [OneKE 1.29 VNF](https://marketplace.opennebula.io/appliance/883d974f-f30e-4fc8-aa06-e1af2a020e49)
-  - [OneKE 1.29](https://marketplace.opennebula.io/appliance/d6278d1b-66a4-4188-acd0-e2628296046e)
-short_description: Multi-Node MinIO deployment for KVM hosts, orchestrated by OneFlow
+  - [RabbitMQ](https://community-marketplace.opennebula.io/appliance/c16c278c-464e-4b34-a77b-47208179dc76)
+short_description: Lithops deployment for KVM hosts, orchestrated by OneFlow
 tags:
 - lithops
 - computing
@@ -27,7 +28,7 @@ tags:
 - analytics
 - ubuntu
 - service
-creation_time: 1734631373
+creation_time: 1747149743
 os-id: Ubuntu
 os-release: '22.04 LTS'
 os-arch: x86_64
@@ -35,11 +36,11 @@ hypervisor: KVM
 opennebula_version: 6.8, 6.10
 type: 'SERVICE_TEMPLATE'
 roles:
-  vnf: 'OneKE 1.29 VNF'
-  master: 'OneKE 1.29'
-  worker: 'OneKE 1.29'
-  minio: 'Lithops Service - MinIO'
-  lithops: 'Lithops Service - Client'
+  vnf: 'Service Virtual Router'
+  minio: 'Lithops - MinIO'
+  lithops_client: 'Lithops - Client'
+  lithops_worker: 'Lithops - Worker'
+  rabbitmq: 'RabbitMQ'
 opennebula_template:
   name: Service Lithops
   deployment: straight
@@ -57,29 +58,19 @@ opennebula_template:
         NAME = "NIC1",
         NETWORK_ID = "$Private"
       ]
-      ONEAPP_VROUTER_ETH0_VIP0 = "$ONEAPP_VROUTER_ETH0_VIP0"
-      ONEAPP_VROUTER_ETH1_VIP0 = "$ONEAPP_VROUTER_ETH1_VIP0"
       ONEAPP_VNF_HAPROXY_INTERFACES = "$ONEAPP_VNF_HAPROXY_INTERFACES"
       ONEAPP_VNF_HAPROXY_REFRESH_RATE = "$ONEAPP_VNF_HAPROXY_REFRESH_RATE"
-      ONEAPP_VNF_HAPROXY_LB0_IP = "<ETH0_EP0>"
-      ONEAPP_VNF_HAPROXY_LB0_PORT = "$ONEAPP_VNF_HAPROXY_LB0_PORT"
-      ONEAPP_VNF_HAPROXY_LB1_IP = "<ETH0_EP0>"
-      ONEAPP_VNF_HAPROXY_LB1_PORT = "$ONEAPP_VNF_HAPROXY_LB1_PORT"
-      ONEAPP_VNF_HAPROXY_LB2_IP = "<ETH0_EP0>"
-      ONEAPP_VNF_HAPROXY_LB2_PORT = "$ONEAPP_VNF_HAPROXY_LB2_PORT"
-      ONEAPP_VNF_HAPROXY_LB3_IP = "<ETH0_EP0>"
-      ONEAPP_VNF_HAPROXY_LB3_PORT = "$ONEAPP_VNF_HAPROXY_LB3_PORT"
       ONEAPP_VNF_DNS_ENABLED = "$ONEAPP_VNF_DNS_ENABLED"
       ONEAPP_VNF_DNS_INTERFACES = "$ONEAPP_VNF_DNS_INTERFACES"
       ONEAPP_VNF_DNS_NAMESERVERS = "$ONEAPP_VNF_DNS_NAMESERVERS"
       ONEAPP_VNF_NAT4_ENABLED = "$ONEAPP_VNF_NAT4_ENABLED"
       ONEAPP_VNF_NAT4_INTERFACES_OUT = "$ONEAPP_VNF_NAT4_INTERFACES_OUT"
       ONEAPP_VNF_ROUTER4_ENABLED = "$ONEAPP_VNF_ROUTER4_ENABLED"
-      ONEAPP_VNF_ROUTER4_INTERFACES = "$ONEAPP_VNF_ROUTER4_INTERFACES""
+      ONEAPP_VNF_ROUTER4_INTERFACES = "$ONEAPP_VNF_ROUTER4_INTERFACES"
     cooldown: 120
     elasticity_policies: []
     scheduled_policies: []
-  - name: master
+  - name: rabbitmq
     parents:
     - vnf
     cardinality: 1
@@ -91,32 +82,15 @@ opennebula_template:
       ]
       FALLBACK_GW = "${vnf.TEMPLATE.CONTEXT.ETH1_IP}"
       FALLBACK_DNS = "${vnf.TEMPLATE.CONTEXT.ETH1_IP}"
-      ONEAPP_VROUTER_ETH0_VIP0 = "$ONEAPP_VROUTER_ETH0_VIP0"
-      ONEAPP_VROUTER_ETH1_VIP0 = "$ONEAPP_VROUTER_ETH1_VIP0"
-      ONEAPP_RKE2_SUPERVISOR_EP = "$ONEAPP_RKE2_SUPERVISOR_EP"
-      ONEAPP_K8S_CONTROL_PLANE_EP = "$ONEAPP_K8S_CONTROL_PLANE_EP"
-      ONEAPP_K8S_EXTRA_SANS = "$ONEAPP_K8S_EXTRA_SANS"
-      ONEAPP_K8S_MULTUS_ENABLED = "$ONEAPP_K8S_MULTUS_ENABLED"
-      ONEAPP_K8S_MULTUS_CONFIG = "$ONEAPP_K8S_MULTUS_CONFIG"
-      ONEAPP_K8S_CNI_PLUGIN = "$ONEAPP_K8S_CNI_PLUGIN"
-      ONEAPP_K8S_CNI_CONFIG = "$ONEAPP_K8S_CNI_CONFIG"
-      ONEAPP_K8S_CILIUM_RANGE = "$ONEAPP_K8S_CILIUM_RANGE"
-      ONEAPP_K8S_LONGHORN_ENABLED = "$ONEAPP_K8S_LONGHORN_ENABLED"
-      ONEAPP_K8S_METALLB_ENABLED = "$ONEAPP_K8S_METALLB_ENABLED"
-      ONEAPP_K8S_METALLB_CONFIG = "$ONEAPP_K8S_METALLB_CONFIG"
-      ONEAPP_K8S_METALLB_RANGE = "$ONEAPP_K8S_METALLB_RANGE"
-      ONEAPP_K8S_TRAEFIK_ENABLED = "$ONEAPP_K8S_TRAEFIK_ENABLED"
-      ONEAPP_VNF_HAPROXY_LB0_IP = "<ETH0_EP0>"
-      ONEAPP_VNF_HAPROXY_LB0_PORT = "$ONEAPP_VNF_HAPROXY_LB0_PORT"
-      ONEAPP_VNF_HAPROXY_LB1_IP = "<ETH0_EP0>"
-      ONEAPP_VNF_HAPROXY_LB1_PORT = "$ONEAPP_VNF_HAPROXY_LB1_PORT"
-      ONEAPP_VNF_DNS_ENABLED = "$ONEAPP_VNF_DNS_ENABLED""
+      ONEAPP_RABBITMQ_DEFAULT_USER = "$ONEAPP_RABBITMQ_DEFAULT_USER"
+      ONEAPP_RABBITMQ_DEFAULT_PASS = "$ONEAPP_RABBITMQ_DEFAULT_PASS"
     cooldown: 120
     elasticity_policies: []
     scheduled_policies: []
-  - name: worker
+  - name: lithops_worker
     parents:
     - vnf
+    - rabbitmq
     cardinality: 1
     vm_template_contents: |
       NIC = [
@@ -125,22 +99,11 @@ opennebula_template:
       ]
       FALLBACK_GW = "${vnf.TEMPLATE.CONTEXT.ETH1_IP}"
       FALLBACK_DNS = "${vnf.TEMPLATE.CONTEXT.ETH1_IP}"
-      ONEAPP_VROUTER_ETH0_VIP0 = "$ONEAPP_VROUTER_ETH0_VIP0"
-      ONEAPP_VROUTER_ETH1_VIP0 = "$ONEAPP_VROUTER_ETH1_VIP0"
-      ONEAPP_RKE2_SUPERVISOR_EP = "$ONEAPP_RKE2_SUPERVISOR_EP"
-      ONEAPP_K8S_CONTROL_PLANE_EP = "$ONEAPP_K8S_CONTROL_PLANE_EP"
-      ONEAPP_K8S_MULTUS_ENABLED = "$ONEAPP_K8S_MULTUS_ENABLED"
-      ONEAPP_K8S_CNI_PLUGIN = "$ONEAPP_K8S_CNI_PLUGIN"
-      ONEAPP_K8S_LONGHORN_ENABLED = "$ONEAPP_K8S_LONGHORN_ENABLED"
-      ONEAPP_K8S_METALLB_ENABLED = "$ONEAPP_K8S_METALLB_ENABLED"
-      ONEAPP_K8S_TRAEFIK_ENABLED = "$ONEAPP_K8S_TRAEFIK_ENABLED"
-      ONEAPP_VNF_HAPROXY_LB0_PORT = "$ONEAPP_VNF_HAPROXY_LB0_PORT"
-      ONEAPP_VNF_HAPROXY_LB1_PORT = "$ONEAPP_VNF_HAPROXY_LB1_PORT"
-      ONEAPP_VNF_HAPROXY_LB2_IP = "<ETH0_EP0>"
-      ONEAPP_VNF_HAPROXY_LB2_PORT = "$ONEAPP_VNF_HAPROXY_LB2_PORT"
-      ONEAPP_VNF_HAPROXY_LB3_IP = "<ETH0_EP0>"
-      ONEAPP_VNF_HAPROXY_LB3_PORT = "$ONEAPP_VNF_HAPROXY_LB3_PORT"
-      ONEAPP_VNF_DNS_ENABLED = "$ONEAPP_VNF_DNS_ENABLED""
+      ONEAPP_AMQP_USER = "$ONEAPP_RABBITMQ_DEFAULT_USER"
+      ONEAPP_AMQP_PASS = "$ONEAPP_RABBITMQ_DEFAULT_PASS"
+      ONEAPP_AMQP_HOST = "${rabbitmq.TEMPLATE.CONTEXT.ETH0_IP}"
+      ONEAPP_AMQP_PORT = "5672"
+      ONEAPP_VNF_DNS_ENABLED = "$ONEAPP_VNF_DNS_ENABLED"
     cooldown: 120
     elasticity_policies: []
     scheduled_policies: []
@@ -158,14 +121,14 @@ opennebula_template:
       ONEAPP_MINIO_ROOT_USER="$ONEAPP_MINIO_ROOT_USER"
       ONEAPP_MINIO_ROOT_PASSWORD="$ONEAPP_MINIO_ROOT_PASSWORD"
       ONEAPP_MINIO_HOSTNAME="minio.opennebula.local"
-      ONEAPP_MINIO_TLS_ENABLED="NO""
+      ONEAPP_MINIO_TLS_ENABLED="NO"
     cooldown: 120
     elasticity_policies: []
     scheduled_policies: []
   - name: lithops
     parents:
     - vnf
-    - master
+    - rabbitmq
     - minio
     cardinality: 1
     vm_template_contents: |
@@ -175,7 +138,7 @@ opennebula_template:
       ]
       FALLBACK_GW = "${vnf.TEMPLATE.CONTEXT.ETH1_IP}"
       FALLBACK_DNS = "${vnf.TEMPLATE.CONTEXT.ETH1_IP}"
-      ONEAPP_LITHOPS_BACKEND="one"
+      ONEAPP_LITHOPS_BACKEND="amqp"
       ONEAPP_LITHOPS_STORAGE="minio"
       ONEAPP_MINIO_ENDPOINT="http://${minio.TEMPLATE.CONTEXT.ETH0_IP}:9000"
       ONEAPP_MINIO_ACCESS_KEY_ID="$ONEAPP_MINIO_ROOT_USER"
@@ -183,8 +146,14 @@ opennebula_template:
       ONEAPP_ONEBE_DOCKER_USER="$ONEAPP_ONEBE_DOCKER_USER"
       ONEAPP_ONEBE_DOCKER_PASSWORD="$ONEAPP_ONEBE_DOCKER_PASSWORD"
       ONEAPP_ONEBE_AUTOSCALE="$ONEAPP_ONEBE_AUTOSCALE"
-      ONEAPP_ONEBE_RUNTIME_CPU="${worker.TEMPLATE.CPU}"
-      ONEAPP_ONEBE_RUNTIME_MEMORY="${worker.TEMPLATE.MEMORY}""
+      ONEAPP_ONEBE_RUNTIME_CPU="${lithops_worker.TEMPLATE.CPU}"
+      ONEAPP_ONEBE_RUNTIME_MEMORY="${lithops_worker.TEMPLATE.MEMORY}"
+      ONEAPP_AMQP_USER="$ONEAPP_RABBITMQ_DEFAULT_USER"
+      ONEAPP_AMQP_PASS="$ONEAPP_RABBITMQ_DEFAULT_PASS"
+      ONEAPP_AMQP_HOST="${rabbitmq.TEMPLATE.CONTEXT.ETH0_IP}"
+      ONEAPP_AMQP_PORT="5672"
+      ONEAPP_ONEBE_WORKER_PROCESSES="${lithops_worker.TEMPLATE.CPU}"
+      ONEAPP_ONEBE_RUNTIME_TIMEOUT="600"
     cooldown: 120
     elasticity_policies: []
     scheduled_policies: []
@@ -192,29 +161,10 @@ opennebula_template:
     Public: 'M|network|Public| |id::'
     Private: 'M|network|Private| |id::'
   custom_attrs:
-    ONEAPP_VROUTER_ETH0_VIP0: '0|text|Control Plane Endpoint VIP (IPv4)||'
-    ONEAPP_VROUTER_ETH1_VIP0: '0|text|Default Gateway VIP (IPv4)||'
-    ONEAPP_RKE2_SUPERVISOR_EP: '0|text|RKE2 Supervisor endpoint||ep0.eth0.vr:9345'
-    ONEAPP_K8S_CONTROL_PLANE_EP: '0|text|Control Plane endpoint||ep0.eth0.vr:6443'
-    ONEAPP_K8S_EXTRA_SANS: '0|text|ApiServer extra certificate SANs||localhost,127.0.0.1,ep0.eth0.vr,${vnf.TEMPLATE.CONTEXT.ETH0_IP}'
-    ONEAPP_K8S_MULTUS_ENABLED: '0|boolean|Enable Multus||NO'
-    ONEAPP_K8S_MULTUS_CONFIG: '0|text64|Multus custom config (default none)||'
-    ONEAPP_K8S_CNI_PLUGIN: '0|list|CNI plugin supported by RKE2|canal,calico,cilium|cilium'
-    ONEAPP_K8S_CNI_CONFIG: '0|text64|CNI custom config (default none)||'
-    ONEAPP_K8S_CILIUM_RANGE: '0|text|Cilium LB IP CIDR (default none)||'
-    ONEAPP_K8S_METALLB_ENABLED: '0|boolean|Enable MetalLB||NO'
-    ONEAPP_K8S_METALLB_RANGE: '0|text|MetalLB IP range (default none)||'
-    ONEAPP_K8S_METALLB_CONFIG: '0|text64|MetalLB custom config (default none)||'
-    ONEAPP_K8S_LONGHORN_ENABLED: '0|boolean|Enable Longhorn||NO'
     ONEAPP_STORAGE_DEVICE: '0|text|Storage device path||/dev/vdb'
     ONEAPP_STORAGE_FILESYSTEM: '0|text|Storage device filesystem||xfs'
-    ONEAPP_K8S_TRAEFIK_ENABLED: '0|boolean|Enable Traefik||NO'
     ONEAPP_VNF_HAPROXY_INTERFACES: '0|text|Interfaces to run Haproxy on||eth0'
     ONEAPP_VNF_HAPROXY_REFRESH_RATE: '0|number|Haproxy refresh rate||30'
-    ONEAPP_VNF_HAPROXY_LB0_PORT: '0|number|HTTPS RKE2 Supervisor port||9345'
-    ONEAPP_VNF_HAPROXY_LB1_PORT: '0|number|HTTPS API Server port||6443'
-    ONEAPP_VNF_HAPROXY_LB2_PORT: '0|number|HTTPS ingress port||443'
-    ONEAPP_VNF_HAPROXY_LB3_PORT: '0|number|HTTP ingress port||80'
     ONEAPP_VNF_DNS_ENABLED: '0|boolean|Enable DNS recursor||YES'
     ONEAPP_VNF_DNS_INTERFACES: '0|text|DNS - Interfaces||eth1'
     ONEAPP_VNF_DNS_NAMESERVERS: '0|text|DNS - Nameservers||1.1.1.1,8.8.8.8'
@@ -228,6 +178,8 @@ opennebula_template:
     ONEAPP_ONEBE_DOCKER_PASSWORD: 'M|password|Docker user password for Lithops||'
     ONEAPP_ONEBE_JUPYTER_PASSWORD: 'M|password|Password for Jupyter access||'
     ONEAPP_ONEBE_AUTOSCALE: '0|text|Lithops backend autoscale option||all'
+    ONEAPP_RABBITMQ_DEFAULT_USER: 'M|text|RabbitMQ User||oneadmin'
+    ONEAPP_RABBITMQ_DEFAULT_PASS: 'M|password|RabbitMQ User Password||'
   ready_status_gate: true
 logo: lithops.png
 images: []

@@ -28,19 +28,28 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_MINIO_ENDPOINT_CERT'        'configure'  'Lithops storage backend MinIO endpoint certificate'               'O|text64'
     'ONEAPP_ONEBE_DOCKER_USER'          'configure'  'Username from dockerhub'                                          'O|text'
     'ONEAPP_ONEBE_DOCKER_PASSWORD'      'configure'  'Password for dockerhub'                                           'O|password'
-    'ONEAPP_ONEBE_RUNTIME_CPU'          'configure'  'Number of vCPU per POD'                                           'O|text'
-    'ONEAPP_ONEBE_RUNTIME_MEMORY'       'configure'  'Amount of memory per POD'                                         'O|text'
+    'ONEAPP_ONEBE_RUNTIME_CPU'          'configure'  'Number of vCPU per ONEBE'                                         'O|text'
+    'ONEAPP_ONEBE_RUNTIME_MEMORY'       'configure'  'Amount of memory per ONEBE'                                       'O|text'
     'ONEAPP_ONEBE_KUBECFG_PATH'         'configure'  'Path where kubeconfig file will be stored'                        'O|text'
     'ONEAPP_ONEBE_AUTOSCALE'            'configure'  'k8s backend autoscale option'                                     'O|text'
     'FALLBACK_GW'                       'configure'  'Appliance GW for Service mode'                                    'O|text'
     'FALLBACK_DNS'                      'configure'  'Appliance DNS for Service mode'                                   'O|text'
+    'ONEAPP_AMQP_USER'                  'configure'  'AMQP broker username'                                             'O|text'
+    'ONEAPP_AMQP_PASS'                  'configure'  'AMQP broker password'                                             'O|password'
+    'ONEAPP_AMQP_HOST'                  'configure'  'AMQP broker host'                                                 'O|text'
+    'ONEAPP_AMQP_PORT'                  'configure'  'AMQP broker port'                                                 'O|text'
+    'ONEAPP_ONEBE_WORKER_PROCESSES'     'configure'  'Number of worker processes for ONEBE'                             'O|text'
+    'ONEAPP_ONEBE_RUNTIME_TIMEOUT'      'configure'  'Runtime timeout in seconds'                                       'O|text'
+    'ONEAPP_ONEBE_MAX_WORKERS'          'configure'  'Maximum number of ONEBE workers'                                  'O|text'
+    'ONEAPP_ONEBE_MIN_WORKERS'          'configure'  'Minimum number of ONEBE workers'                                  'O|text'
 )
+
 
 
 ### Appliance metadata ###############################################
 
 # Appliance metadata
-ONE_SERVICE_NAME='Service Lithops - KVM'
+ONE_SERVICE_NAME='Lithops'
 ONE_SERVICE_VERSION='3.4.0'   #latest
 ONE_SERVICE_BUILD=$(date +%s)
 ONE_SERVICE_SHORT_DESCRIPTION='Appliance with preinstalled Lithops for KVM hosts'
@@ -48,6 +57,9 @@ ONE_SERVICE_DESCRIPTION=$(cat <<EOF
 Appliance with preinstalled Lithops v3.4.0.
 
 By default, it uses localhost both for Compute and Storage Backend.
+
+- Compute options: localhost, one, amqp
+- Storage options: localhost, minio
 
 To configure MinIO as Storage Backend use the parameter ONEAPP_LITHOPS_STORAGE=minio
 with ONEAPP_MINIO_ENDPOINT, ONEAPP_MINIO_ACCESS_KEY_ID and ONEAPP_MINIO_SECRET_ACCESS_KEY.
@@ -72,6 +84,14 @@ ONEAPP_ONEBE_RUNTIME_CPU="${ONEAPP_ONEBE_RUNTIME_CPU:-1}"
 ONEAPP_ONEBE_RUNTIME_MEMORY="${ONEAPP_ONEBE_RUNTIME_MEMORY:-512}"
 ONEAPP_ONEBE_KUBECFG_PATH="${ONEAPP_ONEBE_KUBECFG_PATH:-\/tmp\/kubeconfig}"
 ONEAPP_ONEBE_AUTOSCALE="${ONEAPP_ONEBE_AUTOSCALE:-all}"
+ONEAPP_AMQP_USER="${ONEAPP_AMQP_USER:-}"
+ONEAPP_AMQP_PASS="${ONEAPP_AMQP_PASS:-}"
+ONEAPP_AMQP_HOST="${ONEAPP_AMQP_HOST:-127.0.0.1}"
+ONEAPP_AMQP_PORT="${ONEAPP_AMQP_PORT:-5672}"
+ONEAPP_ONEBE_WORKER_PROCESSES="${ONEAPP_ONEBE_WORKER_PROCESSES:-2}"
+ONEAPP_ONEBE_RUNTIME_TIMEOUT="${ONEAPP_ONEBE_RUNTIME_TIMEOUT:-600}"
+ONEAPP_ONEBE_MAX_WORKERS="${ONEAPP_ONEBE_MAX_WORKERS:-3}"
+ONEAPP_ONEBE_MIN_WORKERS="${ONEAPP_ONEBE_MIN_WORKERS:-1}"
 
 ### Globals ##########################################################
 
@@ -269,6 +289,9 @@ lithops:
 
 # Start Storage Backend configuration
 # End Storage Backend configuration
+
+# Start Monitoring configuration
+# End Monitoring configuration
 EOF
 }
 
@@ -298,6 +321,33 @@ update_lithops_config(){
             msg info "runtime_memory: ${ONEAPP_ONEBE_RUNTIME_MEMORY}; runtime_cpu: ${ONEAPP_ONEBE_RUNTIME_CPU}"
             sed -i -ne "/# Start Compute/ {p; ione:\n  docker_user: ${ONEAPP_ONEBE_DOCKER_USER}\n  docker_password: ${ONEAPP_ONEBE_DOCKER_PASSWORD}\n  runtime_cpu: ${ONEAPP_ONEBE_RUNTIME_CPU}\n  runtime_memory: ${ONEAPP_ONEBE_RUNTIME_MEMORY}\n  kubecfg_path: ${ONEAPP_ONEBE_KUBECFG_PATH}\n  auto_scale: ${ONEAPP_ONEBE_AUTOSCALE}" -e ":a; n; /# End Compute/ {p; b}; ba}; p" /etc/lithops/config
         fi
+    elif [[ ${ONEAPP_LITHOPS_BACKEND} = "amqp" ]]; then
+        msg info "Edit config file for AMQP Compute Backend"
+        if ! check_amqpbe_attrs; then
+            msg info "Check AMQP backend attributes"
+            msg error "AMQP backend configuration failed"
+            exit 1
+        else
+            
+            if [[ -n "$ONEAPP_AMQP_USER" && -n "$ONEAPP_AMQP_PASS" ]]; then
+                ONEAPP_AMQP_URL="amqp://${ONEAPP_AMQP_USER}:${ONEAPP_AMQP_PASS}@${ONEAPP_AMQP_HOST}:${ONEAPP_AMQP_PORT}/"
+            else
+                ONEAPP_AMQP_URL="amqp://${ONEAPP_AMQP_HOST}:${ONEAPP_AMQP_PORT}/"
+            fi
+
+            msg info "Adding AMQP backend configuration to /etc/lithops/config"
+            sed -i '/^lithops:/a\  monitoring: rabbitmq' /etc/lithops/config
+
+            sed -i -ne "/# Start Compute/ {
+            p;
+            ione:\n  worker_processes: ${ONEAPP_ONEBE_WORKER_PROCESSES}\n  runtime_memory: ${ONEAPP_ONEBE_RUNTIME_MEMORY}\n  runtime_timeout: ${ONEAPP_ONEBE_RUNTIME_TIMEOUT}\n  runtime_cpu: ${ONEAPP_ONEBE_RUNTIME_CPU}\n  amqp_url: ${ONEAPP_AMQP_URL}\n  max_workers: ${ONEAPP_ONEBE_MAX_WORKERS}\n  min_workers: ${ONEAPP_ONEBE_MIN_WORKERS}\n  autoscale: ${ONEAPP_ONEBE_AUTOSCALE}
+            }" -e ":a; n; /# End Compute/ {p; b}; ba; p" /etc/lithops/config
+
+            sed -i -ne "/# Start Monitoring/ {
+            p;
+            irabbitmq:\n  amqp_url: ${ONEAPP_AMQP_URL}
+            }" -e ":a; n; /# End Monitoring/ {p; b}; ba; p" /etc/lithops/config
+        fi 
     fi
 
     if [[ ${ONEAPP_LITHOPS_STORAGE} = "localhost" ]]; then
@@ -330,6 +380,13 @@ check_onebe_attrs()
 {
     [[ -z "$ONEAPP_ONEBE_DOCKER_USER" ]] && return 1
     [[ -z "$ONEAPP_ONEBE_DOCKER_PASSWORD" ]] && return 1
+    return 0
+}
+
+check_amqpbe_attrs()
+{
+    [[ -z "$ONEAPP_AMQP_HOST" ]] && return 1
+    [[ -z "$ONEAPP_AMQP_PORT" ]] && return 1
     return 0
 }
 

@@ -1,9 +1,9 @@
 ---
-name: Service Lithops
-version: 6.10.0-3-20250128
+name: Lithops
+version: 6.10.0-3-20250513
 publisher: OpenNebula Systems
 description: |-
-  Appliance with preinstalled [Lithops](https://lithops-cloud.github.io/docs/) and Docker for k8s backend.
+  Appliance with preinstalled [Lithops](https://lithops-cloud.github.io/docs/) and Docker.
 
   See the dedicated [documentation](https://github.com/OpenNebula/marketplace-community/wiki/lithops_quick).
 short_description: Appliance with preinstalled Lithops for KVM hosts
@@ -12,7 +12,7 @@ tags:
 - ubuntu
 - service
 format: qcow2
-creation_time: 1717672311
+creation_time: 1747149743
 os-id: Ubuntu
 os-release: 22.04 LTS
 os-arch: x86_64
@@ -50,11 +50,11 @@ logo: lithops.png
 images:
 - name: service_Lithops
   url: >-
-    https://d24fmfybwxpuhu.cloudfront.net/service_Lithops-6.10.0-3-20250128.qcow2
+    https://opennebula-community-marketplace.s3.eu-west-1.amazonaws.com/service_Lithops-6.10.0-3-20250513.qcow2
   type: OS
   dev_prefix: vd
   driver: qcow2
   size: 5242880000
   checksum:
-    md5: 70988b51e32a32897c2537f20c10433f
-    sha256: e75317ccf0019908fba93cb17fb77afd7c5ab74695c994b5d22d9356e75a6871
+    md5: 5a2836f94361200f4a74e36cf56b7429
+    sha256: 90de590ea070c33809924ad85bfab59e299a50328a2c19c89bb937569d8e65d2

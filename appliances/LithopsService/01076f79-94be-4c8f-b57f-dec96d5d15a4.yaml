@@ -1,6 +1,6 @@
 ---
-name: Lithops Service - Client
-version: 6.10.0-2-20241018
+name: Lithops - Client
+version: 6.10.0-3-20250513
 publisher: OpenNebula Systems
 description: |-
   Appliance with preinstalled [Lithops](https://lithops-cloud.github.io/docs/).
@@ -15,7 +15,7 @@ tags:
 - service
 type: VMTEMPLATE
 format: qcow2
-creation_time: 1734631373
+creation_time: 1747149743
 os-id: Ubuntu
 os-release: '22.04 LTS'
 os-arch: x86_64
@@ -29,7 +29,7 @@ opennebula_template:
     oneapp_lithops_backend: '$ONEAPP_LITHOPS_BACKEND'
     oneapp_lithops_standalone: 'NO'
     oneapp_lithops_storage: '$ONEAPP_LITHOPS_STORAGE'
-    oneapp_minio_access_key_id: '$ONEAPP_MINIO_ACCESS_KEY_ID"'
+    oneapp_minio_access_key_id: '$ONEAPP_MINIO_ACCESS_KEY_ID'
     oneapp_minio_bucket: '$ONEAPP_MINIO_BUCKET'
     oneapp_minio_endpoint: '$ONEAPP_MINIO_ENDPOINT'
     oneapp_minio_endpoint_cert: '$ONEAPP_MINIO_ENDPOINT_CERT'
@@ -41,6 +41,12 @@ opennebula_template:
     oneapp_onebe_kubecfg_path: '$ONEAPP_ONEBE_KUBECFG_PATH'
     oneapp_onebe_runtime_cpu: '$ONEAPP_ONEBE_RUNTIME_CPU'
     oneapp_onebe_runtime_memory: '$ONEAPP_ONEBE_RUNTIME_MEMORY'
+    oneapp_amqp_user: '$ONEAPP_AMQP_USER'
+    oneapp_amqp_pass: '$ONEAPP_AMQP_PASS'
+    oneapp_amqp_host: '$ONEAPP_AMQP_HOST'
+    oneapp_amqp_port: '$ONEAPP_AMQP_PORT'
+    oneapp_onebe_worker_processes: '$ONEAPP_ONEBE_WORKER_PROCESSES'
+    oneapp_onebe_runtime_timeout: '$ONEAPP_ONEBE_RUNTIME_TIMEOUT'
     token: 'YES'
     start_script_base64: "bWtkaXIgL21udC9jb250ZXh0Cm1vdW50IC9kZXYvY2Ryb20gL21udC9jb250ZXh0"
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
@@ -69,4 +75,4 @@ opennebula_template:
     oneapp_onebe_autoscale: "0|text|Lithops backend autoscale option||all"
 logo: lithops.png
 disks:
-- "Service Lithops"
+- "Lithops"

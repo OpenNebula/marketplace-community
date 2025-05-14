@@ -1,0 +1,55 @@
+---
+name: Lithops - Worker
+version: 6.10.0-3-20250513
+publisher: OpenNebula Systems
+description: |-
+  [Lithops](https://lithops-cloud.github.io/docs/) Worker Appliance for Lithops compute backend.
+  It requires a RabbitMQ message broker.
+
+  See the dedicated [documentation](https://github.com/OpenNebula/marketplace-community/wiki/lithops_intro).
+short_description: Appliance with preinstalled Lithops Worker for KVM hosts
+tags:
+- lithops
+- ubuntu
+- service
+format: qcow2
+creation_time: 1747149743
+os-id: Ubuntu
+os-release: 22.04 LTS
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.8, 6.10
+opennebula_template:
+  context:
+    network: 'YES'
+    oneapp_amqp_user: '$ONEAPP_AMQP_USER'
+    oneapp_amqp_pass: '$ONEAPP_AMQP_PASS'
+    oneapp_amqp_host: '$ONEAPP_AMQP_HOST'
+    oneapp_amqp_port: '$ONEAPP_AMQP_PORT'
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+  cpu: '1'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  inputs_order: >-
+    ONEAPP_AMQP_URL
+  memory: '768'
+  os:
+    arch: x86_64
+  user_inputs:
+    oneapp_amqp_user: O|text|AMQP Queue user| |
+    oneapp_amqp_pass: O|password|AMQP Queue password| |
+    oneapp_amqp_host: M|text|AMQP Queue host| |127.0.0.1
+    oneapp_amqp_port: M|text|AMQP Queue port| |5672
+logo: lithops.png
+images:
+- name: service_Lithops_Worker
+  url: >-
+    https://opennebula-community-marketplace.s3.eu-west-1.amazonaws.com/service_Lithops_Worker-6.10.0-3-20250513.qcow2
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 5242880000
+  checksum:
+    md5: 3927edf94befbc02ae6a49f7e6750ed8
+    sha256: 81f2b3ee09ead33d392e361b759c39fbe727316b1c562b06ff95b5581db176ea
