@@ -19,7 +19,7 @@ source "qemu" "capone" {
   memory      = 2048
   accelerator = "kvm"
 
-  iso_url      = lookup(lookup(var.arch_parameter_map, var.arch, {}), "iso_url", "")
+  iso_url      = lookup(lookup(var.capone, var.arch, {}), "iso_url", "")
   iso_checksum = "none"
 
   headless = var.headless
@@ -56,22 +56,26 @@ source "qemu" "capone" {
   vm_name          = "${var.appliance_name}"
 }
 
+locals {
+  version_no_arch = split(".", var.version).0
+}
+
 build {
   sources = ["source.qemu.capone"]
 
-provisioner "shell" {
+  provisioner "shell" {
     execute_command = "sudo -iu root {{.Vars}} bash {{.Path}}"
-
-    # execute *.sh + *.sh.<version> from input_dir
+    environment_vars = [
+      "ARCH=${var.arch}",
+      "ALT_ARCH=${lookup(lookup(var.capone, var.arch, {}), "alt_arch", "")}",
+    ]
+    # execute *.sh + *.sh.<version_no_arch> from input_dir
     scripts = sort(concat(
-        [for s in fileset(".", "*.sh") : "${var.input_dir}/${s}"],
-        [for s in fileset(".", "*.sh.${var.version}") : "${var.input_dir}/${s}"]
+      [for s in fileset(".", "*.sh") : "${var.input_dir}/${s}"],
+      [for s in fileset(".", "*.sh.${local.version_no_arch}") : "${var.input_dir}/${s}"]
     ))
     expect_disconnect = true
-    environment_vars = [
-        "ARCH=${lookup(lookup(var.arch_parameter_map, var.arch, {}), "dependencies_arch", "")}"
-    ]
-}
+  }
 
   post-processor "shell-local" {
     execute_command = ["bash", "-c", "{{.Vars}} {{.Script}}"]
