@@ -19,10 +19,15 @@ source "qemu" "capone" {
   memory      = 2048
   accelerator = "kvm"
 
-  iso_url      = "../one-apps/export/ubuntu2204oneke.qcow2"
+  iso_url      = lookup(lookup(var.arch_parameter_map, var.arch, {}), "iso_url", "")
   iso_checksum = "none"
 
   headless = var.headless
+
+  firmware     = lookup(lookup(var.arch_vars, var.arch, {}), "firmware", "")
+  use_pflash   = lookup(lookup(var.arch_vars, var.arch, {}), "use_pflash", "")
+  machine_type = lookup(lookup(var.arch_vars, var.arch, {}), "machine_type", "")
+  qemu_binary  = lookup(lookup(var.arch_vars, var.arch, {}), "qemu_binary", "")
 
   disk_image       = true
   disk_cache       = "unsafe"
@@ -54,16 +59,19 @@ source "qemu" "capone" {
 build {
   sources = ["source.qemu.capone"]
 
-  provisioner "shell" {
+provisioner "shell" {
     execute_command = "sudo -iu root {{.Vars}} bash {{.Path}}"
 
     # execute *.sh + *.sh.<version> from input_dir
     scripts = sort(concat(
-      [for s in fileset(".", "*.sh") : "${var.input_dir}/${s}"],
-      [for s in fileset(".", "*.sh.${var.version}") : "${var.input_dir}/${s}"]
+        [for s in fileset(".", "*.sh") : "${var.input_dir}/${s}"],
+        [for s in fileset(".", "*.sh.${var.version}") : "${var.input_dir}/${s}"]
     ))
     expect_disconnect = true
-  }
+    environment_vars = [
+        "ARCH=${lookup(lookup(var.arch_parameter_map, var.arch, {}), "dependencies_arch", "")}"
+    ]
+}
 
   post-processor "shell-local" {
     execute_command = ["bash", "-c", "{{.Vars}} {{.Script}}"]
