@@ -20,12 +20,13 @@ os-id: Ubuntu
 os-release: '22.04 LTS'
 os-arch: x86_64
 hypervisor: KVM
-opennebula_version: 6.8, 6.10
+opennebula_version: 6.8, 6.10, 7.0
 opennebula_template:
   context:
     fallback_dns: '$FALLBACK_DNS'
     fallback_gw: '$FALLBACK_GW'
     network: 'YES'
+    report_ready: 'YES'
     oneapp_lithops_backend: '$ONEAPP_LITHOPS_BACKEND'
     oneapp_lithops_standalone: '$ONEAPP_LITHOPS_STANDALONE'
     oneapp_lithops_storage: '$ONEAPP_LITHOPS_STORAGE'

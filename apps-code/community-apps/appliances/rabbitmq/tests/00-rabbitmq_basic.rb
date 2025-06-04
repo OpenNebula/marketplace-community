@@ -59,7 +59,7 @@ describe 'Appliance Certification' do
 
     # use CLI to verify user authentication
     it 'validate rabbitmq credentials' do
-        user = APP_CONTEXT_PARAMS[:ONEAPP_RABBITMQ_DEFAULT_USER]
+        user = APP_CONTEXT_PARAMS[:ONEAPP_RABBITMQ_USER]
         cmd = "rabbitmqctl list_users"
         execution = @info[:vm].ssh(cmd)
         #pp execution.stdout  # Debugging output

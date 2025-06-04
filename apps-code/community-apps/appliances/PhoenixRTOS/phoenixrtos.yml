@@ -1,0 +1,18 @@
+id: phoenixrtos
+name: Phoenix-RTOS
+version: "0.1.0"
+short_description: |
+  Phoenix-RTOS appliance running inside a qcow2 image,
+  auto-installs Docker and launches phoenix-rtos-one container.
+opennebula_compat: ">= 6.8"
+logo: phoenixrtos.png
+tags: [ IoT, RTOS, docker ]
+os:
+  distro: ubuntu
+  release: "22.04"
+  arch: x86_64
+image:
+  type: qcow2
+  size: 8G
+  packer_target: service_PhoenixRTOS
+license: Apache-2.0

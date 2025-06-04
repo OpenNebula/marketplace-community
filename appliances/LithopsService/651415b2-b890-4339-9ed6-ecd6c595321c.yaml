@@ -33,7 +33,7 @@ os-id: Ubuntu
 os-release: '22.04 LTS'
 os-arch: x86_64
 hypervisor: KVM
-opennebula_version: 6.8, 6.10
+opennebula_version: 6.8, 6.10, 7.0
 type: 'SERVICE_TEMPLATE'
 roles:
   vr: 'Lithops - Virtual Router'
@@ -80,8 +80,8 @@ opennebula_template:
       ]
       FALLBACK_GW = "${vr.TEMPLATE.CONTEXT.ETH1_IP}"
       FALLBACK_DNS = "${vr.TEMPLATE.CONTEXT.ETH1_IP}"
-      ONEAPP_RABBITMQ_DEFAULT_USER = "$ONEAPP_RABBITMQ_DEFAULT_USER"
-      ONEAPP_RABBITMQ_DEFAULT_PASS = "$ONEAPP_RABBITMQ_DEFAULT_PASS"
+      ONEAPP_RABBITMQ_USER = "$ONEAPP_RABBITMQ_USER"
+      ONEAPP_RABBITMQ_PASS = "$ONEAPP_RABBITMQ_PASS"
     cooldown: 120
     elasticity_policies: []
     scheduled_policies: []
@@ -97,8 +97,8 @@ opennebula_template:
       ]
       FALLBACK_GW = "${vr.TEMPLATE.CONTEXT.ETH1_IP}"
       FALLBACK_DNS = "${vr.TEMPLATE.CONTEXT.ETH1_IP}"
-      ONEAPP_AMQP_USER = "$ONEAPP_RABBITMQ_DEFAULT_USER"
-      ONEAPP_AMQP_PASS = "$ONEAPP_RABBITMQ_DEFAULT_PASS"
+      ONEAPP_AMQP_USER = "$ONEAPP_RABBITMQ_USER"
+      ONEAPP_AMQP_PASS = "$ONEAPP_RABBITMQ_PASS"
       ONEAPP_AMQP_HOST = "${rabbitmq.TEMPLATE.CONTEXT.ETH0_IP}"
       ONEAPP_AMQP_PORT = "5672"
     cooldown: 120
@@ -138,7 +138,6 @@ opennebula_template:
       FALLBACK_DNS = "${vr.TEMPLATE.CONTEXT.ETH1_IP}"
       ONEAPP_LITHOPS_BACKEND="amqp"
       ONEAPP_LITHOPS_STORAGE="minio"
-      ONEAPP_MINIO_ENDPOINT="http://${minio.TEMPLATE.CONTEXT.ETH0_IP}:9000"
       ONEAPP_MINIO_ACCESS_KEY_ID="$ONEAPP_MINIO_ROOT_USER"
       ONEAPP_MINIO_SECRET_ACCESS_KEY="$ONEAPP_MINIO_ROOT_PASSWORD"
       ONEAPP_ONEBE_DOCKER_USER="$ONEAPP_ONEBE_DOCKER_USER"
@@ -146,10 +145,13 @@ opennebula_template:
       ONEAPP_ONEBE_AUTOSCALE="$ONEAPP_ONEBE_AUTOSCALE"
       ONEAPP_ONEBE_RUNTIME_CPU="${lithops_worker.TEMPLATE.CPU}"
       ONEAPP_ONEBE_RUNTIME_MEMORY="${lithops_worker.TEMPLATE.MEMORY}"
-      ONEAPP_AMQP_USER="$ONEAPP_RABBITMQ_DEFAULT_USER"
-      ONEAPP_AMQP_PASS="$ONEAPP_RABBITMQ_DEFAULT_PASS"
+      ONEAPP_AMQP_USER="$ONEAPP_RABBITMQ_USER"
+      ONEAPP_AMQP_PASS="$ONEAPP_RABBITMQ_PASS"
       ONEAPP_AMQP_HOST="${rabbitmq.TEMPLATE.CONTEXT.ETH0_IP}"
       ONEAPP_AMQP_PORT="5672"
+      ONEAPP_MINIO_ENDPOINT="$ONEAPP_MINIO_ENDPOINT"
+      ONEAPP_MINIO_ACCESS_KEY_ID="$ONEAPP_MINIO_ACCESS_KEY_ID"
+      ONEAPP_MINIO_SECRET_ACCESS_KEY="$ONEAPP_MINIO_SECRET_ACCESS_KEY"
       ONEAPP_ONEBE_WORKER_PROCESSES="${lithops_worker.TEMPLATE.CPU}"
       ONEAPP_ONEBE_RUNTIME_TIMEOUT="600"
     cooldown: 120
@@ -169,8 +171,11 @@ opennebula_template:
     ONEAPP_MINIO_ROOT_USER: 'M|text|MinIO Root User||minioadmin'
     ONEAPP_MINIO_ROOT_PASSWORD: 'M|password|MinIO Root User Password||'
     ONEAPP_ONEBE_AUTOSCALE: '0|text|Lithops backend autoscale option||all'
-    ONEAPP_RABBITMQ_DEFAULT_USER: 'M|text|RabbitMQ User||rabbitmqadmin'
-    ONEAPP_RABBITMQ_DEFAULT_PASS: 'M|password|RabbitMQ User Password||'
+    ONEAPP_RABBITMQ_USER: 'M|text|RabbitMQ User||rabbitadmin'
+    ONEAPP_RABBITMQ_PASS: 'M|password|RabbitMQ User Password||'
+    ONEAPP_MINIO_ENDPOINT: 'M|text|Lithops storage backend MinIO endpoint URL||http://${minio.TEMPLATE.CONTEXT.ETH0_IP}:9000'
+    ONEAPP_MINIO_ACCESS_KEY_ID: 'M|text|Lithops storage backend MinIO account user access key||$ONEAPP_MINIO_ROOT_USER'
+    ONEAPP_MINIO_SECRET_ACCESS_KEY: 'M|password|Lithops storage backend MinIO account user secret access key||$ONEAPP_MINIO_ROOT_PASSWORD'
   ready_status_gate: true
 logo: lithops.png
 images: []

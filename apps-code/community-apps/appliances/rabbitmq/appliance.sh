@@ -141,8 +141,13 @@ EOF
     msg info "Starting services"
     systemctl enable rabbitmq-server
     systemctl start rabbitmq-server
-    rabbitmqctl add_user ${ONEAPP_RABBITMQ_USER} ${ONEAPP_RABBITMQ_PASS}
+    if ! rabbitmqctl list_users | awk '{print $1}' | grep -q "^${ONEAPP_RABBITMQ_USER}$"; then
+        rabbitmqctl add_user "${ONEAPP_RABBITMQ_USER}" "${ONEAPP_RABBITMQ_PASS}"
+    else
+        echo "User ${ONEAPP_RABBITMQ_USER} already exists, skipping creation."
+    fi    
     rabbitmqctl set_permissions -p / ${ONEAPP_RABBITMQ_USER} ".*" ".*" ".*"
+    rabbitmqctl change_password ${ONEAPP_RABBITMQ_USER} ${ONEAPP_RABBITMQ_PASS}
     rabbitmqctl set_user_tags ${ONEAPP_RABBITMQ_USER} administrator
     rabbitmqctl delete_user guest
 

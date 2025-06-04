@@ -31,7 +31,7 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_ONEBE_RUNTIME_CPU'          'configure'  'Number of vCPU per ONEBE'                                         'O|text'
     'ONEAPP_ONEBE_RUNTIME_MEMORY'       'configure'  'Amount of memory per ONEBE'                                       'O|text'
     'ONEAPP_ONEBE_KUBECFG_PATH'         'configure'  'Path where kubeconfig file will be stored'                        'O|text'
-    'ONEAPP_ONEBE_AUTOSCALE'            'configure'  'k8s backend autoscale option'                                     'O|text'
+    'ONEAPP_ONEBE_AUTOSCALE'            'configure'  'Backend autoscale option'                                         'O|text'
     'FALLBACK_GW'                       'configure'  'Appliance GW for Service mode'                                    'O|text'
     'FALLBACK_DNS'                      'configure'  'Appliance DNS for Service mode'                                   'O|text'
     'ONEAPP_AMQP_USER'                  'configure'  'AMQP broker username'                                             'O|text'
@@ -99,7 +99,7 @@ DEP_PKGS="python3-pip"
 DEP_PIP="boto3 requests"
 LITHOPS_VERSION="3.4.0"
 LITHOPS_REPO="https://github.com/OpenNebula/lithops.git"
-LITHOPS_BRANCH="f-569"
+LITHOPS_BRANCH="f-748"
 DOCKER_VERSION="5:26.1.3-1~ubuntu.22.04~jammy"
 
 ###############################################################################
@@ -297,7 +297,11 @@ EOF
 
 update_lithops_config(){
     msg info "Update compute and storage backend modes"
-    sed -i "s/backend: .*/backend: ${ONEAPP_LITHOPS_BACKEND}/g" /etc/lithops/config
+    if [[ "$ONEAPP_LITHOPS_BACKEND" == "one" || "$ONEAPP_LITHOPS_BACKEND" == "amqp" ]]; then
+        sed -i 's/backend: .*/backend: one/' /etc/lithops/config
+    else
+        sed -i "s/backend: .*/backend: ${ONEAPP_LITHOPS_BACKEND}/" /etc/lithops/config
+    fi
     sed -i "s/storage: .*/storage: ${ONEAPP_LITHOPS_STORAGE}/g" /etc/lithops/config
 
     if [[ ${ONEAPP_LITHOPS_BACKEND} = "localhost" ]]; then
@@ -336,7 +340,9 @@ update_lithops_config(){
             fi
 
             msg info "Adding AMQP backend configuration to /etc/lithops/config"
-            sed -i '/^lithops:/a\  monitoring: rabbitmq' /etc/lithops/config
+            if ! grep -qE '^\s*monitoring:\s*rabbitmq' /etc/lithops/config; then
+                sed -i '/^lithops:/a\  monitoring: rabbitmq' /etc/lithops/config
+            fi
 
             sed -i -ne "/# Start Compute/ {p; ione:\n  worker_processes: ${ONEAPP_ONEBE_WORKER_PROCESSES}\n  runtime_memory: ${ONEAPP_ONEBE_RUNTIME_MEMORY}\n  runtime_timeout: ${ONEAPP_ONEBE_RUNTIME_TIMEOUT}\n  runtime_cpu: ${ONEAPP_ONEBE_RUNTIME_CPU}\n  amqp_url: ${ONEAPP_AMQP_URL}\n  max_workers: ${ONEAPP_ONEBE_MAX_WORKERS}\n  min_workers: ${ONEAPP_ONEBE_MIN_WORKERS}\n  autoscale: ${ONEAPP_ONEBE_AUTOSCALE}" -e ":a; n; /# End Compute/ {p; b}; ba}; p" /etc/lithops/config
 

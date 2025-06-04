@@ -55,8 +55,8 @@ ONEAPP_AMQP_PORT="${ONEAPP_AMQP_PORT:-5672}"
 
 ### Globals ##########################################################
 
-LITHOPS_REPO="https://github.com/MarioRobres/lithops.git"
-LITHOPS_BRANCH="master"
+LITHOPS_REPO="https://github.com/OpenNebula/lithops.git"
+LITHOPS_BRANCH="f-748"
 
 ###############################################################################
 ###############################################################################
@@ -87,7 +87,6 @@ service_install()
 service_configure()
 {
     setup_service
-    mount_onegate
     return 0
 }
 
@@ -114,11 +113,6 @@ install_system_dependencies() {
         git \
         zip && \
     rm -rf /var/lib/apt/lists/*
-}
-
-mount_onegate() {
-    mkdir /mnt/context
-    mount /dev/cdrom /mnt/context
 }
 
 clone_lithops_repository() {
