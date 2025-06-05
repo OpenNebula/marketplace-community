@@ -1,18 +1,49 @@
-id: phoenixrtos
+---
+# Metadata for Phoenix-RTOS service appliance (initial draft, without `images:` block)
 name: Phoenix-RTOS
 version: "0.1.0"
-short_description: |
-  Phoenix-RTOS appliance running inside a qcow2 image,
-  auto-installs Docker and launches phoenix-rtos-one container.
-opennebula_compat: ">= 6.8"
+publisher: OpenNebula Systems
+
+short_description: Appliance that boots Ubuntu 22.04, auto-installs Docker, and runs the Phoenix-RTOS container
+description: |
+  This service appliance launches Ubuntu 22.04 LTS, installs Docker,
+  and immediately starts the Phoenix-RTOS container (pablodelarco/phoenix-rtos-one).
+  Users will see a drop-into-container shell on the VM’s console.
+
+tags:
+  - IoT
+  - RTOS
+  - docker
+
+format: qcow2
+
+os-id: Ubuntu
+os-release: "22.04 LTS"
+os-arch: x86_64
+hypervisor: KVM
+
+opennebula_version: ">= 6.8"
+
+# The OpenNebula template that Sunstone will apply when instantiating this appliance.
+# We do not yet list `images:`—those will be auto-filled by CI once the .qcow2 is built.
+opennebula_template:
+  context:
+    network: "YES"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    password: "$PASSWORD"
+  cpu: "1"
+  memory: "2048"
+  graphics:
+    type: vnc
+    listen: 0.0.0.0
+  user_inputs:
+    PASSWORD: O|text|Root password for Phoenix-RTOS appliance (default: root)
+
 logo: phoenixrtos.png
-tags: [ IoT, RTOS, docker ]
-os:
-  distro: ubuntu
-  release: "22.04"
-  arch: x86_64
-image:
-  type: qcow2
-  size: 8G
-  packer_target: service_PhoenixRTOS
+
+maintainer:
+  name: "Pablo del Arco"
+  email: pdelarco@opennebula.io
+  org: "OpenNebula Systems"
+
 license: Apache-2.0
