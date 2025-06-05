@@ -37,7 +37,7 @@ opennebula_template:
     type: vnc
     listen: 0.0.0.0
   user_inputs:
-    PASSWORD: O|text|Root password for Phoenix-RTOS appliance (default: root)
+    PASSWORD: "O|text|Root password for Phoenix-RTOS appliance (default: root)"
 
 logo: phoenixrtos.png
 
