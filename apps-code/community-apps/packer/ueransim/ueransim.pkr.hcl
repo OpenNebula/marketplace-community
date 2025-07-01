@@ -13,7 +13,7 @@ build {
 }
 
 # Build VM image
-source "qemu" "UERANSIM" {
+source "qemu" "ueransim" {
   cpus        = 2
   memory      = 2048
   accelerator = "kvm"
@@ -49,7 +49,7 @@ source "qemu" "UERANSIM" {
 }
 
 build {
-  sources = ["source.qemu.UERANSIM"]
+  sources = ["source.qemu.ueransim"]
 
   # revert insecure ssh options done by context start_script
   provisioner "shell" {
@@ -83,7 +83,7 @@ build {
     destination = "/etc/one-appliance/service"
   }
   provisioner "file" {
-    sources     = ["appliances/UERANSIM/appliance.sh"]
+    sources     = ["../../appliances/ueransim/appliance.sh"]
     destination = "/etc/one-appliance/service.d/"
   }
 
