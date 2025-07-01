@@ -1,6 +1,6 @@
 variable "appliance_name" {
   type    = string
-  default = "service_UERANSIM"
+  default = "ueransim"
 }
 
 variable "input_dir" {
