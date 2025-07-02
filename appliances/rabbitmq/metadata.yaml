@@ -1,0 +1,45 @@
+---
+:app:
+  :name: rabbitmq # name used to make the app with the makefile
+  :type: service # there are service (complex apps) and distro (base apps)
+  :os:
+    :type: linux # linux, freebsd or windows
+    :base: ubuntu2204 # distro where the app runs on
+  :hypervisor: KVM
+  :context: # which context params are used to control the app
+    :prefixed: true # params are prefixed with ONEAPP_
+    :params:
+      :ONEAPP_RABBITMQ_NODE_PORT: '5672'
+      :ONEAPP_RABBITMQ_LOOPBACK_USER: 'false'
+      :ONEAPP_RABBITMQ_USER: 'rabbitadmin'
+      :ONEAPP_RABBITMQ_PASS: 'opennebula'
+      :ONEAPP_RABBITMQ_LOG_LEVEL: 'debug'
+
+:one:
+  # reference template for running the virtual appliance.
+  # Must be diskless, with ssh access and accessible by  the frontend
+  :template: # how the VM template is expected to be on OpenNebula
+    NAME: base
+    TEMPLATE:
+      ARCH: x86_64
+      CONTEXT:
+        NETWORK: 'YES'
+        SET_HOSTNAME": "$NAME"
+        SSH_PUBLIC_KEY: "$USER[SSH_PUBLIC_KEY]"
+      CPU: '0.5'
+      CPU_MODEL:
+        MODEL: host-passthrough
+      GRAPHICS:
+        LISTEN: 0.0.0.0
+        TYPE: vnc
+      MEMORY: '1024'
+      NIC:
+        NETWORK: service
+      NIC_DEFAULT:
+        MODEL: virtio
+  :datastore_name: default # target datatore to import the one-apps produced image
+  :timeout: '90' # timeout for XMLRPC calls
+
+:infra:
+  :disk_format: qcow2 # oneapps built image disk format
+  :apps_path: /var/tmp # directory where one-apps exports the appliances to
