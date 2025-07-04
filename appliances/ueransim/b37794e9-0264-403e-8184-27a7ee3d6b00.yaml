@@ -62,7 +62,7 @@ opennebula_template:
     oneapp_ueran_core_subnet: O|text|Subnet assigned to the 5G core services| |1
 logo: ueransim.png
 images:
-- name: service_ueransim
+- name: ueransim
   url: >-
     https://opennebula-marketplace.s3.amazonaws.com/service_ueransim-6.10.0-3-20250404.qcow2
   type: OS
