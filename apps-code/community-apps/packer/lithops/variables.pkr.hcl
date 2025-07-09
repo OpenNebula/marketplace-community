@@ -1,6 +1,6 @@
 variable "appliance_name" {
   type    = string
-  default = "service_Lithops"
+  default = "lithops"
 }
 
 variable "input_dir" {

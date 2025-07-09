@@ -1,5 +1,5 @@
 ---
-name: Lithops
+name: lithops
 version: 6.10.0-3-20250513
 publisher: OpenNebula Systems
 description: |-
@@ -8,9 +8,9 @@ description: |-
   See the dedicated [documentation](https://github.com/OpenNebula/marketplace-community/wiki/lithops_quick).
 short_description: Appliance with preinstalled Lithops for KVM hosts
 tags:
-- lithops
-- ubuntu
-- service
+  - lithops
+  - ubuntu
+  - service
 format: qcow2
 creation_time: 1747149743
 os-id: Ubuntu
@@ -48,13 +48,13 @@ opennebula_template:
     oneapp_minio_endpoint_cert: O|text64|CA certificate for MinIO connection| |
 logo: lithops.png
 images:
-- name: service_Lithops
-  url: >-
-    https://d38nm155miqkyg.cloudfront.net/service_Lithops-6.10.0-3-20250513.qcow2
-  type: OS
-  dev_prefix: vd
-  driver: qcow2
-  size: 5242880000
-  checksum:
-    md5: 5a2836f94361200f4a74e36cf56b7429
-    sha256: 90de590ea070c33809924ad85bfab59e299a50328a2c19c89bb937569d8e65d2
+  - name: lithops
+    url: >-
+      https://d38nm155miqkyg.cloudfront.net/lithops-6.10.0-3-20250513.qcow2
+    type: OS
+    dev_prefix: vd
+    driver: qcow2
+    size: 5242880000
+    checksum:
+      md5: 5a2836f94361200f4a74e36cf56b7429
+      sha256: 90de590ea070c33809924ad85bfab59e299a50328a2c19c89bb937569d8e65d2
