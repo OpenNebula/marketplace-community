@@ -1,0 +1,54 @@
+---
+name: Zabbix
+version: 6.10.0-3-7.0-LTS
+publisher: OpenNebula Systems
+description: |-
+  Appliance with preinstalled [Zabbix](https://www.zabbix.com/documentation/7.0/en/manual).
+short_description: Appliance with preinstalled Zabbix for KVM hosts
+tags:
+- zabbix
+- ubuntu
+- service
+format: qcow2
+creation_time: 1747149743
+os-id: Ubuntu
+os-release: 24.04 LTS
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.2, 6.3, 6.4, 6.6, 6.8, 6.10, 7.0
+opennebula_template:
+  context:
+    network: 'YES'
+    oneapp_zabbix_db_user: "$ONEAPP_ZABBIX_DB_USER"
+    oneapp_zabbix_db_password: "$ONEAPP_ZABBIX_DB_PASSWORD"
+    oneapp_zabbix_db_name: "$ONEAPP_ZABBIX_DB_NAME"
+    oneapp_zabbix_port: "$ONEAPP_ZABBIX_PORT"
+    oneapp_zabbix_server_name: "$ONEAPP_ZABBIX_SERVER_NAME"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+  cpu: '1'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  inputs_order: >-
+    ONEAPP_ZABBIX_DB_USER, ONEAPP_ZABBIX_DB_PASSWORD, ONEAPP_ZABBIX_DB_NAME, ONEAPP_ZABBIX_PORT, ONEAPP_ZABBIX_SERVER_NAME
+  memory: '768'
+  os:
+    arch: x86_64
+  user_inputs:
+    oneapp_zabbix_db_user: M|text|DB username| |zabbix
+    oneapp_zabbix_db_password: M|password|DB password| |
+    oneapp_zabbix_db_name: M|text|DB name| |zabbix
+    oneapp_zabbix_port: M|number|Nginx listen port| |8080
+    oneapp_zabbix_server_name: M|text|Nginx server_name| |example.com
+logo: zabbix.png
+images:
+- name: zabbix
+  url: >-
+    https://d38nm155miqkyg.cloudfront.net/service_Lithops-6.10.0-3-20250513.qcow2
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 5242880000
+  checksum:
+    md5: 5a2836f94361200f4a74e36cf56b7429
+    sha256: 90de590ea070c33809924ad85bfab59e299a50328a2c19c89bb937569d8e65d2
