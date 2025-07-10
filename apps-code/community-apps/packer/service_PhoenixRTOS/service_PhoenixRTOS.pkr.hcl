@@ -106,16 +106,8 @@ build {
 
   # copy your context binaries & scripts
   provisioner "file" {
-    source      = "context-linux/out/"
-    destination = "/context"
-  }
-  provisioner "file" {
     source      = "${path.root}/../../appliances/PhoenixRTOS/appliance.sh"
     destination = "/tmp/appliance.sh"
-  }
-  provisioner "file" {
-    source      = "${path.root}/../../appliances/service.sh"
-    destination = "/tmp/service.sh"
   }
   provisioner "file" {
     source      = "${path.root}/../../appliances/lib"
