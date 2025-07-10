@@ -1,6 +1,6 @@
 variable "appliance_name" {
   type    = string
-  default = "service_rabbitmq"
+  default = "rabbitmq"
 }
 
 variable "input_dir" {

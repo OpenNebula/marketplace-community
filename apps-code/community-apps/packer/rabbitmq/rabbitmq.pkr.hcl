@@ -84,8 +84,8 @@ build {
   # Bash libraries at appliances/lib for easier custom implementation in bash logic
   provisioner "file" {
     sources = [
-      "../one-apps/appliances/lib/common.sh",
-      "../one-apps/appliances/lib/functions.sh",
+      "../../lib/common.sh",
+      "../../lib/functions.sh",
     ]
     destination = "/etc/one-appliance/lib/"
   }
