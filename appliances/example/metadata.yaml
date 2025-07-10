@@ -1,6 +1,6 @@
 ---
 :app:
-  :name: service_example # name used to make the app with the makefile
+  :name: example # name used to make the app with the makefile
   :type: service # there are service (complex apps) and distro (base apps)
   :os:
     :type: linux # linux, freebsd or windows
@@ -40,4 +40,4 @@
 
 :infra:
   :disk_format: qcow2 # oneapps built image disk format
-  :apps_path: /opt/one-apps/export # directory where one-apps exports the appliances to
+  :apps_path: /var/tmp # directory where one-apps exports the appliances to
