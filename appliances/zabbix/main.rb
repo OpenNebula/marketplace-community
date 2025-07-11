@@ -64,11 +64,68 @@ module Service
             raise "Error: ONEAPP_ZABBIX_DB_PASSWORD not defined"
         end
 
+        msg :info, 'Configuring PostgreSQL for Zabbix database access...'
+
+        pg_version = `ls /etc/postgresql/ 2>/dev/null | grep -E '^[0-9]+$' | sort -rV | head -n 1`.strip
+        if pg_version.empty?
+            raise "Error: Could not determine PostgreSQL version. Please set it manually."
+        end
+        pg_hba_conf_path = "/etc/postgresql/#{pg_version}/main/pg_hba.conf"
+
+        # Backup pg_hba.conf
+        puts bash "sudo cp #{pg_hba_conf_path} #{pg_hba_conf_path}.bak"
+
+        puts bash <<~HBA_SCRIPT
+            set -e
+
+            MD5_ENTRY="local   #{ONEAPP_ZABBIX_DB_NAME}      #{ONEAPP_ZABBIX_DB_USER}          md5"
+
+            if ! grep -qF "$MD5_ENTRY" #{pg_hba_conf_path}; then
+                if grep -qE "^local\\s+#{ONEAPP_ZABBIX_DB_NAME}\\s+#{ONEAPP_ZABBIX_DB_USER}\\s+peer" #{pg_hba_conf_path}; then
+                    sudo sed -i "s/^local\\s\\+#{ONEAPP_ZABBIX_DB_NAME}\\s\\+#{ONEAPP_ZABBIX_DB_USER}\\s\\+peer/$MD5_ENTRY/" #{pg_hba_conf_path}
+                    echo "Replaced existing 'peer' entry for Zabbix with 'md5'."
+                else
+                    if grep -qE "^local\\s+all\\s+all\\s+peer" #{pg_hba_conf_path}; then
+                        sudo awk -v insert="$MD5_ENTRY" '/^local\\s+all\\s+all\\s+peer/ && !inserted { print insert; inserted=1 } { print }' #{pg_hba_conf_path} > /tmp/pg_hba.conf.tmp && sudo mv /tmp/pg_hba.conf.tmp #{pg_hba_conf_path}
+                        echo "Inserted new 'md5' entry before 'local all all peer'."
+                    else
+                        echo "$MD5_ENTRY" | sudo tee -a #{pg_hba_conf_path}
+                        echo "Appended new 'md5' entry as a fallback."
+                    fi
+                fi
+            else
+                echo "'md5' entry for Zabbix already exists."
+            fi
+        HBA_SCRIPT
+
+        msg :info, 'Restarting PostgreSQL service and waiting for it to be ready...'
+        puts bash <<~RESTART_WAIT_SCRIPT
+            sudo systemctl restart postgresql
+            ATTEMPTS=0
+            MAX_ATTEMPTS=30
+            SLEEP_TIME=2 # seconds
+
+            while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+                if sudo -u postgres pg_isready -q -h /var/run/postgresql -p 5432; then
+                    echo "PostgreSQL is ready!"
+                    break
+                fi
+                echo "Waiting for PostgreSQL to start... (Attempt $((ATTEMPTS+1)) of $MAX_ATTEMPTS)"
+                sleep $SLEEP_TIME
+                ATTEMPTS=$((ATTEMPTS+1))
+            done
+
+            if [ $ATTEMPTS -eq $MAX_ATTEMPTS ]; then
+                echo "Error: PostgreSQL did not become ready in time." >&2
+                exit 1
+            fi
+        RESTART_WAIT_SCRIPT
+
         puts bash <<~SCRIPT
             sudo -u postgres psql -c "CREATE USER #{ONEAPP_ZABBIX_DB_USER} WITH PASSWORD '#{ONEAPP_ZABBIX_DB_PASSWORD}';"
             sudo -u postgres createdb -O #{ONEAPP_ZABBIX_DB_USER} #{ONEAPP_ZABBIX_DB_NAME};
 
-            zcat /usr/share/zabbix-sql-scripts/postgresql/server.sql.gz | sudo -u #{ONEAPP_ZABBIX_DB_USER} psql #{ONEAPP_ZABBIX_DB_NAME}
+            zcat /usr/share/zabbix-sql-scripts/postgresql/server.sql.gz | sudo -u postgres PGPASSWORD='#{ONEAPP_ZABBIX_DB_PASSWORD}' psql -d #{ONEAPP_ZABBIX_DB_NAME} -U #{ONEAPP_ZABBIX_DB_USER}
         SCRIPT
         msg :info, 'Database created and initial schema imported'
     end

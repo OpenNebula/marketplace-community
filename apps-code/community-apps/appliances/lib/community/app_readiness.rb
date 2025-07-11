@@ -12,8 +12,8 @@ end
 
 app = ARGV[0] # 'example'
 
-tests_list_path = "../../#{app}/tests.yaml"
-tests_path = "../../#{app}/tests"
+tests_list_path = "../../../../../appliances/#{app}/tests.yaml"
+tests_path = "../../../../../appliances/#{app}/tests"
 
 if !File.exist? tests_list_path
     STDERR.puts "Missing test file #{tests_list_path}"
