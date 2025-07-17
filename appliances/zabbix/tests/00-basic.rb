@@ -60,18 +60,30 @@ describe 'Appliance Certification' do
     end
 
     # Check if the service framework from one-apps reports that the app is ready
-    it 'check oneapps motd' do
+    it 'checks oneapps motd' do
         cmd = 'cat /etc/motd'
+        timeout_seconds = 60
+        retry_interval_seconds = 5
 
-        execution = @info[:vm].ssh(cmd)
+        begin
+            Timeout.timeout(timeout_seconds) do
+                loop do
+                    execution = @info[:vm].ssh(cmd)
 
-        # you can use pp to help with logging.
-        # This doesn't verify anything, but helps with inspections
-        # In this case, we display the motd you get when connecting to the app instance via ssh
-        pp execution.stdout
-
-        expect(execution.exitstatus).to eq(0)
-        expect(execution.stdout).to include('All set and ready to serve')
+                    if execution.exitstatus == 0 && execution.stdout.include?('All set and ready to serve')
+                        expect(execution.exitstatus).to eq(0) # Assert exit status
+                        expect(execution.stdout).to include('All set and ready to serve')
+                        break
+                    else
+                        sleep(retry_interval_seconds)
+                    end
+                end
+            end
+        rescue Timeout::Error
+            fail "Timeout after #{timeout_seconds} seconds: MOTD did not contain 'All set and ready to serve'. Appliance not configured."
+        rescue StandardError => e
+            fail "An error occurred during MOTD check: #{e.message}"
+        end
     end
 
     # use mysql CLI to verify that the database has been created
@@ -84,25 +96,3 @@ describe 'Appliance Certification' do
         expect(execution.stdout.strip.to_i).to eq(1)
     end
 end
-
-# Example run
-# rspec -f d tutorial_tests.rb
-# Appliance Certification
-# "onetemplate instantiate base --context SSH_PUBLIC_KEY=\\\"\\$USER[SSH_PUBLIC_KEY]\\\",NETWORK=\"YES\",ONEAPP_DB_NAME=\"dbname\",ONEAPP_DB_USER=\"username\",ONEAPP_DB_PASSWORD=\"upass\",ONEAPP_DB_ROOT_PASSWORD=\"arpass\" --disk service_example"
-#   mysql is installed
-#   mysql service is running
-# "\n" +
-# "    ___   _ __    ___\n" +
-# "   / _ \\ | '_ \\  / _ \\   OpenNebula Service Appliance\n" +
-# "  | (_) || | | ||  __/\n" +
-# "   \\___/ |_| |_| \\___|\n" +
-# "\n" +
-# " All set and ready to serve 8)\n" +
-# "\n"
-#   check oneapps motd
-#   can connect as root with defined password
-#   database exists
-#   can connect as user with defined password
-
-# Finished in 1 minute 25.9 seconds (files took 0.22136 seconds to load)
-# 6 examples, 0 failures
