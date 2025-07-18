@@ -1,0 +1,91 @@
+---
+name: Open5GS ONEedge5G
+version: '1.0'
+publisher: ONEedge5G Project
+description: |
+  Appliance with preinstalled Open5GS - a C-language implementation of 5G Core and EPC
+  for 5G SA (Standalone) and NSA (Non-Standalone) networks, developed within the ONEedge5G project.
+  
+  ## Features
+  
+  - **Open5GS 5G SA Core functions**: AMF, SMF, UPF, AUSF, UDM, UDR, PCF, NRF, BSF, NSSF
+  - **Open5GS WebUI**: Web-based subscriber management interface
+  - **MongoDB 8.0**: Subscriber database with optimized configuration
+  - **Pre-configured for 5G SA**: Ready-to-use 5G Standalone deployment
+  - **Network optimization**: Pre-configured NAT rules and IP forwarding for UE connectivity
+  - **Service management**: Automatic service startup and health monitoring
+  
+  ## Technical Specifications
+  
+  - **Base OS**: Ubuntu 24.04 LTS
+  - **Open5GS Version**: Latest from PPA repository
+  - **Node.js Version**: 20.x LTS for WebUI
+  - **MongoDB Version**: 8.0 with optimized configuration
+  - **Network Functions**: 5G SA Core (NRF, AMF, SMF, UPF, AUSF, UDM, UDR, PCF, BSF, NSSF)
+  - **WebUI**: Subscriber management with default credentials (admin/1423)
+  
+  ## Network Configuration
+  
+  - **N2 Interface**: Configurable AMF address for gNodeB connection
+  - **WebUI Access**: Configurable IP and port for management interface
+  - **PLMN Configuration**: Customizable MCC/MNC for network identification
+  - **TAC Configuration**: Tracking Area Code for location management
+  
+  ## Deployment Notes
+  
+  After deployment, the appliance automatically configures all 5G SA core functions
+  and starts the necessary services. The WebUI is accessible for subscriber management
+  and network monitoring. Check deployment status in /etc/one-appliance/status and
+  logs in /var/log/one-appliance/.
+
+short_description: Open5GS 5G Core Network implementation for 5G SA deployments with WebUI management
+tags:
+- 5g
+- core-network
+- open5gs
+- sa
+- oneedge5g
+format: qcow2
+creation_time: 1752834485
+os-id: Ubuntu
+os-release: 24.04 LTS
+os-arch: x86_64
+hypervisor: kvm
+opennebula_version: 6.10
+opennebula_template:
+  context:
+    network: 'YES'
+    ssh_public_key: '$USER[SSH_PUBLIC_KEY]'
+    set_hostname: '$NAME'
+    ONEAPP_OPEN5GS_MCC: $ONEAPP_OPEN5GS_MCC
+    ONEAPP_OPEN5GS_MNC: $ONEAPP_OPEN5GS_MNC
+    ONEAPP_OPEN5GS_N2_IP: $ONEAPP_OPEN5GS_N2_IP
+    ONEAPP_OPEN5GS_TAC: $ONEAPP_OPEN5GS_TAC
+    ONEAPP_OPEN5GS_WEBUI_IP: $ONEAPP_OPEN5GS_WEBUI_IP
+    ONEAPP_OPEN5GS_WEBUI_PORT: $ONEAPP_OPEN5GS_WEBUI_PORT
+  cpu: '4'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  memory: '8192'
+  os:
+    arch: x86_64
+  user_inputs:
+    ONEAPP_OPEN5GS_MCC: 'O|text|Mobile Country Code (3 digits)| |999'
+    ONEAPP_OPEN5GS_MNC: 'O|text|Mobile Network Code (2-3 digits)| |75'
+    ONEAPP_OPEN5GS_N2_IP: 'O|text|N2 interface IP address for AMF| |10.0.3.2'
+    ONEAPP_OPEN5GS_TAC: 'O|text|Tracking Area Code| |1'
+    ONEAPP_OPEN5GS_WEBUI_IP: 'O|text|WebUI IP address (0.0.0.0 for all interfaces)| |0.0.0.0'
+    ONEAPP_OPEN5GS_WEBUI_PORT: 'O|text|WebUI port| |3000'
+logo: openfgs.png
+images:
+- name: service_open5gs
+  url: >-
+    <>
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 32212254720
+  checksum:
+    md5: '2392e4200dacbd22acb6c3b3a651bc29'
+    sha256: '83a9e61fffa4ffe81dfebb7c86eab4a4c6c6d95ef7e9aa29aa73ee1c955f5052'
