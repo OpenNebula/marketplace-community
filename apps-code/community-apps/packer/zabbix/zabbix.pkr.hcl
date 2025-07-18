@@ -84,14 +84,14 @@ build {
   # Bash libraries at appliances/lib for easier custom implementation in bash logic
   provisioner "file" {
     sources = [
-      "appliances/lib/common.sh",
-      "appliances/lib/functions.sh",
+      "../../lib/common.sh",
+      "../../lib/functions.sh",
     ]
     destination = "/etc/one-appliance/lib/"
   }
 
   provisioner "file" {
-    sources     = ["appliances/lib/helpers.rb"]
+    sources     = ["../../lib/helpers.rb"]
     destination = "/etc/one-appliance/lib/"
   }
 
