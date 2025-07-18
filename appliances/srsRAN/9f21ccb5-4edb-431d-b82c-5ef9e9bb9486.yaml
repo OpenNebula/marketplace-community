@@ -83,7 +83,7 @@ opennebula_template:
 logo: srsran.png
 
 images:
-- name: srsran
+- name: service_srsran
   url: >-
     <>
   type: OS
