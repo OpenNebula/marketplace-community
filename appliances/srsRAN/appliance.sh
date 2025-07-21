@@ -28,7 +28,7 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_SRSRAN_MCC'             'configure' 'Mobile Country Code'                                    '999'
     'ONEAPP_SRSRAN_MNC'             'configure' 'Mobile Network Code'                                    '75'
     'ONEAPP_SRSRAN_TAC'             'configure' 'Tracking Area Code'                                     '1'
-    'ONEAPP_SRSRAN_ENABLE_DPDK'     'configure' 'Enable DPDK support'                                   'yes'
+    'ONEAPP_SRSRAN_ENABLE_DPDK'     'configure' 'Enable DPDK support'                                   'YES'
     'ONEAPP_SRSRAN_PCI'             'configure' 'Physical Cell Identity'                                '69'
     'ONEAPP_SRSRAN_DL_ARFCN'        'configure' 'Downlink ARFCN'                                        '656668'
     'ONEAPP_SRSRAN_BAND'            'configure' 'NR Band'                                               'n77'
@@ -89,7 +89,7 @@ ONEAPP_SRSRAN_MODE="${ONEAPP_SRSRAN_MODE:-gnb}"
 ONEAPP_SRSRAN_MCC="${ONEAPP_SRSRAN_MCC:-999}"
 ONEAPP_SRSRAN_MNC="${ONEAPP_SRSRAN_MNC:-75}"
 ONEAPP_SRSRAN_TAC="${ONEAPP_SRSRAN_TAC:-1}"
-ONEAPP_SRSRAN_ENABLE_DPDK="${ONEAPP_SRSRAN_ENABLE_DPDK:-yes}"
+ONEAPP_SRSRAN_ENABLE_DPDK="${ONEAPP_SRSRAN_ENABLE_DPDK:-YES}"
 ONEAPP_SRSRAN_PCI="${ONEAPP_SRSRAN_PCI:-69}"
 ONEAPP_SRSRAN_DL_ARFCN="${ONEAPP_SRSRAN_DL_ARFCN:-656668}"
 ONEAPP_SRSRAN_BAND="${ONEAPP_SRSRAN_BAND:-n77}"
@@ -347,7 +347,7 @@ service_configure()
     systemctl stop srsran-gnb srsran-cu srsran-du || true
 
     # Select the appropriate installation directory based on DPDK setting
-    if [[ "$ONEAPP_SRSRAN_ENABLE_DPDK" == "yes" ]]; then
+    if [[ "$ONEAPP_SRSRAN_ENABLE_DPDK" == "YES" ]]; then
         if [ -d "$SRSRAN_INSTALL_DIR_DPDK" ] && [ -f "$SRSRAN_INSTALL_DIR_DPDK/bin/gnb" ]; then
             SRSRAN_INSTALL_DIR="$SRSRAN_INSTALL_DIR_DPDK"
             msg info "Using srsRAN DPDK version: $SRSRAN_INSTALL_DIR"
@@ -449,7 +449,7 @@ PCI: ${ONEAPP_SRSRAN_PCI}
 DL ARFCN: ${ONEAPP_SRSRAN_DL_ARFCN}
 Band: ${ONEAPP_SRSRAN_BAND}
 Channel BW: ${ONEAPP_SRSRAN_CHANNEL_BW_MHZ} MHz
-DPDK: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "yes" ] && echo "Enabled" || echo "Disabled")
+DPDK: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "YES" ] && echo "Enabled" || echo "Disabled")
 AMF IPv4: ${ONEAPP_SRSRAN_AMF_IPV4}
 NIC PCI Address: ${ONEAPP_SRSRAN_NIC_PCI_ADDR}
 RU MAC Address: ${ONEAPP_SRSRAN_RU_MAC}
@@ -474,16 +474,16 @@ srscu: ${SRSRAN_INSTALL_DIR}/bin/srscu
 srsdu: ${SRSRAN_INSTALL_DIR}/bin/srsdu
 
 [Installation Details]
-Active Version: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "yes" ] && echo "DPDK-enabled" || echo "Base")
+Active Version: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "YES" ] && echo "DPDK-enabled" || echo "Base")
 Base Installation: ${SRSRAN_INSTALL_DIR_BASE}
 DPDK Installation: $([ -d "$SRSRAN_INSTALL_DIR_DPDK" ] && echo "$SRSRAN_INSTALL_DIR_DPDK" || echo "Not available")
 
 [DPDK Configuration]
 DPDK Version: 23.11
-Hugepages: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "yes" ] && echo "2GB (1G pages)" || echo "Not configured")
-Hugepages Mount: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "yes" ] && echo "/mnt/huge" || echo "Not mounted")
-igb_uio Driver: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "yes" ] && echo "Installed" || echo "Not installed")
-DPDK Drivers: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "yes" ] && echo "igb_uio, uio_pci_generic" || echo "Not configured")
+Hugepages: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "YES" ] && echo "2GB (1G pages)" || echo "Not configured")
+Hugepages Mount: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "YES" ] && echo "/mnt/huge" || echo "Not mounted")
+igb_uio Driver: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "YES" ] && echo "Installed" || echo "Not installed")
+DPDK Drivers: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "YES" ] && echo "igb_uio, uio_pci_generic" || echo "Not configured")
 
 [DPDK Management Commands]
 Check Hugepages: cat /proc/meminfo | grep -i huge
@@ -1947,7 +1947,7 @@ ru_ofh:
   iq_scaling: 3
 
   cells:
-    - network_interface: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "yes" ] && echo "${ONEAPP_SRSRAN_NIC_PCI_ADDR}" || echo "eth1")
+    - network_interface: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "YES" ] && echo "${ONEAPP_SRSRAN_NIC_PCI_ADDR}" || echo "eth1")
       ru_mac_addr: ${ONEAPP_SRSRAN_RU_MAC}
       du_mac_addr: a2:b3:a6:4e:de:49
       vlan_tag_cp: 564
@@ -1958,7 +1958,7 @@ ru_ofh:
 EOF
 
     # Add HAL configuration only for DPDK version
-    if [[ "$ONEAPP_SRSRAN_ENABLE_DPDK" == "yes" ]]; then
+    if [[ "$ONEAPP_SRSRAN_ENABLE_DPDK" == "YES" ]]; then
         cat >> "${SRSRAN_CONFIG_DIR}/gnb.yaml" <<EOF
 
 # HAL configuration for DPDK
@@ -2159,7 +2159,7 @@ ru_ofh:
   iq_scaling: 3
 
   cells:
-    - network_interface: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "yes" ] && echo "${ONEAPP_SRSRAN_NIC_PCI_ADDR}" || echo "eth1")
+    - network_interface: $([ "$ONEAPP_SRSRAN_ENABLE_DPDK" = "YES" ] && echo "${ONEAPP_SRSRAN_NIC_PCI_ADDR}" || echo "eth1")
       ru_mac_addr: ${ONEAPP_SRSRAN_RU_MAC}
       du_mac_addr: a2:b3:a6:4e:de:49
       vlan_tag_cp: 564
@@ -2170,7 +2170,7 @@ ru_ofh:
 EOF
 
     # Add HAL configuration only for DPDK version
-    if [[ "$ONEAPP_SRSRAN_ENABLE_DPDK" == "yes" ]]; then
+    if [[ "$ONEAPP_SRSRAN_ENABLE_DPDK" == "YES" ]]; then
         cat >> "${SRSRAN_CONFIG_DIR}/du.yaml" <<EOF
 
 # HAL configuration for DPDK
