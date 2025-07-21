@@ -1,7 +1,9 @@
 ---
 name: Zabbix
-version: 6.10.0-3-7.0-LTS
+version: 7.0-LTS
+one-apps_version: 7.0.0-0
 publisher: OpenNebula Systems
+publisher_email: engineering@opennebula.io
 description: |-
   Appliance with preinstalled [Zabbix](https://www.zabbix.com/documentation/7.0/en/manual).
 
@@ -18,7 +20,7 @@ tags:
 - ubuntu
 - service
 format: qcow2
-creation_time: 1747149743
+creation_time: 1752141600
 os-id: Ubuntu
 os-release: 24.04 LTS
 os-arch: x86_64
