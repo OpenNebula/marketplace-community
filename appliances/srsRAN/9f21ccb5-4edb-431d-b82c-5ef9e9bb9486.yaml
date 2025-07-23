@@ -1,7 +1,9 @@
 ---
 name: srsRAN ONEedge5G
 version: 1.0
+one-apps_version: 7.0.0
 publisher: OpenNebula Systems
+publisher_email: rafagarciaa31@uma.es
 description: |-
   Appliance with preinstalled srsRAN Project - a complete 5G software radio suite
   with Split 7.2 support for disaggregated deployments, developed within the ONEedge5G project.
