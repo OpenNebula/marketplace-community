@@ -1,7 +1,9 @@
 ---
 name: Open5GS ONEedge5G
 version: '1.0'
+one-apps_version: 7.0.0
 publisher: ONEedge5G Project
+publisher_email: rafagarciaa31@uma.es
 description: |
   Appliance with preinstalled Open5GS - a C-language implementation of 5G Core and EPC
   for 5G SA (Standalone) and NSA (Non-Standalone) networks, developed within the ONEedge5G project.
