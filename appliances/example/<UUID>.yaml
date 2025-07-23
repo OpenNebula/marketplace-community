@@ -1,0 +1,61 @@
+# Delete this comment!
+# This is a template for an appliance consisting on a VM template and associated Image.
+# It is possible to define OneFlow [service templates](https://github.com/OpenNebula/marketplace-community?tab=readme-ov-file#service-since-one-60)
+# or [VM templates](https://github.com/OpenNebula/marketplace-community?tab=readme-ov-file#virtual-machine-template-since-one-60)
+# with Images already available in the Marketplaces.
+---
+name: Name of the appliance
+version: Version of this specific appliance
+one-apps_version: Version one-apps used for the appliance
+publisher: Company name
+publisher_email: Company email
+description: |-
+  Description of this appliance. The format is *Markdown* so you'll be able
+  to [link](https://guides.github.com/features/mastering-markdown/) or
+  add bullet lists:
+
+  * one
+  * two
+  * I am **bold**
+short_description: This is a short description that appears in apps list
+
+# Assorted list of tags, you can add version of OpenNebula where it was
+# tested and things like OS or application
+tags:
+- debian
+- router
+- dhcp server
+
+# Informative Image format, options: qcow2, raw, vmdk
+format: qcow2
+
+# Time in epoch format and UTC. You can get it executing "date +%s"
+creation_time: 1443105849
+
+# Informative OS, version, arch., and hypervisor
+os-id: Debian
+os-release: '8.4'
+os-arch: x86_64
+hypervisor: KVM
+
+# Compatibility with OpenNebula releases. Appliance will be
+# offered only to OpenNebula clients with matching version!!
+opennebula_version: 6.10, 7.0
+
+# The template for the appliance without disks and in YAML format
+opennebula_template:
+  context:
+    network: 'YES'
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+  cpu: '1'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  memory: '768'
+  os:
+    arch: x86_64
+  logo: images/logos/debian.png
+
+# Logo to display in the web interface. You can check the available logos in
+# "logos" dir in this repository. You can also submit a new logo
+logo: debian.png
