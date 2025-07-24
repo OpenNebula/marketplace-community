@@ -55,7 +55,7 @@ The srsRAN Project appliance is based on Ubuntu 24.04 LTS (for x86-64).
     ONEAPP_SRSRAN_DL_ARFCN = "656668",             # Downlink ARFCN
     ONEAPP_SRSRAN_BAND = "n77",                    # NR Band
     ONEAPP_SRSRAN_CHANNEL_BW_MHZ = "100",          # Channel Bandwidth
-    ONEAPP_SRSRAN_ENABLE_DPDK = "yes",             # Enable DPDK
+    ONEAPP_SRSRAN_ENABLE_DPDK = "YES",             # Enable DPDK
     ONEAPP_SRSRAN_AMF_IPV4 = "10.0.3.2",           # AMF IP address
     ONEAPP_SRSRAN_NIC_PCI_ADDR = "0000:01:01.0",   # NIC PCI address
     ONEAPP_SRSRAN_RU_MAC = "e8:c7:4f:25:89:41",    # RU MAC address
@@ -100,7 +100,7 @@ The srsRAN Project appliance is based on Ubuntu 24.04 LTS (for x86-64).
 | `ONEAPP_SRSRAN_PCI` | Physical Cell Identity | `69` | 0-1007 |
 | `ONEAPP_SRSRAN_DL_ARFCN` | Downlink ARFCN | `656668` | NR ARFCN |
 | `ONEAPP_SRSRAN_BAND` | NR Band | `n77` | `n1`, `n3`, `n7`, `n77`, `n78` |
-| `ONEAPP_SRSRAN_ENABLE_DPDK` | Enable DPDK | `yes` | `yes`, `no` |
+| `ONEAPP_SRSRAN_ENABLE_DPDK` | Enable DPDK | `YES` | `YES`, `NO` |
 | `ONEAPP_SRSRAN_COMMON_SCS` | Subcarrier Spacing | `30` | `15`, `30`, `60` |
 | `ONEAPP_SRSRAN_CHANNEL_BW_MHZ` | Channel Bandwidth | `100` | `5`, `10`, `15`, `20`, `25`, `30`, `40`, `50`, `60`, `70`, `80`, `90`, `100` |
 | `ONEAPP_SRSRAN_NR_CELLS` | Number of cells | `1` | 1-8 |
