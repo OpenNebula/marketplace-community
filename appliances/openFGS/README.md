@@ -12,7 +12,7 @@ The Open5GS appliance is based on Ubuntu 24.04 LTS (for x86-64).
 
 | Component | Version |
 | --------- | ------- |
-| Open5GS | v2.7.2 |
+| Open5GS | v2.7.6 |
 | MongoDB | v8.0 |
 
 

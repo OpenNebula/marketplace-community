@@ -33,7 +33,7 @@ ONE_SERVICE_PARAMS=(
 
 # Appliance metadata
 ONE_SERVICE_NAME='Service Open5GS ONEedge5G - KVM'
-ONE_SERVICE_VERSION='0.1'   # Open5GS v2.7.2
+ONE_SERVICE_VERSION='0.1'   # Open5GS v2.7.6
 ONE_SERVICE_BUILD=$(date +%s)
 ONE_SERVICE_SHORT_DESCRIPTION='Appliance running Open5GS 5G Core Network developed within ONEedge5G project'
 ONE_SERVICE_DESCRIPTION=$(cat <<EOF
