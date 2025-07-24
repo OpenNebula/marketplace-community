@@ -62,6 +62,7 @@ opennebula_template:
     ONEAPP_OPEN5GS_MCC: $ONEAPP_OPEN5GS_MCC
     ONEAPP_OPEN5GS_MNC: $ONEAPP_OPEN5GS_MNC
     ONEAPP_OPEN5GS_N2_IP: $ONEAPP_OPEN5GS_N2_IP
+    ONEAPP_OPEN5GS_N3_IP: $ONEAPP_OPEN5GS_N3_IP
     ONEAPP_OPEN5GS_TAC: $ONEAPP_OPEN5GS_TAC
     ONEAPP_OPEN5GS_WEBUI_IP: $ONEAPP_OPEN5GS_WEBUI_IP
     ONEAPP_OPEN5GS_WEBUI_PORT: $ONEAPP_OPEN5GS_WEBUI_PORT
@@ -76,6 +77,7 @@ opennebula_template:
     ONEAPP_OPEN5GS_MCC: 'O|text|Mobile Country Code (3 digits)| |999'
     ONEAPP_OPEN5GS_MNC: 'O|text|Mobile Network Code (2-3 digits)| |75'
     ONEAPP_OPEN5GS_N2_IP: 'O|text|N2 interface IP address for AMF| |10.0.3.2'
+    ONEAPP_OPEN5GS_N3_IP: 'O|text|N3 interface IP address for UPF| |10.0.3.2'
     ONEAPP_OPEN5GS_TAC: 'O|text|Tracking Area Code| |1'
     ONEAPP_OPEN5GS_WEBUI_IP: 'O|text|WebUI IP address (0.0.0.0 for all interfaces)| |0.0.0.0'
     ONEAPP_OPEN5GS_WEBUI_PORT: 'O|text|WebUI port| |3000'

@@ -43,6 +43,7 @@ The Open5GS appliance is based on Ubuntu 24.04 LTS (for x86-64).
      ONEAPP_OPEN5GS_MCC="999",
      ONEAPP_OPEN5GS_MNC="75",
      ONEAPP_OPEN5GS_N2_IP="10.0.3.2",
+     ONEAPP_OPEN5GS_N3_IP="10.0.3.2",
      ONEAPP_OPEN5GS_TAC="1",
      ONEAPP_OPEN5GS_WEBUI_IP="0.0.0.0",
      ONEAPP_OPEN5GS_WEBUI_PORT="3000",
@@ -90,6 +91,7 @@ The Open5GS appliance is based on Ubuntu 24.04 LTS (for x86-64).
 | `ONEAPP_OPEN5GS_MCC` | Mobile Country Code | `999` | No |
 | `ONEAPP_OPEN5GS_MNC` | Mobile Network Code | `75` | No |
 | `ONEAPP_OPEN5GS_N2_IP` | N2 interface IP address | `10.0.3.2` | No |
+| `ONEAPP_OPEN5GS_N3_IP` | N3 interface IP address | `10.0.3.2` | No |
 | `ONEAPP_OPEN5GS_TAC` | Tracking Area Code | `1` | No |
 | `ONEAPP_OPEN5GS_WEBUI_IP` | WebUI bind IP address | `0.0.0.0` | No |
 | `ONEAPP_OPEN5GS_WEBUI_PORT` | WebUI HTTP port | `3000` | No |

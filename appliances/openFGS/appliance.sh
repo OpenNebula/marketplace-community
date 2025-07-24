@@ -21,6 +21,7 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_OPEN5GS_MCC'        'configure' 'Mobile Country Code'                    '999'
     'ONEAPP_OPEN5GS_MNC'        'configure' 'Mobile Network Code'                    '75'
     'ONEAPP_OPEN5GS_N2_IP'      'configure' 'N2 interface IP address'               '10.0.3.2'
+    'ONEAPP_OPEN5GS_N3_IP'      'configure' 'N3 interface IP address'               '10.0.3.2'
     'ONEAPP_OPEN5GS_TAC'        'configure' 'Tracking Area Code'                     '1'
     'ONEAPP_OPEN5GS_WEBUI_IP'   'configure' 'WebUI IP address'                       '0.0.0.0'
     'ONEAPP_OPEN5GS_WEBUI_PORT' 'configure' 'WebUI port'                             '3000'
@@ -65,6 +66,7 @@ ONE_SERVICE_RECONFIGURABLE=true
 ONEAPP_OPEN5GS_MCC="${ONEAPP_OPEN5GS_MCC:-999}"
 ONEAPP_OPEN5GS_MNC="${ONEAPP_OPEN5GS_MNC:-75}"
 ONEAPP_OPEN5GS_N2_IP="${ONEAPP_OPEN5GS_N2_IP:-10.0.3.2}"
+ONEAPP_OPEN5GS_N3_IP="${ONEAPP_OPEN5GS_N3_IP:-10.0.3.2}"
 ONEAPP_OPEN5GS_TAC="${ONEAPP_OPEN5GS_TAC:-1}"
 ONEAPP_OPEN5GS_WEBUI_IP="${ONEAPP_OPEN5GS_WEBUI_IP:-0.0.0.0}"
 ONEAPP_OPEN5GS_WEBUI_PORT="${ONEAPP_OPEN5GS_WEBUI_PORT:-3000}"
@@ -428,6 +430,35 @@ configure_open5gs_5g_sa()
     else
         msg error "AMF configuration file not found"
     fi
+    
+    # Configure UPF with user-provided N3 IP
+    msg info "Configuring UPF with N3 IP ${ONEAPP_OPEN5GS_N3_IP}..."
+    if [ -f /etc/open5gs/upf.yaml ]; then
+        # Backup original config
+        cp /etc/open5gs/upf.yaml /etc/open5gs/upf.yaml.backup
+        chmod 644 /etc/open5gs/upf.yaml.backup
+        
+        # Update N3 interface IP (GTP-U bind address) - only in gtpu section using awk for precision
+        awk -v new_ip="${ONEAPP_OPEN5GS_N3_IP}" '
+        BEGIN { in_gtpu = 0; in_server = 0 }
+        /^[[:space:]]*gtpu:/ { in_gtpu = 1; in_server = 0 }
+        /^[[:space:]]*session:/ { in_gtpu = 0; in_server = 0 }
+        /^[[:space:]]*metrics:/ { in_gtpu = 0; in_server = 0 }
+        in_gtpu && /^[[:space:]]*server:/ { in_server = 1 }
+        in_gtpu && in_server && /^[[:space:]]*-[[:space:]]*address:/ {
+            sub(/address:[[:space:]]*[0-9.]+/, "address: " new_ip)
+        }
+        { print }
+        ' /etc/open5gs/upf.yaml > /tmp/upf_temp.yaml && mv /tmp/upf_temp.yaml /etc/open5gs/upf.yaml
+        
+        # Restore proper file permissions
+        chmod 644 /etc/open5gs/upf.yaml
+        chown root:root /etc/open5gs/upf.yaml
+        
+        msg info "✓ UPF configured with N3 IP: ${ONEAPP_OPEN5GS_N3_IP} (GTP-U only)"
+    else
+        msg error "UPF configuration file not found"
+    fi
 }
 
 configure_webui()
@@ -652,6 +683,7 @@ generate_service_report()
     msg info "   • PLMN (MCC/MNC): ${ONEAPP_OPEN5GS_MCC}/${ONEAPP_OPEN5GS_MNC}"
     msg info "   • TAC: ${ONEAPP_OPEN5GS_TAC}"
     msg info "   • N2 Interface IP: ${ONEAPP_OPEN5GS_N2_IP}"
+    msg info "   • N3 Interface IP: ${ONEAPP_OPEN5GS_N3_IP}"
     msg info "   • MongoDB: Version 8.0 (running)"
     msg info ""
     msg info "🌐 WebUI Access:"
@@ -685,6 +717,7 @@ generate_service_report()
 MCC = ${ONEAPP_OPEN5GS_MCC}
 MNC = ${ONEAPP_OPEN5GS_MNC}
 N2 Interface IP = ${ONEAPP_OPEN5GS_N2_IP}
+N3 Interface IP = ${ONEAPP_OPEN5GS_N3_IP}
 TAC = ${ONEAPP_OPEN5GS_TAC}
 
 [WebUI Access]

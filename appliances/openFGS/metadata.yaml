@@ -12,6 +12,7 @@
       :OPEN5GS_MCC: '999'
       :OPEN5GS_MNC: '75'
       :OPEN5GS_N2_IP: '10.0.3.2'
+      :OPEN5GS_N3_IP: '10.0.3.2'
       :OPEN5GS_TAC: '1'
       :OPEN5GS_WEBUI_IP: '0.0.0.0'
       :OPEN5GS_WEBUI_PORT: '3000'
