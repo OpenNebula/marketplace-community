@@ -1,0 +1,255 @@
+# ==============================================================================
+# srsRAN Project gNB Configuration - N77 Band, 100MHz, MIMO 4x2 with DPDK
+# ==============================================================================
+# Configuration for 5G gNodeB using:
+# - CU + DU configuration = gNB
+# - RU LiteON
+# - Band n77 (3.3-4.2 GHz TDD)
+# - 100MHz channel bandwidth
+# - MIMO 4x2 antenna configuration
+# - DPDK for high-performance packet processing
+# - O-RAN fronthaul interface
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# gNB Identity Configuration
+# ------------------------------------------------------------------------------
+gnb_id: 0                           # Global gNB identifier (0-4294967295)
+gnb_id_bit_length: 32               # Number of bits for gNB ID (22-32)
+gnb_du_id: 2                        # Distributed Unit identifier
+
+# ------------------------------------------------------------------------------
+# Core Network Interface (CU-CP Configuration)
+# ------------------------------------------------------------------------------
+cu_cp:
+  amf:
+#    no_core: true                                   # Uncomment to run without core network (testing mode)
+    addr: 10.0.3.2                                   # AMF (Access and Mobility Management Function) address
+    bind_addr: 10.0.3.1                              # Local binding address for AMF communication
+    supported_tracking_areas:                        # Tracking areas supported by this AMF
+      - tac: 1                                        # Tracking Area Code
+        plmn_list:                                    # Public Land Mobile Network list
+          - plmn: "99975"                             # PLMN identifier (MCC: 999, MNC: 75)
+            tai_slice_support_list:                   # Network slicing configuration
+              - sst: 1                                # Slice/Service Type (eMBB: Enhanced Mobile Broadband) 
+
+# ------------------------------------------------------------------------------
+# Cell Configuration
+# ------------------------------------------------------------------------------
+cell_cfg:
+  sector_id: 1                      # Cell sector identifier
+  plmn: 99975                       # PLMN identifier matching AMF configuration
+  slicing:                          # Network slicing parameters
+    - sst: 1                        # Slice/Service Type: eMBB
+  pci: 69                           # Physical Cell ID (0-1007)
+  tac: 1                            # Tracking Area Code (must match AMF config)
+  dl_arfcn: 656668                  # Downlink ARFCN for n77 band (3.85 GHz center frequency)
+  band: 77                          # 5G NR band n77 (3300-4200 MHz TDD)
+  channel_bandwidth_MHz: 100        # Channel bandwidth in MHz
+  common_scs: 30                    # Subcarrier spacing in kHz (15/30/60/120)
+  nof_antennas_dl: 4                # Number of downlink antennas (MIMO 4x2)
+  nof_antennas_ul: 2                # Number of uplink antennas (MIMO 4x2)
+  pcg_p_nr_fr1: 23                  # Power control parameter for FR1
+  
+  # Synchronization Signal Block (SSB) Configuration
+  ssb:
+    ssb_period: 10                  # SSB transmission period in ms
+    ssb_block_power_dbm: -11        # SSB block power in dBm
+    pss_to_sss_epre_db: 0           # PSS to SSS EPRE ratio in dB
+
+  # Uplink Common Configuration
+  ul_common:
+    p_max: 23                       # Maximum UE transmit power in dBm
+
+  # Physical Downlink Shared Channel (PDSCH) Configuration
+  pdsch:
+    mcs_table: qam256               # Modulation and Coding Scheme table (qam64/qam256)
+    max_pdschs_per_slot: 6          # Maximum PDSCH allocations per slot (scheduler limit)
+    max_alloc_attempts: 8           # Maximum allocation attempts per scheduling round
+    olla_target_bler: 0.1           # Target Block Error Rate for Outer Loop Link Adaptation
+    olla_max_cqi_offset: 20         # Maximum CQI offset for OLLA (Link Adaptation optimization)
+    olla_cqi_inc_step: 0.05         # CQI increment step for OLLA
+    dc_offset: center               # DC offset configuration (center/positive/negative)
+
+  # Physical Uplink Shared Channel (PUSCH) Configuration
+  pusch:
+    mcs_table: qam256               # Modulation and Coding Scheme table (qam64/qam256)
+    min_k2: 2                       # Minimum K2 value (slots between DCI and PUSCH)
+    olla_target_bler: 0.1           # Target Block Error Rate for Outer Loop Link Adaptation
+    olla_snr_inc_step: 0.05         # SNR increment step for OLLA
+    olla_max_snr_offset: 20         # Maximum SNR offset for OLLA
+    p0_nominal_with_grant: -76      # Nominal power for PUSCH with grant (dBm)
+
+  # Physical Uplink Control Channel (PUCCH) Configuration
+  pucch:
+    min_k1: 2                       # Minimum K1 value (slots between PDSCH and HARQ-ACK)
+    nof_cell_harq_pucch_res_sets: 6 # Number of HARQ-ACK PUCCH resource sets per cell
+    sr_period_ms: 10                # Scheduling Request period in milliseconds
+
+  # Physical Random Access Channel (PRACH) Configuration
+  prach:
+    preamble_trans_max: 200         # Maximum number of preamble transmissions
+    power_ramping_step_db: 2        # Power ramping step in dB
+    prach_config_index: 159         # PRACH configuration index (defines time/frequency resources)
+    #prach_frequency_start: 0       # PRACH frequency start (optional)
+
+
+  # TDD (Time Division Duplex) Configuration
+  tdd_ul_dl_cfg:
+    dl_ul_tx_period: 10             # DL/UL transmission period in ms
+    nof_dl_slots: 7                 # Number of downlink slots per period
+    nof_dl_symbols: 6               # Number of downlink symbols in flexible slot
+    nof_ul_slots: 2                 # Number of uplink slots per period
+    nof_ul_symbols: 4               # Number of uplink symbols in flexible slot
+    
+
+# ------------------------------------------------------------------------------
+# Radio Unit O-RAN Fronthaul Configuration
+# ------------------------------------------------------------------------------
+ru_ofh:
+  # Timing Parameters (optimized for low-latency operations and LiteON RU)
+  # These values are critical for maintaining synchronization and performance
+  t1a_max_cp_dl: 380               # Max C-Plane DL processing time (microseconds)
+  t1a_min_cp_dl: 180               # Min C-Plane DL processing time (microseconds)
+  t1a_max_cp_ul: 380               # Max C-Plane UL processing time (microseconds)
+  t1a_min_cp_ul: 180               # Min C-Plane UL processing time (microseconds)
+  t1a_max_up: 380                  # Max U-Plane processing time (microseconds)
+  t1a_min_up: 180                  # Min U-Plane processing time (microseconds)
+  ta4_max: 500                     # Max TA4 timing advance (microseconds)
+  ta4_min: 0                       # Min TA4 timing advance (microseconds)
+
+  # IQ Data Compression Configuration
+  compr_method_ul: bfp             # Uplink compression: Block Floating Point
+  compr_bitwidth_ul: 9             # Uplink compression bit width
+  compr_method_dl: bfp             # Downlink compression: Block Floating Point
+  compr_bitwidth_dl: 9             # Downlink compression bit width
+  compr_method_prach: bfp          # PRACH compression: Block Floating Point
+  compr_bitwidth_prach: 9          # PRACH compression bit width
+
+  # Fronthaul Protocol Features
+  is_prach_cp_enabled: true        # Enable PRACH C-Plane messages
+  enable_ul_static_compr_hdr: true # Enable static compression headers for UL
+  enable_dl_static_compr_hdr: true # Enable static compression headers for DL
+
+  # eCPRI Protocol Configuration
+  ignore_ecpri_payload_size: false # Validate eCPRI payload size
+  ignore_ecpri_seq_id: true        # Ignore eCPRI sequence ID validation
+
+  # IQ Scaling Factor (adjusted for optimal signal processing)
+  iq_scaling: 3                    # IQ data scaling factor                 
+
+
+  # Cell-specific Fronthaul Configuration
+  cells:
+    - network_interface: 0000:01:01.0             # PCIe device identifier for DPDK
+      ru_mac_addr: e8:c7:4f:25:89:41              # Radio Unit MAC address
+      du_mac_addr: a2:b3:a6:4e:de:49              # Distributed Unit MAC address
+      vlan_tag_cp: 564                            # VLAN tag for C-Plane traffic
+      vlan_tag_up: 564                            # VLAN tag for U-Plane traffic
+      prach_port_id: [0,1]                        # PRACH port mapping (2 ports for diversity)
+      dl_port_id: [0,1,2,3]                       # Downlink port mapping (4 ports for 4x2 MIMO)
+      ul_port_id: [0,1]                           # Uplink port mapping (2 ports for 4x2 MIMO)
+
+
+# ------------------------------------------------------------------------------
+# Hardware Abstraction Layer (DPDK Configuration)
+# ------------------------------------------------------------------------------
+hal:
+  # DPDK EAL (Environment Abstraction Layer) arguments
+  # CPU cores 6-10,22-26 are assigned for DPDK operations
+  # Enables auto process type detection and debug logging
+  eal_args: "--lcores (0-1)@(6-10,22-26) --proc-type auto -a 0000:01:01.0"
+# ------------------------------------------------------------------------------
+# Expert PHY Layer Configuration
+# ------------------------------------------------------------------------------
+expert_phy:
+  max_request_headroom_slots: 3    # Maximum headroom slots for scheduling requests
+  max_proc_delay: 6                # Maximum processing delay in slots
+  pusch_dec_max_iterations: 4      # Maximum PUSCH decoder iterations
+
+# ------------------------------------------------------------------------------
+# CPU Affinity and Threading Configuration
+# ------------------------------------------------------------------------------
+expert_execution:
+  # CPU Affinity Configuration (optimized for multi-core systems)
+  affinities:
+    low_priority_cpus: 7-8,23-25   # CPUs for low-priority tasks
+    low_priority_pinning: mask      # CPU pinning strategy
+    ru_timing_cpu: 6,22             # CPUs dedicated to RU timing-critical tasks
+    ofh:
+      - ru_txrx_cpus: 10,26         # CPUs for RU TX/RX operations
+
+  # Cell-specific CPU Affinity
+  cell_affinities:
+    - l1_dl_cpus: 7-8,23-25         # Layer 1 downlink processing CPUs
+      l1_dl_pinning: mask           # DL CPU pinning strategy
+      l1_ul_cpus: 7-8,23-25         # Layer 1 uplink processing CPUs
+      l1_ul_pinning: mask           # UL CPU pinning strategy
+      l2_cell_cpus: 9               # Layer 2 cell processing CPU
+      l2_cell_pinning: mask         # L2 CPU pinning strategy
+      ru_cpus: 10,26                # Radio Unit processing CPUs
+      ru_pinning: mask              # RU CPU pinning strategy
+
+  # Threading Configuration
+  threads:
+    upper_phy:
+      pdsch_processor_type: auto    # PDSCH processor type (auto/generic/sse/avx2/avx512)
+      nof_pusch_decoder_threads: 2  # Number of PUSCH decoder threads
+      nof_ul_threads: 1             # Number of uplink processing threads
+      nof_dl_threads: 4             # Number of downlink processing threads
+    ofh:
+      enable_dl_parallelization: 1  # Enable downlink parallelization
+
+# ------------------------------------------------------------------------------
+# Logging Configuration
+# ------------------------------------------------------------------------------
+log:
+  filename: stdout                  # Log output destination (stdout/file path)
+  all_level: warning                # Global log level (debug/info/warning/error)
+  
+  # Component-specific log levels (uncomment and adjust as needed)
+  #mac_level: error                 # MAC layer logging
+  #rlc_level: info                  # RLC layer logging
+  #radio_level: info                # Radio layer logging
+  #fapi_level: error                # FAPI logging
+  #ofh_level: debug                 # O-RAN fronthaul logging
+  #f1ap_level: info                 # F1AP layer logging
+  #f1u_level: debug                 # F1-U layer logging
+  #du_level: debug                  # DU manager logging
+  #lib_level: warning               # Library logging
+  #config_level: debug              # Configuration logging
+  #metrics_level: debug             # Metrics logging
+  
+  # Advanced logging options
+  #hex_max_size: 0                  # Maximum hex dump size (0=disabled)
+  #broadcast_enabled: false         # Enable log broadcasting
+  #phy_rx_symbols_filename:         # PHY RX symbols dump file
+  #phy_rx_symbols_port: 0           # PHY RX symbols port
+  #phy_rx_symbols_prach: false      # Include PRACH in PHY dumps
+  #tracing_filename:                # Tracing output file
+  #f1ap_json_enabled: false         # Enable F1AP JSON logging
+  #e2ap_level: info                 # E2AP layer logging
+
+# ==============================================================================
+# Configuration Notes:
+# 
+# 1. CPU Affinity: This configuration assumes a system with at least 27 CPU cores
+# 
+# 2. Network Interface: Update the PCIe device ID (0000:01:01.0) and MAC addresses
+#    to match your actual hardware configuration
+# 
+# 3. Timing Parameters: Current timing values are optimized for srsRAN 2024 and LiteON RU.
+#    Adjust if experiencing timing issues with your specific RU
+# 
+# 4. MIMO Configuration: This setup uses 4x2 MIMO (4 DL antennas, 2 UL antennas)
+#    with corresponding port mappings for optimal performance
+# 
+# 5. Performance Tuning: For maximum performance, ensure:
+#    - CPU isolation for real-time cores
+#    - NUMA topology awareness
+#    - Interrupt affinity optimization
+#    - Huge pages configuration
+# 
+# 6. Monitoring: Enable appropriate log levels for troubleshooting while
+#    keeping production systems at 'warning' or 'error' levels
+# ==============================================================================

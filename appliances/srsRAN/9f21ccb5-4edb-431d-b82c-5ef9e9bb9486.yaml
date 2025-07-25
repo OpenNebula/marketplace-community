@@ -1,0 +1,97 @@
+---
+name: srsRAN ONEedge5G
+version: 1.0
+one-apps_version: 7.0.0
+publisher: OpenNebula Systems
+publisher_email: rafagarciaa31@uma.es
+description: |-
+  Appliance with preinstalled srsRAN Project - a complete 5G software radio suite
+  with Split 7.2 support for disaggregated deployments, developed within the ONEedge5G project.
+  Run with default values and manually configure it, or use contextualization variables to automate the bootstrap.
+
+  After deploying the appliance, check the status of the deployment in
+  /etc/one-appliance/status. You can check the appliance logs in
+  /var/log/one-appliance/.
+
+  This appliance supports multiple deployment modes:
+  - **gNodeB**: CU+DU combined deployment (Split 7.2)
+  - **CU**: Central Unit (CU-CP + CU-UP combined)
+  - **DU**: Distributed Unit (Split 7.2)
+
+  The appliance includes:
+  - Dual installation support (base + DPDK versions) for high-performance deployments with DPDK 23.11
+  - Intel iavf driver v4.13.3 with PTP support for precise time synchronization
+  - LinuxPTP 4.3 for VM clock synchronization with hardware PTP clocks
+  - Real-Time (RT-PREEMPT) kernel 6.8.2-rt10 for ultra-low latency performance
+  - Performance optimizations: DRM KMS polling disabled, network buffers optimized, RT priorities elevated
+  - Optimized configuration for Split 7.2 deployments
+
+short_description: Appliance running srsRAN Project 5G software radio suite developed within ONEedge5G project
+tags:
+- srsran
+- 5g
+- oran
+- service
+- oneedge5g
+format: qcow2
+creation_time: 1752831880
+os-id: Ubuntu
+os-release: 24.04 LTS
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.10
+opennebula_template:
+  context:
+    network: 'YES'
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    set_hostname: "$NAME"
+    oneapp_srsran_mode: "$ONEAPP_SRSRAN_MODE"
+    oneapp_srsran_mcc: "$ONEAPP_SRSRAN_MCC"
+    oneapp_srsran_mnc: "$ONEAPP_SRSRAN_MNC"
+    oneapp_srsran_tac: "$ONEAPP_SRSRAN_TAC"
+    oneapp_srsran_enable_dpdk: "$ONEAPP_SRSRAN_ENABLE_DPDK"
+    oneapp_srsran_pci: "$ONEAPP_SRSRAN_PCI"
+    oneapp_srsran_dl_arfcn: "$ONEAPP_SRSRAN_DL_ARFCN"
+    oneapp_srsran_band: "$ONEAPP_SRSRAN_BAND"
+    oneapp_srsran_common_scs: "$ONEAPP_SRSRAN_COMMON_SCS"
+    oneapp_srsran_channel_bw_mhz: "$ONEAPP_SRSRAN_CHANNEL_BW_MHZ"
+    oneapp_srsran_nr_cells: "$ONEAPP_SRSRAN_NR_CELLS"
+    oneapp_srsran_amf_ipv4: "$ONEAPP_SRSRAN_AMF_IPV4"
+    oneapp_srsran_nic_pci_addr: "$ONEAPP_SRSRAN_NIC_PCI_ADDR"
+    oneapp_srsran_ru_mac: "$ONEAPP_SRSRAN_RU_MAC"
+  cpu: '32'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  inputs_order: ''
+  memory: '16384'
+  os:
+    arch: x86_64
+  user_inputs:
+    oneapp_srsran_mode: O|list|srsRAN deployment mode|gnb,cu,du|gnb
+    oneapp_srsran_mcc: O|text|Mobile Country Code| |999
+    oneapp_srsran_mnc: O|text|Mobile Network Code| |75
+    oneapp_srsran_tac: O|text|Tracking Area Code| |1
+    oneapp_srsran_enable_dpdk: O|boolean|Enable DPDK support| |yes
+    oneapp_srsran_pci: O|text|Physical Cell Identity| |69
+    oneapp_srsran_dl_arfcn: O|text|Downlink ARFCN| |656668
+    oneapp_srsran_band: O|text|NR Band| |n77
+    oneapp_srsran_common_scs: O|text|Common Subcarrier Spacing| |30
+    oneapp_srsran_channel_bw_mhz: O|text|Channel Bandwidth MHz| |100
+    oneapp_srsran_nr_cells: O|text|Number of NR cells| |1
+    oneapp_srsran_amf_ipv4: O|text|AMF IPv4 address| |10.0.3.2
+    oneapp_srsran_nic_pci_addr: O|text|NIC PCI passthrough address| |0000:01:01.0
+    oneapp_srsran_ru_mac: O|text|RU MAC address| |e8:c7:4f:25:89:41
+logo: srsran.png
+
+images:
+- name: service_srsran
+  url: >-
+    <>
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 85899345920
+  checksum:
+    md5: "1b31d3103b9a6b989d614ac3d4175433"
+    sha256: "b453d5964b691355ff1300d6251964048c566e612a1f85a47749b649b7f47090"

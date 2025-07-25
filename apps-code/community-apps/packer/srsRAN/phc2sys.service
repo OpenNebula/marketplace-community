@@ -1,0 +1,123 @@
+# PHC2SYS Systemd Service Configuration for VM Clock Synchronization
+# =============================================================================
+# This systemd service unit manages the PHC2SYS daemon for synchronizing the
+# VM system clock with the KVM host clock via PTP Hardware Clock (PHC).
+#
+# Purpose: Synchronize VM system clock with host clock
+# Service: phc2sys.service
+# Source Clock: /dev/ptp_kvm (KVM PTP virtual clock)
+# Target Clock: CLOCK_REALTIME (VM system clock)
+# Architecture: VM synchronizes with host via KVM PTP module
+# =============================================================================
+
+[Unit]
+# Service description for system administrators
+Description=PHC2SYS - VM Clock Synchronization with KVM Host
+
+# Extended documentation
+Documentation=man:phc2sys(8) https://linuxptp.sourceforge.net/
+
+# Dependencies: Ensure KVM PTP module is loaded
+After=network.target
+# KVM PTP module should be loaded via modules-load.d
+# After=systemd-modules-load.service
+# Wants=systemd-modules-load.service
+
+# Prevent conflicts with other time synchronization services
+Conflicts=chrony.service
+Conflicts=systemd-timesyncd.service
+Conflicts=ntpd.service
+Conflicts=ptp4l.service
+
+# =============================================================================
+# SERVICE CONFIGURATION
+# =============================================================================
+
+[Service]
+# Service type: simple - the process doesn't fork
+Type=simple
+
+# Command to start PHC2SYS daemon for VM synchronization
+# -s: Source clock (/dev/ptp_kvm = KVM PTP virtual clock)
+# -c: Target clock (CLOCK_REALTIME = VM system clock)
+# -m: Print messages to stdout (for systemd logging)
+# -O: Offset between clocks in nanoseconds (0 = no offset)
+# -P: Proportional constant for PI controller (0.1 = fine-tuned)
+# -I: Integral constant for PI controller (0.005 = fine-tuned)
+ExecStart=/usr/local/sbin/phc2sys -s /dev/ptp_kvm -c CLOCK_REALTIME -m -O 0 -P 0.1 -I 0.005
+
+# Pre-execution check: Verify KVM PTP device is available
+ExecStartPre=/bin/sh -c 'test -c /dev/ptp_kvm || (echo "KVM PTP device /dev/ptp_kvm not available" && exit 1); echo "Found KVM PTP device: /dev/ptp_kvm"'
+
+# =============================================================================
+# PROCESS MANAGEMENT AND RELIABILITY
+# =============================================================================
+
+# Restart policy: Always restart on failure (critical for time synchronization)
+Restart=always
+
+# Delay before restart attempts (seconds)
+RestartSec=10
+
+# Start delay to prevent rapid restart loops
+StartLimitInterval=120
+StartLimitBurst=3
+
+# Kill signal for graceful shutdown
+KillSignal=SIGTERM
+
+# Timeout for service start operation
+TimeoutStartSec=60
+
+# Timeout for service stop operation
+TimeoutStopSec=30
+
+# Send final kill signal if graceful shutdown fails
+SendSIGKILL=yes
+
+# =============================================================================
+# SECURITY AND ISOLATION
+# =============================================================================
+
+# User and group (root required for system clock manipulation)
+User=root
+Group=root
+
+# Process priority (higher priority for timing-critical service)
+# Nice value: -5 (higher priority than normal processes)
+Nice=-5
+
+# Real-time scheduling policy for timing precision
+# 1 = SCHED_FIFO (first-in-first-out real-time scheduling)
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=45
+
+# Memory management
+# Lock memory pages to prevent swapping
+LockPersonality=true
+
+# Resource limits
+# Limit maximum memory usage
+MemoryMax=50M
+
+# =============================================================================
+# SYSTEMD FEATURES AND MONITORING
+# =============================================================================
+
+# Standard output and error handling
+StandardOutput=journal
+StandardError=journal
+
+# Syslog identifier for log filtering
+SyslogIdentifier=phc2sys
+
+# Log level for systemd journal
+LogLevelMax=info
+
+# =============================================================================
+# INSTALLATION AND TARGET
+# =============================================================================
+
+[Install]
+# Install target: multi-user (non-graphical multi-user system)
+WantedBy=multi-user.target
