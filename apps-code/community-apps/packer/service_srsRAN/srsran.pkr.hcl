@@ -21,7 +21,7 @@ source "qemu" "srsran" {
   memory      = 16384
   accelerator = "kvm"
 
-  iso_url      = "export/ubuntu2404.qcow2"
+  iso_url      = "../one-apps/export/ubuntu2404.qcow2"
   iso_checksum = "none"
 
   headless = var.headless
@@ -77,8 +77,8 @@ build {
   # Scripts Required by a further step
   provisioner "file" {
     sources = [
-      "appliances/scripts/net-90-service-appliance",
-      "appliances/scripts/net-99-report-ready",
+      "../one-apps/appliances/scripts/net-90-service-appliance",
+      "../one-apps/appliances/scripts/net-99-report-ready",
     ]
     destination = "/etc/one-appliance/"
   }
@@ -86,22 +86,22 @@ build {
   # Contains the appliance service management tool
   # https://github.com/OpenNebula/one-apps/wiki/apps_intro#appliance-life-cycle
   provisioner "file" {
-    source      = "appliances/service.sh"
+    source      = "../one-apps/appliances/service.sh"
     destination = "/etc/one-appliance/service"
   }
 
   # Bash library for easier custom implementation in bash logic
   provisioner "file" {
     sources = [
-      "appliances/lib/common.sh",
-      "appliances/lib/functions.sh",
+      "../one-apps/appliances/lib/common.sh",
+      "../one-apps/appliances/lib/functions.sh",
     ]
     destination = "/etc/one-appliance/lib/"
   }
 
   # Pull your own custom logic here
   provisioner "file" {
-    source      = "appliances/srsRAN/srsran.sh" # location of the file in the git repo. Flexible
+    source      = "../../appliances/srsRAN/appliance.sh" # location of the file in the git repo. Flexible
     destination = "/etc/one-appliance/service.d/appliance.sh" # path in the Guest OS. Strict, always the same
   }
 
@@ -187,13 +187,13 @@ build {
 
   # Copy pre-built RT kernel packages if they exist
   provisioner "file" {
-    source      = "packer/service_srsRAN/kernel_pkgs/"
+    source      = "packer/srsRAN/kernel_pkgs/"
     destination = "/etc/rt-kernel-packages/"
   }
 
   # Copy RT kernel installation script
   provisioner "file" {
-    source      = "packer/service_srsRAN/install_rt_kernel.sh"
+    source      = "packer/srsRAN/install_rt_kernel.sh"
     destination = "/tmp/install_rt_kernel.sh"
   }
 

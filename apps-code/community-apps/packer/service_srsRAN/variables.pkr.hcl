@@ -1,6 +1,6 @@
 variable "appliance_name" {
   type    = string
-  default = "service_srsRAN"
+  default = "srsRAN"
 }
 
 variable "input_dir" {
