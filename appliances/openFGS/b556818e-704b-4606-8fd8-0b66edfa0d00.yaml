@@ -7,34 +7,34 @@ publisher_email: rafagarciaa31@uma.es
 description: |
   Appliance with preinstalled Open5GS - a C-language implementation of 5G Core and EPC
   for 5G SA (Standalone) and NSA (Non-Standalone) networks, developed within the ONEedge5G project.
-  
+
   ## Features
-  
+
   - **Open5GS 5G SA Core functions**: AMF, SMF, UPF, AUSF, UDM, UDR, PCF, NRF, BSF, NSSF
   - **Open5GS WebUI**: Web-based subscriber management interface
   - **MongoDB 8.0**: Subscriber database with optimized configuration
   - **Pre-configured for 5G SA**: Ready-to-use 5G Standalone deployment
   - **Network optimization**: Pre-configured NAT rules and IP forwarding for UE connectivity
   - **Service management**: Automatic service startup and health monitoring
-  
+
   ## Technical Specifications
-  
+
   - **Base OS**: Ubuntu 24.04 LTS
   - **Open5GS Version**: Latest from PPA repository
   - **Node.js Version**: 20.x LTS for WebUI
   - **MongoDB Version**: 8.0 with optimized configuration
   - **Network Functions**: 5G SA Core (NRF, AMF, SMF, UPF, AUSF, UDM, UDR, PCF, BSF, NSSF)
   - **WebUI**: Subscriber management with default credentials (admin/1423)
-  
+
   ## Network Configuration
-  
+
   - **N2 Interface**: Configurable AMF address for gNodeB connection
   - **WebUI Access**: Configurable IP and port for management interface
   - **PLMN Configuration**: Customizable MCC/MNC for network identification
   - **TAC Configuration**: Tracking Area Code for location management
-  
+
   ## Deployment Notes
-  
+
   After deployment, the appliance automatically configures all 5G SA core functions
   and starts the necessary services. The WebUI is accessible for subscriber management
   and network monitoring. Check deployment status in /etc/one-appliance/status and
