@@ -14,6 +14,9 @@ $(SERVICES): %: packer-%
 packer-%: $(DIR_EXPORT)/%.qcow2
 	@$(INFO) 'Packer $* done'
 
+# any specific service dependencies
+packer-service_Lithops: packer-service_Lithops_Worker
+
 # run packer build for given distro or service
 $(DIR_EXPORT)/%.qcow2:
 	$(eval DISTRO_NAME := $(shell echo $* | sed 's/[0-9].*//'))
