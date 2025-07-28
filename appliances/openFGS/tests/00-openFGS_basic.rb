@@ -14,6 +14,33 @@ describe 'OpenFGS Appliance Certification' do
         end
     end
 
+    # Check if the service framework from one-apps reports that the app is ready
+    it 'checks oneapps motd' do
+        cmd = 'cat /etc/motd'
+        timeout_seconds = 180
+        retry_interval_seconds = 5
+
+        begin
+            Timeout.timeout(timeout_seconds) do
+                loop do
+                    execution = @info[:vm].ssh(cmd)
+
+                    if execution.exitstatus == 0 && execution.stdout.include?('All set and ready to serve')
+                        expect(execution.exitstatus).to eq(0) # Assert exit status
+                        expect(execution.stdout).to include('All set and ready to serve')
+                        break
+                    else
+                        sleep(retry_interval_seconds)
+                    end
+                end
+            end
+        rescue Timeout::Error
+            fail "Timeout after #{timeout_seconds} seconds: MOTD did not contain 'All set and ready to serve'. Appliance not configured."
+        rescue StandardError => e
+            fail "An error occurred during MOTD check: #{e.message}"
+        end
+    end
+
     # Use systemd to verify that core services are running
     it 'core services are running' do
         ['mongod', 'open5gs-amfd', 'open5gs-smfd', 'open5gs-upfd'].each do |service|
@@ -33,20 +60,6 @@ describe 'OpenFGS Appliance Certification' do
             end
         end
     end
-
-    # Check if the service framework from one-apps reports that the app is ready
-    it 'check oneapps motd' do
-        cmd = 'cat /etc/motd'
-
-        execution = @info[:vm].ssh(cmd)
-
-        # Display the motd for inspection
-        pp execution.stdout
-
-        expect(execution.exitstatus).to eq(0)
-        expect(execution.stdout).to include('All set and ready to serve')
-    end
-
 
     # Check if essential Open5GS configuration files exist
     it 'essential configuration files exist' do
