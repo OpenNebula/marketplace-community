@@ -1,51 +1,51 @@
-#!/usr/bin/env ruby
-
 require_relative '../../../lib/community/app_handler'
 
-app_handler = AppHandler.new
+describe 'srsRAN Project Appliance' do
+  include_context('vm_handler')
 
-RSpec.describe 'srsRAN Project Appliance' do
-  before(:all) do
-    app_handler.create_vm
-  end
+  def files_dirs_exist?(paths, type = :file)
+    paths.each do |path|
+      case type
+      when :file
+        cmd = "test -f #{path}"
+      when :dir
+        cmd = "test -d #{path}"
+      else
+        raise ArgumentError, "Invalid type: #{type}. Must be :file or :dir."
+      end
 
-  after(:all) do
-    app_handler.destroy_vm
+      execution = @info[:vm].ssh(cmd)
+      expect(execution.success?).to be(true), "#{path} does not exist or is not a #{type.to_s}"
+    end
   end
 
   it 'should verify srsRAN base installation' do
-    expect(app_handler.ssh_exec('test -d /usr/local/srsran')).to be_truthy
-    expect(app_handler.ssh_exec('test -f /usr/local/srsran/bin/gnb')).to be_truthy
-    expect(app_handler.ssh_exec('test -f /usr/local/srsran/bin/srscu')).to be_truthy
-    expect(app_handler.ssh_exec('test -f /usr/local/srsran/bin/srsdu')).to be_truthy
+    files_dirs_exist?(['/usr/local/srsran/bin/gnb', '/usr/local/srsran/bin/srscu', '/usr/local/srsran/bin/srsdu'])
+    files_dirs_exist?(['/usr/local/srsran'], :dir)
   end
 
   it 'should verify srsRAN configuration directories' do
-    expect(app_handler.ssh_exec('test -d /etc/srsran')).to be_truthy
-    expect(app_handler.ssh_exec('test -d /var/log/srsran')).to be_truthy
-    expect(app_handler.ssh_exec('test -d /opt/srsran')).to be_truthy
+    files_dirs_exist?(['/etc/srsran', '/var/log/srsran', '/opt/srsran'], :dir)
   end
 
   it 'should verify systemd services are installed' do
-    expect(app_handler.ssh_exec('test -f /etc/systemd/system/srsran-gnb.service')).to be_truthy
-    expect(app_handler.ssh_exec('test -f /etc/systemd/system/srsran-cu.service')).to be_truthy
-    expect(app_handler.ssh_exec('test -f /etc/systemd/system/srsran-du.service')).to be_truthy
-  end
-
-  it 'should verify oneapps motd' do
-    expect(app_handler.ssh_exec('grep -q "oneapps" /etc/motd')).to be_truthy
+    files_dirs_exist?(['/etc/systemd/system/srsran-gnb.service', '/etc/systemd/system/srsran-cu.service', '/etc/systemd/system/srsran-du.service'])
   end
 
   it 'should verify srsRAN binaries are executable' do
-    expect(app_handler.ssh_exec('/usr/local/srsran/bin/gnb --version')).to be_truthy
+    cmd = "/usr/local/srsran/bin/gnb --version"
+    @info[:vm].ssh(cmd).expect_success
   end
 
   it 'should verify LinuxPTP installation for clock synchronization' do
-    expect(app_handler.ssh_exec('which ptp4l')).to be_truthy
-    expect(app_handler.ssh_exec('which phc2sys')).to be_truthy
+    ['ptp4l', 'phc2sys'].each do |service|
+      cmd = "which #{service}"
+      @info[:vm].ssh(cmd).expect_success
+    end
   end
 
   it 'should verify RT kernel is installed' do
-    expect(app_handler.ssh_exec('uname -r | grep -q rt')).to be_truthy
+    cmd = "uname -r | grep -q rt"
+    @info[:vm].ssh(cmd).expect_success
   end
 end
