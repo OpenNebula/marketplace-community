@@ -14,12 +14,10 @@ describe 'OpenFGS Appliance Certification' do
         end
     end
 
-    
-
     # Use systemd to verify that core services are running
     it 'core services are running' do
         services_to_check = ['mongod', 'open5gs-smfd', 'open5gs-upfd', 'open5gs-amfd']
-        
+
         services_to_check.each do |service|
             cmd = "systemctl is-active #{service}"
             result = @info[:vm].ssh(cmd)
@@ -50,10 +48,28 @@ describe 'OpenFGS Appliance Certification' do
     # Check if IP forwarding is enabled (required for UPF)
     it 'ip forwarding is enabled' do
         cmd = 'sysctl net.ipv4.ip_forward'
+        timeout_seconds = 60
+        retry_interval_seconds = 5
 
-        execution = @info[:vm].ssh(cmd)
-        expect(execution.success?).to be(true)
-        expect(execution.stdout).to include('net.ipv4.ip_forward = 1')
+        begin
+            Timeout.timeout(timeout_seconds) do
+                loop do
+                    execution = @info[:vm].ssh(cmd)
+
+                    if execution.success? && execution.stdout.include?('net.ipv4.ip_forward = 1')
+                        expect(execution.success?).to be(true)
+                        expect(execution.stdout).to include('net.ipv4.ip_forward = 1')
+                        break
+                    else
+                        sleep(retry_interval_seconds)
+                    end
+                end
+            end
+        rescue Timeout::Error
+            fail "Timeout after #{timeout_seconds} seconds: ip forwarding not enabled"
+        rescue StandardError => e
+            fail "An error occurred during ip forwarding check: #{e.message}"
+        end
     end
 
 end
