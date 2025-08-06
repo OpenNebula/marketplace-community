@@ -39,7 +39,7 @@ os-id: Ubuntu
 os-release: 24.04 LTS
 os-arch: x86_64
 hypervisor: KVM
-opennebula_version: 6.10
+opennebula_version: 6.10, 7.0
 opennebula_template:
   context:
     network: 'YES'
@@ -85,13 +85,13 @@ opennebula_template:
 logo: srsran.png
 
 images:
-- name: service_srsran
+- name: srsran
   url: >-
-    <>
+    https://d38nm155miqkyg.cloudfront.net/srsran.qcow2
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 85899345920
+  size: 1531248640
   checksum:
-    md5: "1b31d3103b9a6b989d614ac3d4175433"
-    sha256: "b453d5964b691355ff1300d6251964048c566e612a1f85a47749b649b7f47090"
+    md5: "b800fed16493abdf93200f4bfbbfc5f7"
+    sha256: "8ec2e59e77f8dc3d4c4dda8cd4a315e5f542661c0a1245eabe048ed3e51e968a"

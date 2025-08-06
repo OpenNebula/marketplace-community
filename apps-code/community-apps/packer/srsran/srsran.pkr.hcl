@@ -101,7 +101,7 @@ build {
 
   # Pull your own custom logic here
   provisioner "file" {
-    source      = "../../appliances/srsRAN/appliance.sh" # location of the file in the git repo. Flexible
+    source      = "../../appliances/srsran/appliance.sh" # location of the file in the git repo. Flexible
     destination = "/etc/one-appliance/service.d/appliance.sh" # path in the Guest OS. Strict, always the same
   }
 
@@ -187,13 +187,13 @@ build {
 
   # Copy pre-built RT kernel packages if they exist
   provisioner "file" {
-    source      = "packer/srsRAN/kernel_pkgs/"
+    source      = "packer/srsran/kernel_pkgs/"
     destination = "/etc/rt-kernel-packages/"
   }
 
   # Copy RT kernel installation script
   provisioner "file" {
-    source      = "packer/srsRAN/install_rt_kernel.sh"
+    source      = "packer/srsran/install_rt_kernel.sh"
     destination = "/tmp/install_rt_kernel.sh"
   }
 

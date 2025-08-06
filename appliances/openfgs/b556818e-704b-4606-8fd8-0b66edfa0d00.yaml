@@ -53,7 +53,7 @@ os-id: Ubuntu
 os-release: 24.04 LTS
 os-arch: x86_64
 hypervisor: kvm
-opennebula_version: 6.10
+opennebula_version: 6.10, 7.0
 opennebula_template:
   context:
     network: 'YES'
@@ -83,13 +83,13 @@ opennebula_template:
     ONEAPP_OPEN5GS_WEBUI_PORT: 'O|text|WebUI port| |3000'
 logo: openfgs.png
 images:
-- name: service_open5gs
+- name: openfgs
   url: >-
-    <>
+    https://d38nm155miqkyg.cloudfront.net/openfgs.qcow2
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 32212254720
+  size: 1106968576
   checksum:
-    md5: '2392e4200dacbd22acb6c3b3a651bc29'
-    sha256: '83a9e61fffa4ffe81dfebb7c86eab4a4c6c6d95ef7e9aa29aa73ee1c955f5052'
+    md5: 'c95d94abe6018577124e24935d93ac7b'
+    sha256: 'debddeaa59bd24daf7b9e5672a81d0fbc03f9e1c2037910e70ae8bab00d5e50a'

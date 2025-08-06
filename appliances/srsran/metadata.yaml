@@ -1,39 +1,46 @@
 ---
 :app:
-  :name: openFGS # name used to make the app with the makefile
+  :name: srsRAN # name used to make the app with the makefile
   :type: service # there are service (complex apps) and distro (base apps)
   :os:
     :type: linux # linux, freebsd or windows
-    :base: ubuntu24 # distro where the app runs on
+    :base: ubuntu2404 # distro where the app runs on
   :hypervisor: KVM
   :context: # which context params are used to control the app
     :prefixed: true # params are prefixed with ONEAPP_
     :params:
-      :OPEN5GS_MCC: '999'
-      :OPEN5GS_MNC: '75'
-      :OPEN5GS_N2_IP: '10.0.3.2'
-      :OPEN5GS_N3_IP: '10.0.3.2'
-      :OPEN5GS_TAC: '1'
-      :OPEN5GS_WEBUI_IP: '0.0.0.0'
-      :OPEN5GS_WEBUI_PORT: '3000'
+      :SRSRAN_MODE: 'gnb'
+      :SRSRAN_MCC: '999'
+      :SRSRAN_MNC: '75'
+      :SRSRAN_TAC: '1'
+      :SRSRAN_PCI: '69'
+      :SRSRAN_DL_ARFCN: '656668'
+      :SRSRAN_BAND: 'n77'
+      :SRSRAN_CHANNEL_BW_MHZ: '100'
+      :SRSRAN_ENABLE_DPDK: 'YES'
+      :SRSRAN_COMMON_SCS: '30'
+      :SRSRAN_NR_CELLS: '1'
+      :SRSRAN_AMF_IPV4: '10.0.3.2'
+      :SRSRAN_NIC_PCI_ADDR: '0000:01:01.0'
+      :SRSRAN_RU_MAC: 'e8:c7:4f:25:89:41'
 
 :one:
   # reference template for running the virtual appliance.
   # Must be diskless, with ssh access and accessible by  the frontend
   :template: # how the VM template is expected to be on OpenNebula
-    NAME: openFGS
+    NAME: srsRAN
     TEMPLATE:
       ARCH: x86_64
       CONTEXT:
         NETWORK: 'YES'
         SSH_PUBLIC_KEY: "$USER[SSH_PUBLIC_KEY]"
-      CPU: '4'
+      CPU: '32'
       CPU_MODEL:
         MODEL: host-passthrough
       GRAPHICS:
         LISTEN: 0.0.0.0
         TYPE: vnc
-      MEMORY: '16384'
+      MEMORY: '32768'
       NIC:
         NETWORK: service
       NIC_DEFAULT:

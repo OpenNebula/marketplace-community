@@ -101,7 +101,7 @@ build {
 
   # Pull your own custom logic here
   provisioner "file" {
-    source      = "../../appliances/openFGS/appliance.sh" # location of the file in the git repo. Flexible
+    source      = "../../appliances/openfgs/appliance.sh" # location of the file in the git repo. Flexible
     destination = "/etc/one-appliance/service.d/appliance.sh" # path in the Guest OS. Strict, always the same
   }
 
