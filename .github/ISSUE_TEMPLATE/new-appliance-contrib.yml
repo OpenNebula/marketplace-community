@@ -15,7 +15,9 @@ body:
       label: Appliance Compatibility
       description: Please, specify OpenNebula versions the new appliance is compatible with
       options:
+        - label: "7.0"
         - label: "6.10"
+    validations:
           required: true
   - type: textarea
     id: documentation
@@ -42,5 +44,5 @@ body:
           5. Feedback: If needed, we will provide feedback for revisions.
           6. Final Approval: Once approved, your appliance will be published in the Community Marketplace.
 
-        
+
         Thank you for your contribution and commitment to enhancing the OpenNebula ecosystem! If you have any questions or need assistance, please, contact our support team. 
