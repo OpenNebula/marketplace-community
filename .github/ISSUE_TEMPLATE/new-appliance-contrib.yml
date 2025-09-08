@@ -31,6 +31,13 @@ body:
       description: Please, supply details about your company or organization
     validations:
       required: false
+  - type: textarea
+    id: users
+    attributes:
+      label: Authorized Users
+      description: List of GitHub users who are authorized to manage and update this appliance
+    validations:
+      required: true
   - type: markdown
     attributes:
       value: |

@@ -49,9 +49,16 @@ jobs:
           JENKINS_USER: ${{ secrets.JENKINS_USER }}
           JENKINS_TOKEN: ${{ secrets.JENKINS_TOKEN }}
         run: |
-          METADATA_PATH="appliances/${{ github.event.pull_request.title }}/metadata.yaml"
+          # Extract app name from PR body
+          app_name=$(echo "${{ github.event.pull_request.body }}" | grep -oP '(?<=^:app: ).*' || true)
+          echo "Extracted app name: $app_name"
+
+          # Define Jenkins params
+          METADATA_PATH="appliances/${app_name}/metadata.yaml"
           DISTRO=$(yq '.[":app"][":name"]' $METADATA_PATH)
           REQUIREMENTS=$(yq '.[":app"][":os"][":base"]' $METADATA_PATH)
+
+          # Start Jenkins job
           ssh -i ~/.ssh/id_rsa gitact@$VPN_SERVER -p 2222 "curl -X POST $JENKINS_URL/job/one-community-distro/buildWithParameters?token=$ONE_DISTRO_TOKEN \
             --user $JENKINS_USER:$JENKINS_TOKEN \
             --data DISTROS=$DISTRO \
