@@ -25,9 +25,9 @@ tests_list = YAML.load_file tests_list_path
 rspec_command = [
     'rspec',
     '-f d',
-    "-f h -o 'results/results.html'",
-    "-f d -o 'results/results.txt'",
-    "-f j -o 'results/results.json'"
+    "-f h -o 'results/#{app}/results.html'",
+    "-f d -o 'results/#{app}/results.txt'",
+    "-f j -o 'results/#{app}/results.json'"
 ]
 
 tests_list.each do |test|
