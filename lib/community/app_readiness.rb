@@ -22,6 +22,10 @@ end
 
 tests_list = YAML.load_file tests_list_path
 
+unless Dir.exist?("results/#{app}/")
+  Dir.mkdir("results/#{app}/")
+end
+
 rspec_command = [
     'rspec',
     '-f d',
