@@ -1,0 +1,25 @@
+# Custom Docker Logo Placeholder
+
+This file serves as a placeholder for the custom-docker.png logo file.
+
+## Requirements for the actual logo:
+- Format: PNG or SVG
+- Aspect ratio: 1:1 (square)
+- Recommended size: 256x256 pixels or larger
+- Should represent Docker/containerization theme
+- Clean, professional appearance suitable for marketplace display
+
+## Suggested design elements:
+- Docker whale logo or container imagery
+- Ubuntu colors (orange/purple) to represent the base OS
+- Clean, modern design
+- High contrast for visibility
+
+## File location:
+The actual logo file should be placed at:
+marketplace-community/logos/custom-docker.png
+
+## Usage:
+This logo will be displayed in the OpenNebula Community Marketplace
+alongside the appliance description and will help users identify
+the Custom Docker appliance.

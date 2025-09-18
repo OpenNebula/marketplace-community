@@ -1,0 +1,106 @@
+---
+name: Phoenix RTOS Docker
+version: 1.0.0-1
+one-apps_version: 7.0.0-0
+publisher: OpenNebula Community
+publisher_email: community@opennebula.io
+description: |-
+  Phoenix RTOS appliance running in Docker on Ubuntu 22.04 LTS.
+
+  Phoenix RTOS is a scalable real-time operating system for IoT. This appliance provides
+  an easy way to run and experiment with Phoenix RTOS using Docker containerization.
+
+  This appliance provides:
+  - Ubuntu 22.04 LTS base operating system
+  - Docker Engine CE pre-installed and configured
+  - Phoenix RTOS (pablodelarco/phoenix-rtos-one:latest) container ready to run
+  - Configurable port mappings and volume mounts
+  - Docker Compose support for complex deployments
+  - Optional custom Docker registry authentication
+  - Configurable Docker daemon settings
+  - Docker Buildx plugin support
+  - Customizable logging configuration
+
+  The following configuration parameters are available:
+  - ONEAPP_PHOENIXRTOS_PORTS: Port mappings for Phoenix RTOS (e.g., 8080:8080)
+  - ONEAPP_PHOENIXRTOS_VOLUMES: Volume mappings for Phoenix RTOS
+  - ONEAPP_PHOENIXRTOS_ENV_VARS: Environment variables for Phoenix RTOS container
+  - ONEAPP_PHOENIXRTOS_COMMAND: Custom command to run in Phoenix RTOS container
+  - ONEAPP_DOCKER_REGISTRY_URL: Custom Docker registry URL (optional)
+  - ONEAPP_DOCKER_REGISTRY_USER: Docker registry username (optional)
+  - ONEAPP_DOCKER_REGISTRY_PASSWORD: Docker registry password (optional)
+  - ONEAPP_DOCKER_COMPOSE_VERSION: Docker Compose version to install
+  - ONEAPP_DOCKER_DAEMON_CONFIG: Custom Docker daemon configuration (JSON)
+  - ONEAPP_ENABLE_DOCKER_BUILDX: Enable Docker Buildx plugin (yes/no)
+  - ONEAPP_DOCKER_LOG_DRIVER: Docker logging driver
+  - ONEAPP_DOCKER_LOG_MAX_SIZE: Maximum size of log files
+  - ONEAPP_DOCKER_LOG_MAX_FILE: Maximum number of log files
+
+short_description: Phoenix RTOS running in Docker on Ubuntu 22.04 LTS
+tags:
+- phoenix-rtos
+- rtos
+- iot
+- docker
+- ubuntu
+- container
+- service
+format: qcow2
+creation_time: 1752141600
+os-id: Ubuntu
+os-release: 22.04 LTS
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.10, 7.0
+opennebula_template:
+  context:
+    network: 'YES'
+    oneapp_phoenixrtos_ports: "$ONEAPP_PHOENIXRTOS_PORTS"
+    oneapp_phoenixrtos_volumes: "$ONEAPP_PHOENIXRTOS_VOLUMES"
+    oneapp_phoenixrtos_env_vars: "$ONEAPP_PHOENIXRTOS_ENV_VARS"
+    oneapp_phoenixrtos_command: "$ONEAPP_PHOENIXRTOS_COMMAND"
+    oneapp_docker_registry_url: "$ONEAPP_DOCKER_REGISTRY_URL"
+    oneapp_docker_registry_user: "$ONEAPP_DOCKER_REGISTRY_USER"
+    oneapp_docker_registry_password: "$ONEAPP_DOCKER_REGISTRY_PASSWORD"
+    oneapp_docker_compose_version: "$ONEAPP_DOCKER_COMPOSE_VERSION"
+    oneapp_docker_daemon_config: "$ONEAPP_DOCKER_DAEMON_CONFIG"
+    oneapp_enable_docker_buildx: "$ONEAPP_ENABLE_DOCKER_BUILDX"
+    oneapp_docker_log_driver: "$ONEAPP_DOCKER_LOG_DRIVER"
+    oneapp_docker_log_max_size: "$ONEAPP_DOCKER_LOG_MAX_SIZE"
+    oneapp_docker_log_max_file: "$ONEAPP_DOCKER_LOG_MAX_FILE"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+  cpu: '1'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  inputs_order: >-
+    ONEAPP_PHOENIXRTOS_PORTS, ONEAPP_PHOENIXRTOS_VOLUMES, ONEAPP_PHOENIXRTOS_ENV_VARS, ONEAPP_PHOENIXRTOS_COMMAND, ONEAPP_DOCKER_REGISTRY_URL, ONEAPP_DOCKER_REGISTRY_USER, ONEAPP_DOCKER_REGISTRY_PASSWORD, ONEAPP_DOCKER_COMPOSE_VERSION, ONEAPP_ENABLE_DOCKER_BUILDX, ONEAPP_DOCKER_LOG_DRIVER, ONEAPP_DOCKER_LOG_MAX_SIZE, ONEAPP_DOCKER_LOG_MAX_FILE
+  memory: '2048'
+  os:
+    arch: x86_64
+  user_inputs:
+    oneapp_phoenixrtos_ports: O|text|Phoenix RTOS port mappings (e.g., 8080:8080)| |8080:8080
+    oneapp_phoenixrtos_volumes: O|text|Phoenix RTOS volume mappings| |
+    oneapp_phoenixrtos_env_vars: O|text|Phoenix RTOS environment variables| |
+    oneapp_phoenixrtos_command: O|text|Custom command for Phoenix RTOS container| |
+    oneapp_docker_registry_url: O|text|Docker registry URL| |
+    oneapp_docker_registry_user: O|text|Docker registry username| |
+    oneapp_docker_registry_password: O|password|Docker registry password| |
+    oneapp_docker_compose_version: O|text|Docker Compose version| |2.24.0
+    oneapp_docker_daemon_config: O|text|Docker daemon config (JSON)| |
+    oneapp_enable_docker_buildx: O|boolean|Enable Docker Buildx| |yes
+    oneapp_docker_log_driver: O|list|Docker log driver|json-file,syslog,journald,gelf,fluentd,awslogs,splunk,etwlogs,gcplogs,logentries|json-file
+    oneapp_docker_log_max_size: O|text|Log max size| |10m
+    oneapp_docker_log_max_file: O|text|Log max files| |3
+logo: custom-docker.png
+images:
+- name: custom-docker
+  url: >-
+    https://d38nm155miqkyg.cloudfront.net/service_CustomDocker-1.0.0-1-20250101.qcow2
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 8589934592
+  checksum:
+    md5: placeholder_md5_checksum
+    sha256: placeholder_sha256_checksum

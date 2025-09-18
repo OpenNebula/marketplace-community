@@ -1,0 +1,14 @@
+---
+:app:
+  :name: nginx-test
+  :type: service
+  :os:
+    :type: linux
+    :base: ubuntu2204
+  :hypervisor: KVM
+  :context:
+    :prefixed: true
+    :params:
+      :DOCKER_IMAGE_PORTS: '80:80,443:443'
+      :DOCKER_IMAGE_VOLUMES: ''
+      :DOCKER_IMAGE_ENV_VARS: ''

@@ -1,0 +1,40 @@
+---
+name: Nginx Docker
+version: 1.0.0-1
+one-apps_version: 7.0.0-0
+publisher: OpenNebula Community
+publisher_email: community@opennebula.io
+description: |-
+  nginx running in Docker on Ubuntu 22.04 LTS.
+
+  This appliance provides:
+  - Ubuntu 22.04 LTS base operating system
+  - Docker Engine CE pre-installed and configured
+  - nginx:latest container ready to run
+  - Configurable port mappings and volume mounts
+
+short_description: nginx running in Docker on Ubuntu 22.04 LTS
+tags:
+- nginx
+- docker
+- ubuntu
+- container
+- service
+format: qcow2
+creation_time: 1758182009
+os-id: Ubuntu
+os-release: 22.04 LTS
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.10, 7.0
+opennebula_template:
+  context:
+    network: 'YES'
+    oneapp_docker_image_ports: "$ONEAPP_DOCKER_IMAGE_PORTS"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+  cpu: '1'
+  memory: '2048'
+  user_inputs:
+    oneapp_docker_image_ports: O|text|Port mappings| |80:80,443:443
+    oneapp_docker_image_volumes: O|text|Volume mappings| |
+    oneapp_docker_image_env_vars: O|text|Environment variables| |
