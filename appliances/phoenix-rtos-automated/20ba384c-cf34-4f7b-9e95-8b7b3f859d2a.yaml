@@ -1,0 +1,58 @@
+---
+name: Phoenix RTOS
+version: 1.0.0-1
+one-apps_version: 7.0.0-0
+publisher: OpenNebula Community
+publisher_email: community@opennebula.io
+description: |-
+  Phoenix RTOS is a scalable real-time operating system for IoT. This appliance
+  provides Phoenix RTOS running in a Docker container on Ubuntu 22.04 LTS.
+
+  Phoenix RTOS features:
+  - Real-time microkernel architecture
+  - POSIX-compliant API
+  - Small memory footprint
+  - Support for multiple architectures
+  - Built-in networking stack
+  - BusyBox shell environment
+
+  This appliance provides:
+  - Ubuntu 22.04 LTS base operating system
+  - Docker Engine CE pre-installed and configured
+  - Phoenix RTOS container (pablodelarco/phoenix-rtos-one:latest) ready to run
+  - Interactive Phoenix RTOS shell access
+  - Configurable container parameters
+
+short_description: Phoenix RTOS real-time operating system running in Docker
+tags:
+- phoenix-rtos
+- rtos
+- real-time
+- iot
+- microkernel
+- docker
+- ubuntu
+- container
+format: qcow2
+creation_time: 1758182232
+os-id: Ubuntu
+os-release: 22.04 LTS
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.10, 7.0
+opennebula_template:
+  context:
+    network: 'YES'
+    oneapp_phoenixrtos_ports: "$ONEAPP_PHOENIXRTOS_PORTS"
+    oneapp_phoenixrtos_volumes: "$ONEAPP_PHOENIXRTOS_VOLUMES"
+    oneapp_phoenixrtos_env_vars: "$ONEAPP_PHOENIXRTOS_ENV_VARS"
+    oneapp_phoenixrtos_command: "$ONEAPP_PHOENIXRTOS_COMMAND"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+  cpu: '2'
+  memory: '2048'
+  user_inputs:
+    oneapp_phoenixrtos_ports: O|text|Port mappings for Phoenix RTOS container| |8080:8080
+    oneapp_phoenixrtos_volumes: O|text|Volume mappings for Phoenix RTOS container| |
+    oneapp_phoenixrtos_env_vars: O|text|Environment variables for Phoenix RTOS container| |
+    oneapp_phoenixrtos_command: O|text|Custom command for Phoenix RTOS container| |
+  inputs_order: oneapp_phoenixrtos_ports,oneapp_phoenixrtos_volumes,oneapp_phoenixrtos_env_vars,oneapp_phoenixrtos_command
