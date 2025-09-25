@@ -13,7 +13,7 @@ build {
 }
 
 # Build VM image
-source "qemu" "phoenix-rtos-autologin" {
+source "qemu" "phoenixrtos" {
   cpus        = 2
   memory      = 2048
   accelerator = "kvm"
@@ -49,7 +49,7 @@ source "qemu" "phoenix-rtos-autologin" {
 }
 
 build {
-  sources = ["source.qemu.phoenix-rtos-autologin"]
+  sources = ["source.qemu.phoenixrtos"]
 
   # revert insecure ssh options done by context start_script
   provisioner "shell" {
@@ -83,7 +83,7 @@ build {
     destination = "/etc/one-appliance/service"
   }
   provisioner "file" {
-    sources     = ["../../appliances/phoenix-rtos-autologin/appliance.sh"]
+    sources     = ["../../appliances/phoenixrtos/appliance.sh"]
     destination = "/etc/one-appliance/service.d/"
   }
 
@@ -102,6 +102,6 @@ build {
       "OUTPUT_DIR=${var.output_dir}",
       "APPLIANCE_NAME=${var.appliance_name}",
     ]
-    scripts = ["packer/phoenix-rtos-autologin/postprocess-autologin.sh"]
+    scripts = ["packer/phoenixrtos/postprocess.sh"]
   }
 }

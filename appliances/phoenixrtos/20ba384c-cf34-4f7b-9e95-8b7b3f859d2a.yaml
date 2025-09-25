@@ -7,7 +7,7 @@ publisher_email: pdelarco@opennebula.io
 description: |-
   Phoenix RTOS is a scalable real-time operating system for IoT. This appliance
   provides Phoenix RTOS running in a Docker container on Ubuntu 22.04 LTS with
-  automatic VNC login and SSH key authentication.
+  VNC access and SSH key authentication.
 
   **Phoenix RTOS features:**
   - Real-time microkernel architecture
@@ -21,18 +21,18 @@ description: |-
   - Ubuntu 22.04 LTS base operating system
   - Docker Engine CE pre-installed and configured
   - Phoenix RTOS container (pablodelarco/phoenix-rtos-one:latest) ready to run
-  - **Automatic VNC login** - no password required for VNC access
+  - **VNC access** - direct access to desktop environment
   - **SSH key authentication** from OpenNebula context
   - Interactive Phoenix RTOS shell access
   - Configurable container parameters (ports, volumes, environment variables)
   - Web-based Phoenix RTOS interface on port 8080
 
   **Access Methods:**
-  - VNC: Automatic login to desktop environment
+  - VNC: Direct access to desktop environment
   - SSH: Key-based authentication from OpenNebula
   - Web: Phoenix RTOS web interface at http://VM_IP:8080
 
-short_description: Phoenix RTOS real-time OS with auto-login VNC and SSH key auth
+short_description: Phoenix RTOS real-time OS with VNC access and SSH key auth
 tags:
 - phoenix-rtos
 - rtos
@@ -43,7 +43,6 @@ tags:
 - ubuntu
 - container
 - vnc
-- auto-login
 - ssh-key
 - embedded
 - posix

@@ -1,6 +1,6 @@
-# Phoenix RTOS Auto-Login Appliance
+# Phoenix RTOS Appliance
 
-[Phoenix RTOS](https://phoenix-rtos.org/) is a scalable real-time operating system for IoT. This appliance provides Phoenix RTOS running in a Docker container on Ubuntu 22.04 LTS with **automatic VNC login** and **SSH key authentication**.
+[Phoenix RTOS](https://phoenix-rtos.org/) is a scalable real-time operating system for IoT. This appliance provides Phoenix RTOS running in a Docker container on Ubuntu 22.04 LTS with VNC access and SSH key authentication.
 
 ## Key Features
 

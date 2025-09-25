@@ -131,9 +131,9 @@ service_install()
     # Create service metadata
     create_one_service_metadata
 
-    # Configure automatic VNC login
-    msg info "Configuring automatic VNC login"
-    configure_auto_login
+    # Configure VNC access
+    msg info "Configuring VNC access"
+    configure_vnc_access
 
     # Cleanup
     postinstall_cleanup
@@ -606,15 +606,15 @@ check_phoenixrtos_container()
 }
 
 ###############################################################################
-# Auto-login configuration functions
+# VNC access configuration functions
 ###############################################################################
 
-configure_auto_login()
+configure_vnc_access()
 {
-    msg info "Setting up automatic VNC login for root user"
+    msg info "Setting up VNC access for root user"
 
-    # Install required packages for auto-login
-    msg info "Installing auto-login packages"
+    # Install required packages for VNC access
+    msg info "Installing VNC access packages"
     apt-get update -qq
     apt-get install -y mingetty
 
@@ -667,7 +667,7 @@ esac
 
 # Welcome message
 echo "=================================================="
-echo "  Phoenix RTOS Appliance - Auto-Login Enabled"
+echo "  Phoenix RTOS Appliance"
 echo "=================================================="
 echo "  Ubuntu 22.04 LTS with Docker pre-installed"
 echo "  Phoenix RTOS container ready to use"
@@ -702,9 +702,9 @@ EOF
     systemctl enable getty@tty1.service
     systemctl enable serial-getty@ttyS0.service
 
-    msg info "✓ Automatic VNC login configured successfully"
-    msg info "  - Console (tty1): Auto-login as root"
-    msg info "  - Serial (ttyS0): Auto-login as root"
+    msg info "✓ VNC access configured successfully"
+    msg info "  - Console (tty1): Direct login as root"
+    msg info "  - Serial (ttyS0): Direct login as root"
     msg info "  - SSH access: Enabled (password: 'opennebula', key authentication)"
 
     return 0

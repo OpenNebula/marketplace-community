@@ -1,6 +1,6 @@
 variable "appliance_name" {
   type    = string
-  default = "phoenix-rtos-automated"
+  default = "phoenixrtos"
 }
 
 variable "input_dir" {

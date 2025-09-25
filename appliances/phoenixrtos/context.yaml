@@ -1,7 +1,7 @@
 ---
 :tests:
-  'phoenix-rtos-automated':
-    :image_name: phoenix-rtos-automated.qcow2
+  'phoenixrtos':
+    :image_name: phoenixrtos.qcow2
     :type: linux
     :microenvs: ['context-kvm']
     :slow: true

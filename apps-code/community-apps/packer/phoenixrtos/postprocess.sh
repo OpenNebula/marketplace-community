@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
 
-# Custom postprocess script for auto-login appliance
+# Custom postprocess script for Phoenix RTOS appliance
 # This version preserves the root password instead of disabling it
 
 timeout 5m virt-sysprep \

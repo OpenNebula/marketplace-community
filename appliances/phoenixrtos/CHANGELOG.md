@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0-3] - 2025-09-19
 
 ### Added
-- **Automatic VNC login** - no password required for VNC access
+- **VNC access** - direct access to desktop environment
 - **SSH key authentication** from OpenNebula context variables
 - Enhanced Phoenix RTOS container startup with animation and progress indicators
 - Automatic Docker service startup and container management

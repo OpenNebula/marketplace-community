@@ -1,6 +1,6 @@
 ---
 :app:
-  :name: phoenix-rtos-autologin # name used to make the app with the makefile
+  :name: phoenixrtos # name used to make the app with the makefile
   :type: service # there are service (complex apps) and distro (base apps)
   :os:
     :type: linux # linux, freebsd or windows
