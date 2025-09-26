@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Generate context ISO for the appliance
+# This script is called during the build process
+
+CONTEXT_DIR="context"
+mkdir -p "$CONTEXT_DIR"
+
+# Create user-data for cloud-init
+cat > "$CONTEXT_DIR/user-data" << 'USERDATA'
+#cloud-config
+users:
+  - name: packer
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+    passwd: $6$rounds=4096$saltsalt$L9tjczoIVjNaoOmeyjQjqoTs7KM6N.UVBczRLz9IH8OvZY3P62k/9ZQToD3/wYX0EleVLjeJR.oP/4E.X/qkU1
+USERDATA
+
+# Create meta-data
+cat > "$CONTEXT_DIR/meta-data" << 'METADATA'
+instance-id: packer-build
+local-hostname: packer-build
+METADATA
+
+# Create context ISO
+genisoimage -output context.iso -volid cidata -joliet -rock "$CONTEXT_DIR"

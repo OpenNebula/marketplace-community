@@ -1,0 +1,65 @@
+---
+name: NGINX Web Server
+version: 1.0.0-1
+one-apps_version: 7.0.0-0
+publisher: Your Name
+publisher_email: your.email@domain.com
+description: |-
+  NGINX is a high-performance web server, reverse proxy, and load balancer. This appliance provides NGINX Web Server
+  running in a Docker container on Ubuntu 22.04 LTS with VNC access and 
+  SSH key authentication.
+
+  **NGINX Web Server features:**
+  - High performance web server
+  - Reverse proxy capabilities
+  - Load balancing
+  - SSL/TLS termination
+  - Static content serving
+  **This appliance provides:**
+  - Ubuntu 22.04 LTS base operating system
+  - Docker Engine CE pre-installed and configured
+  - NGINX Web Server container (nginx:alpine) ready to run
+  - VNC access for desktop environment
+  - SSH key authentication from OpenNebula context  - Web interface on port 80
+  - Configurable container parameters (ports, volumes, environment variables)
+
+  **Access Methods:**
+  - VNC: Direct access to desktop environment
+  - SSH: Key-based authentication from OpenNebula  - Web: NGINX Web Server interface at http://VM_IP:80
+
+short_description: NGINX Web Server with VNC access and SSH key auth
+tags:
+- nginx
+- docker
+- ubuntu
+- container
+- vnc
+- ssh-key
+format: qcow2
+creation_time: 1758868891
+os-id: Ubuntu
+os-release: '22.04'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 7.0
+opennebula_template:
+  context:
+    network: 'YES'
+    ssh_public_key: $USER[SSH_PUBLIC_KEY]
+    set_hostname: $USER[SET_HOSTNAME]
+  cpu: '2'
+  disk:
+    image: $FILE[IMAGE_ID]
+    image_uname: $USER[IMAGE_UNAME]
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  memory: '2048'
+  name: NGINX Web Server
+  user_inputs:
+    - CONTAINER_NAME: 'M|text|Container name|nginx-server|nginx-server'
+    - CONTAINER_PORTS: 'M|text|Container ports (format: host:container)|80:80,443:443|80:80,443:443'
+    - CONTAINER_ENV: 'O|text|Environment variables (format: VAR1=value1,VAR2=value2)||'
+    - CONTAINER_VOLUMES: 'O|text|Volume mounts (format: /host/path:/container/path)|/etc/nginx/conf.d:/etc/nginx/conf.d,/var/www/html:/usr/share/nginx/html|'
+  inputs_order: CONTAINER_NAME,CONTAINER_PORTS,CONTAINER_ENV,CONTAINER_VOLUMES
+logo: logos/nginx.png
