@@ -109,7 +109,7 @@ cat > "../appliances/$APPLIANCE_NAME/metadata.yaml" << EOF
       - SET_HOSTNAME="\$USER[SET_HOSTNAME]"
     cpu: '2'
     memory: '2048'
-    disk_size: '16384'
+    disk_size: '8192'
     graphics:
       listen: 0.0.0.0
       type: vnc
@@ -622,7 +622,7 @@ source "qemu" "$APPLIANCE_NAME" {
   net_device       = "virtio-net"
   format           = "qcow2"
   disk_compression = false
-  disk_size        = "16000"
+  disk_size        = "8000"
 
   output_directory = var.output_dir
 
