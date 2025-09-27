@@ -6,7 +6,7 @@
 
 By following this guide, you'll create a **complete virtual machine appliance** that:
 - ✅ Runs your Docker container automatically on VM startup
-- ✅ Has desktop access (VNC) and SSH access with key authentication
+- ✅ Has console access (auto-login) and SSH access with key authentication
 - ✅ Can be deployed instantly on OpenNebula cloud platforms
 - ✅ Is ready for the OpenNebula Community Marketplace
 - ✅ Includes all necessary configuration files and build scripts
@@ -31,7 +31,7 @@ By following this guide, you'll create a **complete virtual machine appliance** 
 An **appliance** is a ready-to-use virtual machine image containing:
 - **Ubuntu 22.04 LTS** operating system
 - **Your Docker application** pre-installed and auto-starting
-- **VNC desktop access** for GUI interaction
+- **Console access** with auto-login for easy management
 - **SSH access** with key authentication from OpenNebula
 - **All dependencies** and configuration pre-configured
 
@@ -237,7 +237,7 @@ make mynginx
 2. 🖥️ Creates virtual machine with 2GB RAM, 8GB disk
 3. 💿 Installs Ubuntu automatically
 4. 🐳 Installs Docker and your container
-5. ⚙️ Configures VNC, SSH, and OpenNebula integration
+5. ⚙️ Configures console access, SSH, and OpenNebula integration
 6. 📦 Creates final `.qcow2` image file
 
 **Build time**: 15-30 minutes (depending on internet speed)
@@ -274,14 +274,117 @@ head -20 ../appliances/mynginx/README.md
 
 ### Full Test (After Building)
 
-If you built the VM image, test it:
+If you built the VM image, test it in OpenNebula:
 
-1. **Deploy on virtualization platform** (VirtualBox, KVM, etc.)
-2. **Boot the VM** and wait for startup
-3. **Test VNC access** (should auto-login as root)
-4. **Test SSH access** with your OpenNebula keys
-5. **Verify container is running**: `docker ps`
-6. **Test your application** (e.g., visit http://VM_IP:80 for web apps)
+#### 1. Copy Image to OpenNebula Frontend
+```bash
+# Copy the built qcow2 image to OpenNebula frontend
+scp apps-code/community-apps/export/mynginx.qcow2 root@opennebula-frontend:/var/tmp/
+```
+
+#### 2. Create OpenNebula Image
+```bash
+# SSH to OpenNebula frontend
+ssh root@opennebula-frontend
+
+# Create image in OpenNebula (replace with your datastore ID)
+oneimage create --name "mynginx" --path "/var/tmp/mynginx.qcow2" --driver qcow2 --datastore 1
+
+# Check image status
+oneimage list
+```
+
+#### 3. Create VM Template
+```bash
+# Create VM template with proper context configuration
+cat > mynginx-template.txt << 'EOF'
+NAME = "mynginx-template"
+CPU = "2"
+MEMORY = "2048"
+DISK = [
+  IMAGE_ID = "IMAGE_ID_FROM_STEP_2"
+]
+NIC = [
+  NETWORK_ID = "0"
+]
+CONTEXT = [
+  NETWORK = "YES",
+  SSH_PUBLIC_KEY = "$USER[SSH_PUBLIC_KEY]",
+  SET_HOSTNAME = "$USER[SET_HOSTNAME]"
+]
+GRAPHICS = [
+  TYPE = "VNC",
+  LISTEN = "0.0.0.0"
+]
+EOF
+
+# Create the template
+onetemplate create mynginx-template.txt
+
+# Check template was created
+onetemplate list
+```
+
+#### 4. Deploy and Test VM
+```bash
+# Instantiate VM from template (replace TEMPLATE_ID)
+onetemplate instantiate TEMPLATE_ID --name "test-mynginx-vm"
+
+# Wait for VM to be running
+onevm list
+onevm show VM_ID
+
+# Get VM IP address
+onevm show VM_ID | grep IP
+```
+
+#### 5. Test the Appliance
+```bash
+# Test SSH access (replace VM_IP with actual IP)
+ssh root@VM_IP
+
+# Once connected via SSH, verify the appliance:
+# 1. Check Docker service is running
+systemctl status docker
+
+# 2. Verify container is running
+docker ps
+# Should show: nginx:alpine container running
+
+# 3. Check container logs
+docker logs nginx-server
+
+# 4. Test NGINX web server
+curl http://localhost:80
+# Or visit http://VM_IP:80 in browser
+
+# 5. Test console access via OpenNebula (should auto-login as root)
+# Use OpenNebula Sunstone console or VNC viewer
+```
+
+#### 6. Verify OpenNebula Context Integration
+```bash
+# Check context variables were applied
+cat /var/lib/one-context/context.sh
+
+# Verify SSH keys were installed
+cat ~/.ssh/authorized_keys
+
+# Check hostname was set
+hostname
+
+# Verify network configuration
+ip addr show
+
+# Check welcome message
+cat /etc/profile.d/99-mynginx-welcome.sh
+```
+
+#### Troubleshooting
+- **SSH fails**: Recreate VM template (OpenNebula context resolution issue)
+- **Container not running**: Check `docker logs nginx-server` and `systemctl status docker`
+- **Web interface not accessible**: Verify container port mapping and firewall
+- **Console access**: Use OpenNebula Sunstone VNC console with auto-login
 
 ---
 
@@ -432,7 +535,7 @@ sudo yum install git
 - 🖥️ **Ubuntu 22.04 LTS** base operating system
 - 🐳 **Docker Engine** pre-installed and configured
 - 🎯 **Your Docker container** starting automatically on boot
-- 🖱️ **VNC desktop access** for GUI interaction
+- 🖱️ **Console access** with auto-login for easy management
 - 🔐 **SSH access** with OpenNebula key authentication
 - ⚙️ **Configurable parameters** through OpenNebula interface
 - 📊 **Container monitoring** and management tools
