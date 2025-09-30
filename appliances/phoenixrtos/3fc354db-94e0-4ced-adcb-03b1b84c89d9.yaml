@@ -1,0 +1,65 @@
+---
+name: Phoenix RTOS
+version: 1.0.0-1
+one-apps_version: 7.0.0-0
+publisher: Pablo del Arco
+publisher_email: pdelarco@opennebula.io
+description: |-
+  Phoenix RTOS is a real-time operating system designed for embedded systems. This appliance provides Phoenix RTOS
+  running in a Docker container on Ubuntu 22.04 LTS with VNC access and
+  SSH key authentication.
+
+  **Phoenix RTOS features:**
+  - Real-time operating system
+  - Embedded systems support
+  - Microkernel architecture
+  - POSIX compatibility
+  - Small footprint
+  **This appliance provides:**
+  - Ubuntu 22.04 LTS base operating system
+  - Docker Engine CE pre-installed and configured
+  - Phoenix RTOS container (pablodelarco/phoenix-rtos-one:latest) ready to run
+  - VNC access for desktop environment
+  - SSH key authentication from OpenNebula context
+  - Configurable container parameters (ports, volumes, environment variables)
+
+  **Access Methods:**
+  - VNC: Direct access to desktop environment
+  - SSH: Key-based authentication from OpenNebula
+
+short_description: Phoenix RTOS with VNC access and SSH key auth
+tags:
+- phoenixrtos
+- docker
+- ubuntu
+- container
+- vnc
+- ssh-key
+format: qcow2
+creation_time: 1758995348
+os-id: Ubuntu
+os-release: '22.04'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 7.0
+opennebula_template:
+  context:
+    network: 'YES'
+    ssh_public_key: $USER[SSH_PUBLIC_KEY]
+    set_hostname: $USER[SET_HOSTNAME]
+  cpu: '2'
+  disk:
+    image: $FILE[IMAGE_ID]
+    image_uname: $USER[IMAGE_UNAME]
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  memory: '2048'
+  name: Phoenix RTOS
+  user_inputs:
+    - CONTAINER_NAME: 'M|text|Container name|phoenix-rtos-one|phoenix-rtos-one'
+    - CONTAINER_PORTS: 'M|text|Container ports (format: host:container)|8080:8080|8080:8080'
+    - CONTAINER_ENV: 'O|text|Environment variables (format: VAR1=value1,VAR2=value2)||'
+    - CONTAINER_VOLUMES: 'O|text|Volume mounts (format: /host/path:/container/path)||'
+  inputs_order: CONTAINER_NAME,CONTAINER_PORTS,CONTAINER_ENV,CONTAINER_VOLUMES
+logo: logos/phoenixrtos.png
