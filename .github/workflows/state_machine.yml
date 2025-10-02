@@ -50,7 +50,7 @@ jobs:
           JENKINS_TOKEN: ${{ secrets.JENKINS_TOKEN }}
         run: |
           # Extract app name from PR body
-          app_name=$(echo "${{ github.event.pull_request.body }}" | grep -oP '(?<=^:app: ).*' || true)
+          app_name=$(echo "${{ github.event.pull_request.body }}" | grep -oP '(?<=^:app: )[^\r]*' || true)
           echo "Extracted app name: $app_name"
 
           # Define Jenkins params
