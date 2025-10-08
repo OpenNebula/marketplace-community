@@ -1,0 +1,9 @@
+---
+:tests:
+  'nodered':
+    :image_name: nodered.qcow2
+    :type: linux
+    :microenvs: ['context-kvm']
+    :slow: true
+    :enable_netcfg_common: True
+    :enable_netcfg_ip_methods: True
