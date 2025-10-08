@@ -34,7 +34,7 @@ RSpec.shared_context 'vm_handler' do
 
         prefixed = config[:app][:context][:prefixed]
 
-        options = "--context #{app_context(APP_CONTEXT_PARAMS, prefixed)} --disk #{APP_IMAGE_NAME}"
+        options = "--context \"#{app_context(APP_CONTEXT_PARAMS, prefixed)}\" --disk #{APP_IMAGE_NAME}"
 
         # Create a new VM by issuing onetemplate instantiate VM_TEMPLATE
         @info[:vm] = VM.instantiate(VM_TEMPLATE, true, options)
@@ -56,12 +56,12 @@ end
 # @return [String] Comma separated list of context parameters ready to be used with --context on CLI template instantiation
 #
 def app_context(app_context_params, prefixed = true)
-    params = [%(SSH_PUBLIC_KEY=\\"\\$USER[SSH_PUBLIC_KEY]\\"), 'NETWORK="YES"']
+    params = [%(SSH_PUBLIC_KEY=\\"\\$USER[SSH_PUBLIC_KEY]\\"), %(NETWORK=\\"YES\\")]
 
     prefixed == true ? prefix = 'ONEAPP_' : prefix = ''
 
     app_context_params.each do |key, value|
-        params << "#{prefix}#{key}=\"#{value}\""
+        params << %(#{prefix}#{key}=\\"#{value}\\")
     end
 
     return params.join(',')
