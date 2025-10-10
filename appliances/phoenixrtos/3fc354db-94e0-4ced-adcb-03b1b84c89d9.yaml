@@ -63,3 +63,15 @@ opennebula_template:
     oneapp_container_volumes: 'O|text|Volume mounts (format: /host/path:/container/path)||'
   inputs_order: ONEAPP_CONTAINER_NAME,ONEAPP_CONTAINER_PORTS,ONEAPP_CONTAINER_ENV,ONEAPP_CONTAINER_VOLUMES
 logo: logos/phoenixrtos.png
+
+images:
+- name: phoenixrtos.qcow2
+  url: >-
+    https://d38nm155miqkyg.cloudfront.net/phoenixrtos.qcow2
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 2714566656
+  checksum:
+    md5: 5360caaa0d4d1b5d00db0664924c558b
+    sha256: 2af44a20599d78057f1b2d1799f9c63875e49f350308bc4be1838b3f335c3744
