@@ -19,8 +19,9 @@ packer-service_Lithops: packer-service_Lithops_Worker
 
 # run packer build for given distro or service
 $(DIR_EXPORT)/%.qcow2:
-	$(eval DISTRO_NAME := $(shell echo $* | sed 's/[0-9].*//'))
-	$(eval DISTRO_VER  := $(shell echo $* | sed 's/^.[^0-9]*\(.*\)/\1/'))
+	$(eval IS_SERVICE := $(filter $*,$(SERVICES)))
+	$(eval DISTRO_NAME := $(if $(IS_SERVICE),$*,$(shell echo $* | sed 's/[0-9].*//')))
+	$(eval DISTRO_VER  := $(if $(IS_SERVICE),,$(shell echo $* | sed 's/^.[^0-9]*\(.*\)/\1/')))
 	packer/build.sh '$(DISTRO_NAME)' '$(DISTRO_VER)' $@
 
 clean:
