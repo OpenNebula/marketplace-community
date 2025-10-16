@@ -1,6 +1,6 @@
 ---
 name: Lithops - Standalone
-version: 6.10.0-3-20250513
+version: 7.0.0-0-20251005
 publisher: OpenNebula Systems
 description: |-
   Appliance with preinstalled [Lithops](https://lithops-cloud.github.io/docs/) and Docker.
@@ -50,11 +50,11 @@ logo: lithops.png
 images:
   - name: lithops
     url: >-
-      https://d38nm155miqkyg.cloudfront.net/lithops-6.10.0-3-20250513.qcow2
+      https://d38nm155miqkyg.cloudfront.net/lithops-7.0.0-0-20251006.qcow2
     type: OS
     dev_prefix: vd
     driver: qcow2
-    size: 5242880000
+    size: 801849856
     checksum:
-      md5: 5a2836f94361200f4a74e36cf56b7429
-      sha256: 90de590ea070c33809924ad85bfab59e299a50328a2c19c89bb937569d8e65d2
+      md5: 1acf2adce15d663a3a3d6b8c6949ec2a
+      sha256: 4532e401efddd42ed46c1eac703e601187b230be0d46e1960391bb54b0d0e8c2
