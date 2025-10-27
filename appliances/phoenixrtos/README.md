@@ -119,7 +119,7 @@ If the Phoenix RTOS container fails to start, check:
 ## Support
 
 For Phoenix RTOS specific questions, visit:
-- [Phoenix RTOS Documentation](https://phoenix-rtos.org/documentation/)
+- [Phoenix RTOS Documentation]([https://phoenix-rtos.org/documentation/](https://docs.phoenix-rtos.com/latest/))
 - [Phoenix RTOS GitHub](https://github.com/phoenix-rtos)
 
 For OpenNebula appliance issues:
