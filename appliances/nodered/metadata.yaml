@@ -1,0 +1,60 @@
+---
+:app:
+  :name: nodered
+  :type: service
+  :os:
+    :type: linux
+    :base: ubuntu2204
+  :hypervisor: KVM
+  :opennebula_version:
+    - '7.0'
+  :opennebula_template:
+    context:
+      - SSH_PUBLIC_KEY="$USER[SSH_PUBLIC_KEY]"
+      - SET_HOSTNAME="$USER[SET_HOSTNAME]"
+    cpu: '2'
+    memory: '2048'
+    disk_size: '8192'
+    graphics:
+      listen: 0.0.0.0
+      type: vnc
+    inputs_order: 'CONTAINER_NAME,CONTAINER_PORTS,CONTAINER_ENV,CONTAINER_VOLUMES'
+    logo: logos/nodered.png
+    user_inputs:
+      CONTAINER_NAME: 'M|text|Container name|nodered-app|nodered-app'
+      CONTAINER_PORTS: 'M|text|Container ports (format: host:container)|1880:1880|1880:1880'
+      CONTAINER_ENV: 'O|text|Environment variables (format: VAR1=value1,VAR2=value2)||'
+      CONTAINER_VOLUMES: 'O|text|Volume mounts (format: /host/path:/container/path)|/data:/data|'
+  :context:
+    :prefixed: true
+    :params:
+      :CONTAINER_NAME: 'nodered-app'
+      :CONTAINER_PORTS: '1880:1880'
+      :CONTAINER_ENV: ''
+      :CONTAINER_VOLUMES: '/data:/data'
+
+:one:
+  :template:
+    NAME: base
+    TEMPLATE:
+      ARCH: x86_64
+      CONTEXT:
+        NETWORK: 'YES'
+        SSH_PUBLIC_KEY: "$USER[SSH_PUBLIC_KEY]"
+      CPU: '2'
+      CPU_MODEL:
+        MODEL: host-passthrough
+      GRAPHICS:
+        LISTEN: 0.0.0.0
+        TYPE: vnc
+      MEMORY: '2048'
+      NIC:
+        NETWORK: vnet
+      NIC_DEFAULT:
+        MODEL: virtio
+  :datastore_name: default
+  :timeout: '90'
+
+:infra:
+  :disk_format: qcow2
+  :apps_path: /var/tmp
