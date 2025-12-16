@@ -1,0 +1,69 @@
+---
+name: nextcloud
+version: 1.0.0-1
+one-apps_version: 7.0.0-0
+publisher: OpenNebula Community
+publisher_email: community@opennebula.io
+description: |-
+  Nextcloud All-in-One - A self-hosted productivity platform.
+
+  This appliance provides Nextcloud AIO running in Docker on Ubuntu 22.04 LTS
+  with nginx reverse proxy for secure localhost access via SSH tunnel.
+
+  **Nextcloud Features:**
+  - File sync and sharing
+  - Collaborative editing (Office suite)
+  - Calendar and contacts
+  - Talk (video calls)
+  - Email client
+  - Notes and tasks
+
+  **This appliance provides:**
+  - Ubuntu 22.04 LTS base operating system
+  - Docker Engine CE pre-installed and configured
+  - Nextcloud AIO container (nextcloud/all-in-one:latest)
+  - Nginx reverse proxy with self-signed SSL on port 9999
+  - VNC access for desktop environment
+  - SSH key authentication from OpenNebula context
+
+  **Access Methods:**
+  - SSH tunnel: ssh -L 9999:<VM_IP>:9999 -L 9080:<VM_IP>:8080 root@<FRONTEND>
+  - AIO Admin: https://localhost:9080 (initial setup)
+  - Nextcloud: https://localhost:9999 (after setup)
+
+short_description: Nextcloud All-in-One - Self-hosted productivity platform
+tags:
+- nextcloud
+- docker
+- ubuntu
+- container
+- cloud-storage
+- collaboration
+format: qcow2
+creation_time: 1762114423
+os-id: Ubuntu
+os-release: '22.04'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 7.0
+opennebula_template:
+  context:
+    network: 'YES'
+    ssh_public_key: $USER[SSH_PUBLIC_KEY]
+    set_hostname: $USER[SET_HOSTNAME]
+  cpu: '2'
+  disk:
+    image: $FILE[IMAGE_ID]
+    image_uname: $USER[IMAGE_UNAME]
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  memory: '2048'
+  name: nextcloud
+  user_inputs:
+    - ONEAPP_CONTAINER_NAME: 'M|text|Container name|nextcloud-aio-mastercontainer|nextcloud-aio-mastercontainer'
+    - ONEAPP_CONTAINER_PORTS: 'M|text|Container ports (format: host:container)|80:80,8080:8080,8443:8443|80:80,8080:8080,8443:8443'
+    - ONEAPP_CONTAINER_ENV: 'O|text|Environment variables (format: VAR1=value1,VAR2=value2)||'
+    - ONEAPP_CONTAINER_VOLUMES: 'O|text|Volume mounts (format: /host/path:/container/path)|/data:/data|'
+  inputs_order: ONEAPP_CONTAINER_NAME,ONEAPP_CONTAINER_PORTS,ONEAPP_CONTAINER_ENV,ONEAPP_CONTAINER_VOLUMES
+logo: images/logos/nextcloud.png

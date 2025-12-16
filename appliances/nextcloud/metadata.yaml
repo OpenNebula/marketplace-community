@@ -1,0 +1,32 @@
+---
+:app:
+  :name: nextcloud
+  :type: service
+  :os:
+    - Ubuntu
+    - '22.04'
+  :arch:
+    - x86_64
+  :format: qcow2
+  :hypervisor:
+    - KVM
+  :opennebula_version:
+    - '7.0'
+  :opennebula_template:
+    context:
+      - SSH_PUBLIC_KEY="$USER[SSH_PUBLIC_KEY]"
+      - SET_HOSTNAME="$USER[SET_HOSTNAME]"
+    cpu: '2'
+    memory: '2048'
+    disk_size: '8192'
+    graphics:
+      listen: 0.0.0.0
+      type: vnc
+    inputs_order: 'ONEAPP_CONTAINER_NAME,ONEAPP_CONTAINER_PORTS,ONEAPP_CONTAINER_ENV,ONEAPP_CONTAINER_VOLUMES'
+    logo: images/logos/nextcloud.png
+    user_inputs:
+      # Nextcloud AIO REQUIRES the container to be named "nextcloud-aio-mastercontainer"
+      ONEAPP_CONTAINER_NAME: 'M|text|Container name (must be nextcloud-aio-mastercontainer)|nextcloud-aio-mastercontainer|nextcloud-aio-mastercontainer'
+      ONEAPP_CONTAINER_PORTS: 'M|text|Container ports (format: host:container)|80:80,8080:8080,8443:8443|80:80,8080:8080,8443:8443'
+      ONEAPP_CONTAINER_ENV: 'O|text|Environment variables (format: VAR1=value1,VAR2=value2)||'
+      ONEAPP_CONTAINER_VOLUMES: 'O|text|Volume mounts (format: /host/path:/container/path)|/var/run/docker.sock:/var/run/docker.sock:ro,nextcloud_aio_mastercontainer:/mnt/docker-aio-config|'
