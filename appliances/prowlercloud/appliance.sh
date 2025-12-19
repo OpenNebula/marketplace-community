@@ -230,7 +230,11 @@ echo ""
 echo "  Commands:"
 echo "    docker ps                    - Show running containers"
 echo "    docker logs $DEFAULT_CONTAINER_NAME   - View container logs"
-echo "    docker exec -it $DEFAULT_CONTAINER_NAME /bin/bash - Access container"
+echo "    docker exec $DEFAULT_CONTAINER_NAME poetry run prowler --version"
+echo "    docker exec $DEFAULT_CONTAINER_NAME poetry run prowler aws"
+echo "    docker exec $DEFAULT_CONTAINER_NAME poetry run prowler azure"
+echo "    docker exec $DEFAULT_CONTAINER_NAME poetry run prowler gcp"
+echo "    docker exec $DEFAULT_CONTAINER_NAME poetry run prowler kubernetes"
 echo ""
 echo "  Access Methods:"
 echo "    SSH: Enabled (password: 'opennebula' + context SSH keys)"
@@ -349,7 +353,13 @@ setup_app_container()
     msg info "  Environment: ${container_env:-none}"
     msg info "  Volumes: $container_volumes"
 
-    docker run -d --name "$container_name" --restart unless-stopped $port_args $env_args $volume_args "$DOCKER_IMAGE"
+    # Prowler's default entrypoint runs 'prowler aws' which fails without credentials
+    # We override it to keep the container running, allowing users to exec into it
+    docker run -d --name "$container_name" --restart unless-stopped \
+        --entrypoint "" \
+        $port_args $env_args $volume_args \
+        "$DOCKER_IMAGE" \
+        /bin/sh -c "echo 'Prowler container ready. Use: docker exec $container_name poetry run prowler <provider>' && sleep infinity"
 
     if [ $? -eq 0 ]; then
         msg info "$APP_NAME container started successfully"
