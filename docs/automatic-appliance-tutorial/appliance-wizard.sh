@@ -138,42 +138,22 @@ NAV_QUIT=2
 print_logo() {
     echo -e "${BRIGHT_CYAN}"
     cat << 'EOF'
-     ___              ___                        __        ___                        __
-    / _ \ ___  ___   / _ | ___  ___  / (_)___ ___  _____ ___  / | /| /_(_)__ ___ _______/ /
-   / // // _ \/ _ \ / __ |/ _ \/ _ \/ / / _  / _ \/ __/ -_) /  |/ |/ / /_ // _  / __/ _  /
-  /____//_//_/\___//_/ |_/ .__/ .__/_/_/\_,_/_//_/\__/\__/ /       /_//__/\_,_/_/  \_,_/
-                        /_/  /_/
+       ___                   _   _      _           _
+      / _ \ _ __   ___ _ __ | \ | | ___| |__  _   _| | __ _
+     | | | | '_ \ / _ \ '_ \|  \| |/ _ \ '_ \| | | | |/ _` |
+     | |_| | |_) |  __/ | | | |\  |  __/ |_) | |_| | | (_| |
+      \___/| .__/ \___|_| |_|_| \_|\___|_.__/ \__,_|_|\__,_|
+           |_|
 EOF
     echo -e "${NC}"
 }
 
-print_title_box() {
-    local width=78
-    echo ""
-    echo -e "${BRIGHT_BLUE}╔$(printf '═%.0s' $(seq 1 $width))╗${NC}"
-    echo -e "${BRIGHT_BLUE}║${NC}$(center_text "")${BRIGHT_BLUE}║${NC}"
-    echo -e "${BRIGHT_BLUE}║${WHITE}${BOLD}$(printf '%*s' $(( (width + 38) / 2 )) "DOCKER APPLIANCE CREATION WIZARD")$(printf '%*s' $(( (width - 38) / 2 )) "")${BRIGHT_BLUE}║${NC}"
-    echo -e "${BRIGHT_BLUE}║${NC}$(printf '%*s' $width "")${BRIGHT_BLUE}║${NC}"
-    echo -e "${BRIGHT_BLUE}║${CYAN}$(printf '%*s' $(( (width + 62) / 2 )) "Transform any Docker image into an OpenNebula-ready appliance")$(printf '%*s' $(( (width - 62) / 2 )) "")${BRIGHT_BLUE}║${NC}"
-    echo -e "${BRIGHT_BLUE}║${NC}$(printf '%*s' $width "")${BRIGHT_BLUE}║${NC}"
-    echo -e "${BRIGHT_BLUE}╠$(printf '═%.0s' $(seq 1 $width))╣${NC}"
-    echo -e "${BRIGHT_BLUE}║${NC}  ${GRAY}Version: ${WHITE}${WIZARD_VERSION}${GRAY} (${WIZARD_CODENAME})${NC}$(printf '%*s' $((width - 32)) "")${BRIGHT_BLUE}║${NC}"
-    echo -e "${BRIGHT_BLUE}║${NC}  ${GRAY}Repository: ${WHITE}OpenNebula Community Marketplace${NC}$(printf '%*s' $((width - 47)) "")${BRIGHT_BLUE}║${NC}"
-    echo -e "${BRIGHT_BLUE}╚$(printf '═%.0s' $(seq 1 $width))╝${NC}"
-    echo ""
-}
-
 print_header() {
     print_logo
-    print_title_box
-
-    # Quick feature highlights
-    echo -e "  ${BRIGHT_GREEN}▸${NC} ${WHITE}Interactive${NC} wizard with arrow-key navigation"
-    echo -e "  ${BRIGHT_GREEN}▸${NC} ${WHITE}12+ base OS${NC} options (Ubuntu, Debian, RHEL, SUSE)"
-    echo -e "  ${BRIGHT_GREEN}▸${NC} ${WHITE}Auto-generates${NC} Packer configs, scripts & metadata"
-    echo -e "  ${BRIGHT_GREEN}▸${NC} ${WHITE}Production-ready${NC} appliances with SSH, VNC & console access"
+    echo -e "  ${WHITE}${BOLD}Appliance Wizard${NC} ${DIM}v${WIZARD_VERSION}${NC}"
+    echo -e "  ${DIM}Docker → OpenNebula in minutes${NC}"
     echo ""
-    echo -e "  ${DIM}───────────────────────────────────────────────────────────────────────────${NC}"
+    echo -e "  ${GRAY}─────────────────────────────────────────────────────${NC}"
     echo ""
 }
 
@@ -185,74 +165,38 @@ print_step() {
     local step=$1
     local total=$2
     local title=$3
-    local icon=$4
-
-    # Step icons for visual flair
-    local icons=("🚀" "📦" "🔧" "👤" "📝" "⚙️" "✨")
-    [ -z "$icon" ] && icon="${icons[$((step-1))]}"
-
-    # Progress bar calculation
-    local progress=$((step * 100 / total))
-    local filled=$((step * 20 / total))
-    local empty=$((20 - filled))
-    local bar=""
-    for ((i=0; i<filled; i++)); do bar+="█"; done
-    for ((i=0; i<empty; i++)); do bar+="░"; done
 
     echo ""
-    echo -e "  ${GRAY}┌─────────────────────────────────────────────────────────────────────────┐${NC}"
-    echo -e "  ${GRAY}│${NC}  ${icon} ${WHITE}${BOLD}STEP ${step} OF ${total}${NC} ${GRAY}│${NC} ${BRIGHT_CYAN}${bar}${NC} ${WHITE}${progress}%${NC}$(printf '%*s' $((25 - ${#title})) "")${GRAY}│${NC}"
-    echo -e "  ${GRAY}│${NC}     ${BRIGHT_MAGENTA}${title}${NC}$(printf '%*s' $((63 - ${#title})) "")${GRAY}│${NC}"
-    echo -e "  ${GRAY}└─────────────────────────────────────────────────────────────────────────┘${NC}"
+    echo -e "  ${BRIGHT_CYAN}[$step/$total]${NC} ${WHITE}${BOLD}${title}${NC}"
+    echo -e "  ${GRAY}─────────────────────────────────────────────────────${NC}"
     echo ""
 }
 
 print_nav_hint() {
-    echo -e "  ${DIM}╭─────────────────────────────────────────────────────────────╮${NC}"
-    echo -e "  ${DIM}│${NC}  ${CYAN}⏎${NC} Continue   ${CYAN}b${NC} Back   ${CYAN}q${NC} Quit   ${CYAN}↑↓${NC} Navigate (in menus)  ${DIM}│${NC}"
-    echo -e "  ${DIM}╰─────────────────────────────────────────────────────────────╯${NC}"
+    echo -e "  ${DIM}[Enter] Next  [b] Back  [q] Quit${NC}"
     echo ""
 }
 
-print_section() {
-    local title=$1
-    echo -e "  ${BRIGHT_BLUE}▌${NC}${WHITE}${BOLD} ${title}${NC}"
-    echo -e "  ${GRAY}─────────────────────────────────────────────────────${NC}"
-}
-
 print_info() {
-    echo -e "  ${GRAY}ℹ${NC}  ${DIM}$1${NC}"
+    echo -e "  ${DIM}$1${NC}"
 }
 
 print_success() {
-    echo -e "  ${BRIGHT_GREEN}✔${NC}  ${GREEN}$1${NC}"
+    echo -e "  ${GREEN}✓${NC} $1"
 }
 
 print_error() {
-    echo -e "  ${RED}✖${NC}  ${RED}$1${NC}"
+    echo -e "  ${RED}✗${NC} $1"
 }
 
 print_warning() {
-    echo -e "  ${YELLOW}⚠${NC}  ${YELLOW}$1${NC}"
-}
-
-print_input_prompt() {
-    local label=$1
-    local default=$2
-    if [ -n "$default" ]; then
-        echo -e "  ${BRIGHT_CYAN}›${NC} ${WHITE}${label}${NC} ${DIM}(default: ${default})${NC}"
-    else
-        echo -e "  ${BRIGHT_CYAN}›${NC} ${WHITE}${label}${NC}"
-    fi
-    echo -ne "    ${BRIGHT_GREEN}▸${NC} "
+    echo -e "  ${YELLOW}!${NC} $1"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MENU SELECTOR (Arrow-key navigation)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Usage: menu_select result_var "Option 1" "Option 2" "Option 3"
-# Returns the selected index (0-based) in the variable named by result_var
 menu_select() {
     local result_var=$1
     shift
@@ -274,75 +218,54 @@ menu_select() {
 
     hide_cursor
 
-    # Print menu box header
-    echo -e "  ${GRAY}╭─────────────────────────────────────────────────────────────────╮${NC}"
-
-    # Print all options
+    # Print options
     for i in "${!options[@]}"; do
         if [ $i -eq $selected ]; then
-            echo -e "  ${GRAY}│${NC} ${BRIGHT_GREEN}▶${NC} ${WHITE}${BOLD}${options[$i]}${NC}$(printf '%*s' $((58 - ${#options[$i]})) "")${GRAY}│${NC}"
+            echo -e "  ${BRIGHT_GREEN}▸${NC} ${WHITE}${options[$i]}${NC}"
         else
-            echo -e "  ${GRAY}│${NC}   ${DIM}${options[$i]}${NC}$(printf '%*s' $((58 - ${#options[$i]})) "")${GRAY}│${NC}"
+            echo -e "    ${DIM}${options[$i]}${NC}"
         fi
     done
-
-    # Print menu box footer with navigation hints
-    echo -e "  ${GRAY}├─────────────────────────────────────────────────────────────────┤${NC}"
-    echo -e "  ${GRAY}│${NC}  ${CYAN}↑↓${NC}/${CYAN}jk${NC} Navigate   ${CYAN}⏎${NC} Select   ${CYAN}q${NC} Quit$(printf '%*s' 24 "")${GRAY}│${NC}"
-    echo -e "  ${GRAY}╰─────────────────────────────────────────────────────────────────╯${NC}"
+    echo ""
+    echo -e "  ${DIM}[↑↓] Navigate  [Enter] Select  [q] Quit${NC}"
 
     while true; do
-        # Read a single character
         IFS= read -rsn1 key
 
-        # Handle escape sequences (arrow keys)
         if [ "$key" = $'\x1b' ]; then
             read -rsn2 -t 0.1 key
             case "$key" in
-                '[A') # Up arrow
-                    ((selected > 0)) && ((selected--))
-                    ;;
-                '[B') # Down arrow
-                    ((selected < num_options - 1)) && ((selected++))
-                    ;;
+                '[A') ((selected > 0)) && ((selected--)) ;;
+                '[B') ((selected < num_options - 1)) && ((selected++)) ;;
             esac
-        elif [ "$key" = "" ]; then  # Enter key
+        elif [ "$key" = "" ]; then
             break
         elif [ "$key" = "q" ] || [ "$key" = "Q" ]; then
             show_cursor
             echo ""
-            print_warning "Wizard cancelled by user."
+            print_warning "Cancelled."
             exit 0
-        elif [ "$key" = "k" ]; then  # vim-style up
+        elif [ "$key" = "k" ]; then
             ((selected > 0)) && ((selected--))
-        elif [ "$key" = "j" ]; then  # vim-style down
+        elif [ "$key" = "j" ]; then
             ((selected < num_options - 1)) && ((selected++))
         fi
 
-        # Move cursor up to redraw options (options + 4 for box lines)
-        for ((i=0; i<num_options+4; i++)); do
-            printf '\033[A'  # Move up
-        done
-
-        # Redraw menu box
-        printf '\033[2K'  # Clear line
-        echo -e "  ${GRAY}╭─────────────────────────────────────────────────────────────────╮${NC}"
+        # Redraw
+        for ((i=0; i<num_options+2; i++)); do printf '\033[A'; done
 
         for i in "${!options[@]}"; do
-            printf '\033[2K'  # Clear line
+            printf '\033[2K'
             if [ $i -eq $selected ]; then
-                echo -e "  ${GRAY}│${NC} ${BRIGHT_GREEN}▶${NC} ${WHITE}${BOLD}${options[$i]}${NC}$(printf '%*s' $((58 - ${#options[$i]})) "")${GRAY}│${NC}"
+                echo -e "  ${BRIGHT_GREEN}▸${NC} ${WHITE}${options[$i]}${NC}"
             else
-                echo -e "  ${GRAY}│${NC}   ${DIM}${options[$i]}${NC}$(printf '%*s' $((58 - ${#options[$i]})) "")${GRAY}│${NC}"
+                echo -e "    ${DIM}${options[$i]}${NC}"
             fi
         done
-
         printf '\033[2K'
-        echo -e "  ${GRAY}├─────────────────────────────────────────────────────────────────┤${NC}"
+        echo ""
         printf '\033[2K'
-        echo -e "  ${GRAY}│${NC}  ${CYAN}↑↓${NC}/${CYAN}jk${NC} Navigate   ${CYAN}⏎${NC} Select   ${CYAN}q${NC} Quit$(printf '%*s' 24 "")${GRAY}│${NC}"
-        printf '\033[2K'
-        echo -e "  ${GRAY}╰─────────────────────────────────────────────────────────────────╯${NC}"
+        echo -e "  ${DIM}[↑↓] Navigate  [Enter] Select  [q] Quit${NC}"
     done
 
     show_cursor
@@ -350,16 +273,14 @@ menu_select() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# INPUT PROMPTS (with navigation support)
+# INPUT PROMPTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Enhanced prompt with navigation support
-# Returns: 0=continue, 1=back, 2=quit
 prompt_with_nav() {
     local prompt=$1
     local var_name=$2
     local default=$3
-    local required=$4  # "true" or "false"
+    local required=$4
     local value=""
 
     while true; do
@@ -367,38 +288,25 @@ prompt_with_nav() {
         eval "current_val=\$$var_name"
         local show_default="${current_val:-$default}"
 
-        # Display styled prompt
         if [ -n "$show_default" ]; then
-            echo -e "  ${BRIGHT_CYAN}›${NC} ${WHITE}${prompt}${NC}"
-            echo -ne "    ${GRAY}[${NC}${DIM}${show_default}${NC}${GRAY}]${NC} ${BRIGHT_GREEN}▸${NC} "
+            echo -ne "  ${prompt} ${DIM}[${show_default}]${NC}: "
         elif [ "$required" = "true" ]; then
-            echo -e "  ${BRIGHT_CYAN}›${NC} ${WHITE}${prompt}${NC} ${RED}*${NC}"
-            echo -ne "    ${BRIGHT_GREEN}▸${NC} "
+            echo -ne "  ${prompt}${RED}*${NC}: "
         else
-            echo -e "  ${BRIGHT_CYAN}›${NC} ${WHITE}${prompt}${NC} ${DIM}(optional)${NC}"
-            echo -ne "    ${BRIGHT_GREEN}▸${NC} "
+            echo -ne "  ${prompt} ${DIM}(optional)${NC}: "
         fi
 
         read -r value
 
-        # Check for navigation commands
         case "${value,,}" in
-            ':b'|':back'|'<')
-                return $NAV_BACK
-                ;;
-            ':q'|':quit')
-                return $NAV_QUIT
-                ;;
+            ':b'|':back'|'<') return $NAV_BACK ;;
+            ':q'|':quit') return $NAV_QUIT ;;
         esac
 
-        # Use existing value if just Enter pressed
-        if [ -z "$value" ]; then
-            value="$show_default"
-        fi
+        [ -z "$value" ] && value="$show_default"
 
         if [ "$required" = "true" ] && [ -z "$value" ]; then
-            print_error "This field is required. Type :b to go back or enter a value."
-            echo ""
+            print_error "Required field"
         else
             eval "$var_name='$value'"
             return $NAV_CONTINUE
@@ -745,32 +653,23 @@ step_summary() {
 
 generate_appliance() {
     clear_screen
-    print_logo
+    print_header
 
-    echo ""
-    echo -e "  ${BRIGHT_BLUE}╔═══════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "  ${BRIGHT_BLUE}║${NC}  ${BRIGHT_MAGENTA}⚙${NC}  ${WHITE}${BOLD}GENERATING APPLIANCE FILES${NC}$(printf '%*s' 44 "")${BRIGHT_BLUE}║${NC}"
-    echo -e "  ${BRIGHT_BLUE}╚═══════════════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "  Generating appliance files..."
     echo ""
 
-    # Create .env file
     local env_file="${SCRIPT_DIR}/${APPLIANCE_NAME}.env"
 
     cat > "$env_file" << ENVEOF
 # Generated by OpenNebula Appliance Wizard v${WIZARD_VERSION}
 # $(date)
 
-# Required variables
 DOCKER_IMAGE="${DOCKER_IMAGE}"
 APPLIANCE_NAME="${APPLIANCE_NAME}"
 APP_NAME="${APP_NAME}"
 PUBLISHER_NAME="${PUBLISHER_NAME}"
 PUBLISHER_EMAIL="${PUBLISHER_EMAIL}"
-
-# Base operating system
 BASE_OS="${BASE_OS}"
-
-# Optional variables
 APP_DESCRIPTION="${APP_DESCRIPTION}"
 APP_FEATURES="${APP_FEATURES}"
 DEFAULT_CONTAINER_NAME="${DEFAULT_CONTAINER_NAME}"
@@ -781,83 +680,41 @@ APP_PORT="${APP_PORT}"
 WEB_INTERFACE="${WEB_INTERFACE}"
 ENVEOF
 
-    print_success "Configuration saved: ${env_file}"
-
-    # Run the generator script
-    echo ""
-    echo -e "  ${YELLOW}⏳${NC} Running appliance generator..."
-    echo ""
-
     if [ -f "${SCRIPT_DIR}/generate-docker-appliance.sh" ]; then
-        # Run generator without prompting for build
         "${SCRIPT_DIR}/generate-docker-appliance.sh" "$env_file" --no-build
 
-        # Success banner
         echo ""
-        echo -e "${BRIGHT_GREEN}"
-        cat << 'EOF'
-   ╔═══════════════════════════════════════════════════════════════════════════╗
-   ║                                                                           ║
-   ║   █████╗ ██████╗ ██████╗ ██╗     ██╗ █████╗ ███╗   ██╗ ██████╗███████╗    ║
-   ║  ██╔══██╗██╔══██╗██╔══██╗██║     ██║██╔══██╗████╗  ██║██╔════╝██╔════╝    ║
-   ║  ███████║██████╔╝██████╔╝██║     ██║███████║██╔██╗ ██║██║     █████╗      ║
-   ║  ██╔══██║██╔═══╝ ██╔═══╝ ██║     ██║██╔══██║██║╚██╗██║██║     ██╔══╝      ║
-   ║  ██║  ██║██║     ██║     ███████╗██║██║  ██║██║ ╚████║╚██████╗███████╗    ║
-   ║  ╚═╝  ╚═╝╚═╝     ╚═╝     ╚══════╝╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝╚══════╝    ║
-   ║                                                                           ║
-   ║                    ✔  CREATED SUCCESSFULLY!                               ║
-   ║                                                                           ║
-   ╚═══════════════════════════════════════════════════════════════════════════╝
-EOF
-        echo -e "${NC}"
-
-        # Files created
-        echo -e "  ${WHITE}${BOLD}📁 FILES CREATED${NC}"
-        echo -e "  ${GRAY}─────────────────────────────────────────────────────────────────${NC}"
-        echo -e "  ${BRIGHT_CYAN}▸${NC} appliances/${BRIGHT_GREEN}${APPLIANCE_NAME}/${NC}"
-        echo -e "  ${BRIGHT_CYAN}▸${NC} apps-code/community-apps/packer/${BRIGHT_GREEN}${APPLIANCE_NAME}/${NC}"
-        echo -e "  ${BRIGHT_CYAN}▸${NC} ${BRIGHT_GREEN}${APPLIANCE_NAME}.env${NC}"
+        echo -e "  ${GREEN}✓ Appliance created successfully!${NC}"
+        echo ""
+        echo -e "  ${WHITE}Files:${NC}"
+        echo -e "    appliances/${APPLIANCE_NAME}/"
+        echo -e "    apps-code/community-apps/packer/${APPLIANCE_NAME}/"
+        echo ""
+        echo -e "  ${WHITE}Next:${NC}"
+        echo -e "    1. Review generated files"
+        echo -e "    2. Build: ${CYAN}cd apps-code/community-apps && make ${APPLIANCE_NAME}${NC}"
+        echo -e "    3. Add logo: ${CYAN}logos/${APPLIANCE_NAME}.png${NC}"
+        echo -e "    4. Submit PR"
         echo ""
 
-        # Next steps
-        echo -e "  ${WHITE}${BOLD}🚀 NEXT STEPS${NC}"
-        echo -e "  ${GRAY}─────────────────────────────────────────────────────────────────${NC}"
-        echo -e "  ${GRAY}1.${NC} ${WHITE}Review${NC} and customize the generated files"
-        echo -e "  ${GRAY}2.${NC} ${WHITE}Build${NC} the image:"
-        echo -e "     ${CYAN}cd apps-code/community-apps && make ${APPLIANCE_NAME}${NC}"
-        echo -e "  ${GRAY}3.${NC} ${WHITE}Test${NC} on OpenNebula"
-        echo -e "  ${GRAY}4.${NC} ${WHITE}Add logo${NC}: ${CYAN}logos/${APPLIANCE_NAME}.png${NC} ${DIM}(256x256)${NC}"
-        echo -e "  ${GRAY}5.${NC} ${WHITE}Submit${NC} a Pull Request to the marketplace"
-        echo ""
-        echo -e "  ${GRAY}─────────────────────────────────────────────────────────────────${NC}"
-        echo ""
-
-        prompt_yes_no "Would you like to build the image now?" BUILD_NOW "false"
+        prompt_yes_no "Build now?" BUILD_NOW "false"
 
         if [ "$BUILD_NOW" = "true" ]; then
             echo ""
-            echo -e "  ${BRIGHT_MAGENTA}⚡${NC} ${WHITE}${BOLD}Starting build process...${NC}"
-            echo -e "  ${DIM}This may take 15-20 minutes. Grab a coffee! ☕${NC}"
-            echo ""
+            echo -e "  Building... ${DIM}(~15-20 min)${NC}"
             cd "${REPO_ROOT}/apps-code/community-apps"
             make "$APPLIANCE_NAME"
         fi
     else
-        print_error "Generator script not found: ${SCRIPT_DIR}/generate-docker-appliance.sh"
-        echo ""
-        echo -e "  ${WHITE}Configuration saved to:${NC} ${env_file}"
-        echo -e "  You can run the generator manually with:"
-        echo -e "    ${CYAN}./generate-docker-appliance.sh ${APPLIANCE_NAME}.env${NC}"
+        print_error "Generator not found"
+        echo "  Config saved: ${env_file}"
         exit 1
     fi
 }
 
-# Handle navigation quit
 handle_quit() {
     echo ""
-    echo -e "  ${YELLOW}⚠${NC}  ${WHITE}Wizard cancelled by user.${NC}"
-    echo -e "  ${DIM}Your progress has not been saved.${NC}"
-    echo ""
+    print_warning "Cancelled"
     exit 0
 }
 
@@ -913,14 +770,7 @@ main() {
         esac
     done
 
-    # All steps completed, generate the appliance
     generate_appliance
-
-    echo ""
-    echo -e "  ${BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${WHITE}Thank you for using the ${BRIGHT_CYAN}OpenNebula Appliance Wizard${NC}${WHITE}!${NC}"
-    echo -e "  ${DIM}Made with ❤️  by the OpenNebula Community${NC}"
-    echo -e "  ${BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }
 
