@@ -718,6 +718,93 @@ handle_quit() {
     exit 0
 }
 
+# Check if base OS image exists and offer to build it
+check_base_image() {
+    local base_image="${REPO_ROOT}/apps-code/one-apps/export/${BASE_OS}.qcow2"
+
+    # Get display name for BASE_OS
+    local base_os_display="$BASE_OS"
+    for entry in "${OS_LIST[@]}"; do
+        local os_id="${entry%%|*}"
+        if [ "$os_id" = "$BASE_OS" ]; then
+            local os_name="${entry#*|}"
+            base_os_display="${os_name%%|*}"
+            break
+        fi
+    done
+
+    if [ -f "$base_image" ]; then
+        return 0  # Image exists, continue
+    fi
+
+    # Image doesn't exist - alert and offer to build
+    clear_screen
+    print_header
+
+    echo ""
+    echo -e "  ${YELLOW}⚠  Base image not found${NC}"
+    echo ""
+    echo -e "  The base OS image for ${WHITE}${base_os_display}${NC} hasn't been built yet."
+    echo -e "  ${DIM}Required: ${base_image}${NC}"
+    echo ""
+    echo -e "  ─────────────────────────────────────────────────────"
+    echo ""
+    echo -e "  ${WHITE}Options:${NC}"
+    echo -e "    ${CYAN}1.${NC} Build it now ${DIM}(~10-15 min, recommended)${NC}"
+    echo -e "    ${CYAN}2.${NC} Continue anyway ${DIM}(build manually later)${NC}"
+    echo -e "    ${CYAN}3.${NC} Go back and choose a different base OS"
+    echo ""
+
+    local choice
+    while true; do
+        echo -ne "  ${WHITE}›${NC} Choose [1-3]: "
+        read -r choice
+        case "$choice" in
+            1)
+                echo ""
+                echo -e "  ${BRIGHT_CYAN}Building ${base_os_display} base image...${NC}"
+                echo -e "  ${DIM}This may take 10-15 minutes${NC}"
+                echo ""
+
+                # Build the base image
+                cd "${REPO_ROOT}/apps-code/one-apps"
+                if make "${BASE_OS}"; then
+                    echo ""
+                    print_success "Base image built successfully!"
+                    sleep 1
+                    return 0
+                else
+                    echo ""
+                    print_error "Base image build failed."
+                    echo -e "  ${DIM}You can try building it manually:${NC}"
+                    echo -e "  ${CYAN}cd ${REPO_ROOT}/apps-code/one-apps && make ${BASE_OS}${NC}"
+                    echo ""
+                    prompt_yes_no "Continue with appliance generation anyway?" CONTINUE_ANYWAY "false"
+                    if [ "$CONTINUE_ANYWAY" = "true" ]; then
+                        return 0
+                    else
+                        return 1
+                    fi
+                fi
+                ;;
+            2)
+                echo ""
+                print_warning "Continuing without base image..."
+                echo -e "  ${DIM}Remember to build it before building the appliance:${NC}"
+                echo -e "  ${CYAN}cd ${REPO_ROOT}/apps-code/one-apps && make ${BASE_OS}${NC}"
+                sleep 1
+                return 0
+                ;;
+            3)
+                return 2  # Signal to go back to OS selection
+                ;;
+            *)
+                echo -e "  ${RED}Invalid choice. Please enter 1, 2, or 3.${NC}"
+                ;;
+        esac
+    done
+}
+
 # Main wizard flow with navigation support
 main() {
     # Check if we're in the right directory
@@ -766,6 +853,54 @@ main() {
                 ;;
             $NAV_QUIT)
                 handle_quit
+                ;;
+        esac
+    done
+
+    # Check if base image exists before generating
+    while true; do
+        local check_result
+        if check_base_image; then
+            check_result=0
+        else
+            check_result=$?
+        fi
+
+        case $check_result in
+            0)
+                # Continue to generate
+                break
+                ;;
+            1)
+                # User cancelled
+                handle_quit
+                ;;
+            2)
+                # Go back to OS selection (step 2)
+                current=2  # step_base_os index
+                while [ $current -lt $total ]; do
+                    local result
+                    if ${steps[$current]}; then
+                        result=0
+                    else
+                        result=$?
+                    fi
+
+                    case $result in
+                        $NAV_CONTINUE)
+                            current=$((current + 1))
+                            ;;
+                        $NAV_BACK)
+                            if [ $current -gt 0 ]; then
+                                current=$((current - 1))
+                            fi
+                            ;;
+                        $NAV_QUIT)
+                            handle_quit
+                            ;;
+                    esac
+                done
+                # Loop back to check_base_image with new OS
                 ;;
         esac
     done
