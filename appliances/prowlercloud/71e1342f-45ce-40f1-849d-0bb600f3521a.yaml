@@ -1,0 +1,70 @@
+---
+name: Prowler
+version: 1.0.0-1
+one-apps_version: 7.0.0-0
+publisher: Pablo
+publisher_email: pdelarco@opennebula.io
+description: |-
+  Open-source cloud security platform for AWS, Azure, GCP, Kubernetes, and multi-cloud compliance scanning. This appliance provides Prowler
+  running in a Docker container on Ubuntu 24.04 LTS (Minimal) with VNC access and
+  SSH key authentication.
+
+  **Prowler features:**
+  - Cloud security assessments
+  - 500+ security checks
+  - Compliance frameworks (CIS
+  - NIST
+  - PCI-DSS
+  - GDPR
+  - HIPAA
+  - SOC2)
+  - Multi-cloud support (AWS/Azure/GCP/K8s)
+  - Security reports and dashboard
+  **This appliance provides:**
+  - Ubuntu 24.04 LTS (Minimal) base operating system
+  - Docker Engine CE pre-installed and configured
+  - Prowler container (prowlercloud/prowler:latest-amd64) ready to run
+  - VNC access for desktop environment
+  - SSH key authentication from OpenNebula context  - Web interface on port 3000:3000
+  - Configurable container parameters (ports, volumes, environment variables)
+
+  **Access Methods:**
+  - VNC: Direct access to desktop environment
+  - SSH: Key-based authentication from OpenNebula  - Web: Prowler interface at http://VM_IP:3000:3000
+
+short_description: Prowler with VNC access and SSH key auth
+tags:
+- prowlercloud
+- docker
+- ubuntu
+- container
+- vnc
+- ssh-key
+format: qcow2
+creation_time: 1766134825
+os-id: Ubuntu
+os-release: '24.04'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 7.0
+opennebula_template:
+  context:
+    network: 'YES'
+    ssh_public_key: $USER[SSH_PUBLIC_KEY]
+    set_hostname: $USER[SET_HOSTNAME]
+  cpu: '2'
+  disk:
+    image: $FILE[IMAGE_ID]
+    image_uname: $USER[IMAGE_UNAME]
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  memory: '2048'
+  name: Prowler
+  user_inputs:
+    - CONTAINER_NAME: 'M|text|Container name|prowler|prowler'
+    - CONTAINER_PORTS: 'M|text|Container ports (format: host:container)|3000:3000,8080:8080|3000:3000,8080:8080'
+    - CONTAINER_ENV: 'O|text|Environment variables (format: VAR1=value1,VAR2=value2)||'
+    - CONTAINER_VOLUMES: 'O|text|Volume mounts (format: /host/path:/container/path)|/data:/app/output|'
+  inputs_order: CONTAINER_NAME,CONTAINER_PORTS,CONTAINER_ENV,CONTAINER_VOLUMES
+logo: logos/prowlercloud.png
