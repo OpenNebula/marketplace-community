@@ -1,0 +1,63 @@
+---
+name: Nextcloud SUSE
+version: 1.0.0-1
+one-apps_version: 7.0.0-0
+publisher: Pablo
+publisher_email: pdelarco@opennebula.io
+description: |-
+  Description of Nextcloud SUSE. This appliance provides Nextcloud SUSE
+  running in a Docker container on openSUSE Leap 15 with VNC access and
+  SSH key authentication.
+
+  **Nextcloud SUSE features:**
+  - Containerized application
+  - Easy deployment
+  - Configurable parameters
+  **This appliance provides:**
+  - openSUSE Leap 15 base operating system
+  - Docker Engine CE pre-installed and configured
+  - Nextcloud SUSE container (nextcloud/all-in-one:latest) ready to run
+  - VNC access for desktop environment
+  - SSH key authentication from OpenNebula context  - Web interface on port 8080
+  - Configurable container parameters (ports, volumes, environment variables)
+
+  **Access Methods:**
+  - VNC: Direct access to desktop environment
+  - SSH: Key-based authentication from OpenNebula  - Web: Nextcloud SUSE interface at http://VM_IP:8080
+
+short_description: Nextcloud SUSE with VNC access and SSH key auth
+tags:
+- nextcloud-suse
+- docker
+- opensuse
+- container
+- vnc
+- ssh-key
+format: qcow2
+creation_time: 1765962340
+os-id: openSUSE
+os-release: '15'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 7.0
+opennebula_template:
+  context:
+    network: 'YES'
+    ssh_public_key: $USER[SSH_PUBLIC_KEY]
+    set_hostname: $USER[SET_HOSTNAME]
+  cpu: '2'
+  disk:
+    image: $FILE[IMAGE_ID]
+    image_uname: $USER[IMAGE_UNAME]
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  memory: '2048'
+  name: Nextcloud SUSE
+  user_inputs:
+    - CONTAINER_NAME: 'M|text|Container name|nextcloud-suse-container|nextcloud-suse-container'
+    - CONTAINER_PORTS: 'M|text|Container ports (format: host:container)|80:80,8080:8080,8443:8443|80:80,8080:8080,8443:8443'
+    - CONTAINER_ENV: 'O|text|Environment variables (format: VAR1=value1,VAR2=value2)|SKIP_DOMAIN_VALIDATION=true|'
+    - CONTAINER_VOLUMES: 'O|text|Volume mounts (format: /host/path:/container/path)|/var/run/docker.sock:/var/run/docker.sock:ro,nextcloud_aio_mastercontainer:/mnt/docker-aio-config|'
+  inputs_order: CONTAINER_NAME,CONTAINER_PORTS,CONTAINER_ENV,CONTAINER_VOLUMES
+logo: logos/nextcloud-suse.png
