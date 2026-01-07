@@ -5,7 +5,7 @@ one-apps_version: 7.0.0-0
 publisher: Pablo
 publisher_email: pdelarco@opennebula.io
 description: |-
-  Description of Nextcloud All-in-One. This appliance provides Nextcloud All-in-One
+  This appliance provides Nextcloud All-in-One
   running in a Docker container on openSUSE Leap 15 with VNC access and
   SSH key authentication.
 
@@ -28,9 +28,13 @@ description: |-
   - SSH: Key-based authentication from OpenNebula
   - Web: Nextcloud All-in-One interface at http://VM_IP:8080
 
+  **Documentation:**
+  - OpenNebula Appliance Guide: https://github.com/OpenNebula/marketplace-community/blob/master/appliances/nextcloud-aio/README.md
+  - Nextcloud All-in-One Website: https://nextcloud.com/all-in-one/
+
 short_description: Nextcloud All-in-One with VNC access and SSH key auth
 tags:
-- nextcloud-suse
+- nextcloud-aio
 - docker
 - opensuse
 - container
@@ -55,17 +59,17 @@ opennebula_template:
   memory: '2048'
   name: Nextcloud All-in-One
   user_inputs:
-    CONTAINER_NAME: 'M|text|Container name|nextcloud-suse-container|nextcloud-suse-container'
+    CONTAINER_NAME: 'M|text|Container name|nextcloud-aio-mastercontainer|nextcloud-aio-mastercontainer'
     CONTAINER_PORTS: 'M|text|Container ports (format: host:container)|80:80,8080:8080,8443:8443|80:80,8080:8080,8443:8443'
     CONTAINER_ENV: 'O|text|Environment variables (format: VAR1=value1,VAR2=value2)|SKIP_DOMAIN_VALIDATION=true|SKIP_DOMAIN_VALIDATION=true'
     CONTAINER_VOLUMES: 'O|text|Volume mounts (format: /host/path:/container/path)|/var/run/docker.sock:/var/run/docker.sock:ro,nextcloud_aio_mastercontainer:/mnt/docker-aio-config|/var/run/docker.sock:/var/run/docker.sock:ro,nextcloud_aio_mastercontainer:/mnt/docker-aio-config'
   inputs_order: CONTAINER_NAME,CONTAINER_PORTS,CONTAINER_ENV,CONTAINER_VOLUMES
-logo: logos/nextcloud-suse.png
+logo: logos/nextcloud-aio.png
 
 images:
-- name: nextcloud-suse-7.0.0-0-20251223.qcow2
+- name: nextcloud-aio-7.0.0-0-20251223.qcow2
   url: >-
-    https://d38nm155miqkyg.cloudfront.net/nextcloud-suse-7.0.0-0-20251223.qcow2
+    https://d38nm155miqkyg.cloudfront.net/nextcloud-aio-7.0.0-0-20251223.qcow2
   type: OS
   dev_prefix: vd
   driver: qcow2
