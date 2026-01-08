@@ -873,35 +873,32 @@ build {
 }
 EOF
 
-# Generate 81-configure-ssh.sh
+# Generate 81-configure-ssh.sh (using sed for compatibility with all distros)
 cat > "$REPO_ROOT/apps-code/community-apps/packer/$APPLIANCE_NAME/81-configure-ssh.sh" << 'EOF'
 #!/usr/bin/env bash
 
 # Configures critical settings for OpenSSH server.
+# Uses sed instead of gawk for compatibility with Alma, Rocky, Debian, etc.
 
 exec 1>&2
 set -eux -o pipefail
 
-gawk -i inplace -f- /etc/ssh/sshd_config <<'AWKEOF'
-BEGIN { update = "PasswordAuthentication no" }
-/^[#\s]*PasswordAuthentication\s/ { $0 = update; found = 1 }
-{ print }
-ENDFILE { if (!found) print update }
-AWKEOF
+SSHD_CONFIG="/etc/ssh/sshd_config"
 
-gawk -i inplace -f- /etc/ssh/sshd_config <<'AWKEOF'
-BEGIN { update = "PermitRootLogin without-password" }
-/^[#\s]*PermitRootLogin\s/ { $0 = update; found = 1 }
-{ print }
-ENDFILE { if (!found) print update }
-AWKEOF
+# Function to set or add SSH config option
+set_ssh_option() {
+    local option="$1"
+    local value="$2"
+    if grep -qE "^[#[:space:]]*${option}[[:space:]]" "$SSHD_CONFIG"; then
+        sed -i "s|^[#[:space:]]*${option}[[:space:]].*|${option} ${value}|" "$SSHD_CONFIG"
+    else
+        echo "${option} ${value}" >> "$SSHD_CONFIG"
+    fi
+}
 
-gawk -i inplace -f- /etc/ssh/sshd_config <<'AWKEOF'
-BEGIN { update = "UseDNS no" }
-/^[#\s]*UseDNS\s/ { $0 = update; found = 1 }
-{ print }
-ENDFILE { if (!found) print update }
-AWKEOF
+set_ssh_option "PasswordAuthentication" "no"
+set_ssh_option "PermitRootLogin" "without-password"
+set_ssh_option "UseDNS" "no"
 
 sync
 EOF
