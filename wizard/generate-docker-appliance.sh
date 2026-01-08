@@ -635,6 +635,9 @@ cleanup_os()
 
 service_configure()
 {
+    msg info "Configuring SSH access"
+    configure_ssh_access
+
     msg info "Verifying Docker is running"
 
     if ! systemctl is-active --quiet docker; then
@@ -643,6 +646,53 @@ service_configure()
     fi
 
     msg info "Docker is running"
+    return 0
+}
+
+# Configure SSH for easy access (runs at every boot via one-context)
+configure_ssh_access()
+{
+    local SSHD_CONFIG="/etc/ssh/sshd_config"
+    local SSH_CHANGED=false
+
+    # Function to set SSH config option
+    set_ssh_option() {
+        local option="\$1"
+        local value="\$2"
+        if grep -qE "^[#[:space:]]*\${option}[[:space:]]" "\$SSHD_CONFIG" 2>/dev/null; then
+            sed -i "s|^[#[:space:]]*\${option}[[:space:]].*|\${option} \${value}|" "\$SSHD_CONFIG"
+        else
+            echo "\${option} \${value}" >> "\$SSHD_CONFIG"
+        fi
+    }
+
+    # Enable password authentication
+    if ! grep -q "^PasswordAuthentication yes" "\$SSHD_CONFIG" 2>/dev/null; then
+        set_ssh_option "PasswordAuthentication" "yes"
+        SSH_CHANGED=true
+    fi
+
+    # Enable root login
+    if ! grep -q "^PermitRootLogin yes" "\$SSHD_CONFIG" 2>/dev/null; then
+        set_ssh_option "PermitRootLogin" "yes"
+        SSH_CHANGED=true
+    fi
+
+    # Disable DNS lookup for faster connections
+    set_ssh_option "UseDNS" "no"
+
+    # Set root password if not already set (check if password is locked/empty)
+    if passwd -S root 2>/dev/null | grep -qE "^root (L|NP)"; then
+        echo "root:opennebula" | chpasswd
+        msg info "Root password set to: opennebula"
+    fi
+
+    # Restart SSH if config changed
+    if [ "\$SSH_CHANGED" = true ]; then
+        systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || true
+        msg info "SSH configured: PasswordAuthentication=yes, PermitRootLogin=yes"
+    fi
+
     return 0
 }
 
