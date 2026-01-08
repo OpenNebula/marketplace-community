@@ -112,6 +112,116 @@ declare -a OS_LIST_ARM=(
 declare -a OS_LIST=()
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# ENV FILE SUPPORT (Non-interactive mode)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Check for --help first
+for arg in "$@"; do
+    case "$arg" in
+        --help|-h)
+            cat << 'HELPEOF'
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  OpenNebula Community Marketplace - Appliance Creation Wizard             ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+Usage:
+  ./appliance-wizard.sh                    # Interactive wizard mode
+  ./appliance-wizard.sh <config.env>       # Non-interactive mode with env file
+  ./appliance-wizard.sh --help             # Show this help
+
+Env file format (myapp.env):
+  DOCKER_IMAGE="nginx:alpine"
+  APPLIANCE_NAME="nginx"
+  APP_NAME="NGINX Web Server"
+  PUBLISHER_NAME="Your Name"
+  PUBLISHER_EMAIL="you@example.com"
+  APP_DESCRIPTION="High-performance web server"
+  APP_FEATURES="Web server,Reverse proxy,Load balancing"
+  DEFAULT_CONTAINER_NAME="nginx-server"
+  DEFAULT_PORTS="80:80,443:443"
+  DEFAULT_ENV_VARS="NGINX_HOST=localhost"
+  DEFAULT_VOLUMES="/data:/usr/share/nginx/html"
+  APP_PORT="80"
+  WEB_INTERFACE="true"
+  BASE_OS="ubuntu2204min"                  # or ubuntu2404.aarch64 for ARM
+
+  # Optional: VM sizing
+  VM_CPU="1"
+  VM_VCPU="2"
+  VM_MEMORY="2048"
+  VM_DISK_SIZE="12288"
+
+  # Optional: Skip interactive build prompt
+  AUTO_BUILD="true"                        # Auto-start build after generating
+
+Supported BASE_OS values:
+  x86_64:  ubuntu2204min, ubuntu2404, debian12, alma9, rocky9, opensuse15
+  ARM64:   ubuntu2204.aarch64, ubuntu2404.aarch64, debian12.aarch64, alma9.aarch64
+
+HELPEOF
+            exit 0
+            ;;
+    esac
+done
+
+# Check if env file provided as argument
+ENV_FILE=""
+AUTO_BUILD="false"
+if [ -n "$1" ] && [ -f "$1" ]; then
+    ENV_FILE="$1"
+    echo ""
+    echo -e "  ${WHITE}Loading configuration from:${NC} ${CYAN}$ENV_FILE${NC}"
+    source "$ENV_FILE"
+
+    # Validate required variables
+    REQUIRED_VARS=("DOCKER_IMAGE" "APPLIANCE_NAME" "APP_NAME" "PUBLISHER_NAME" "PUBLISHER_EMAIL")
+    MISSING_VARS=()
+    for var in "${REQUIRED_VARS[@]}"; do
+        if [ -z "${!var}" ]; then
+            MISSING_VARS+=("$var")
+        fi
+    done
+
+    if [ ${#MISSING_VARS[@]} -gt 0 ]; then
+        echo -e "  ${RED}✗${NC} Missing required variables: ${MISSING_VARS[*]}"
+        echo ""
+        exit 1
+    fi
+
+    # Set defaults for optional variables
+    DEFAULT_CONTAINER_NAME="${DEFAULT_CONTAINER_NAME:-${APPLIANCE_NAME}-container}"
+    DEFAULT_PORTS="${DEFAULT_PORTS:-8080:80}"
+    DEFAULT_ENV_VARS="${DEFAULT_ENV_VARS:-}"
+    DEFAULT_VOLUMES="${DEFAULT_VOLUMES:-}"
+    APP_PORT="${APP_PORT:-8080}"
+    WEB_INTERFACE="${WEB_INTERFACE:-true}"
+    APP_DESCRIPTION="${APP_DESCRIPTION:-Docker-based appliance for ${APP_NAME}}"
+    APP_FEATURES="${APP_FEATURES:-Containerized application,Easy deployment}"
+    BASE_OS="${BASE_OS:-ubuntu2204min}"
+    VM_CPU="${VM_CPU:-1}"
+    VM_VCPU="${VM_VCPU:-2}"
+    VM_MEMORY="${VM_MEMORY:-2048}"
+    VM_DISK_SIZE="${VM_DISK_SIZE:-12288}"
+
+    # Detect architecture from BASE_OS
+    if [[ "$BASE_OS" == *".aarch64"* ]]; then
+        ARCH="aarch64"
+        OS_LIST=("${OS_LIST_ARM[@]}")
+    else
+        ARCH="x86_64"
+        OS_LIST=("${OS_LIST_X86[@]}")
+    fi
+
+    echo -e "  ${GREEN}✓${NC} Configuration loaded"
+    echo ""
+    echo -e "  ${DIM}Appliance:${NC}   $APPLIANCE_NAME"
+    echo -e "  ${DIM}Docker:${NC}      $DOCKER_IMAGE"
+    echo -e "  ${DIM}Base OS:${NC}     $BASE_OS"
+    echo -e "  ${DIM}Arch:${NC}        $ARCH"
+    echo ""
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # TERMINAL UTILITIES
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1639,6 +1749,56 @@ main() {
         echo -e "Please cd to: ${SCRIPT_DIR}"
         exit 1
     fi
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # NON-INTERACTIVE MODE: If env file was loaded, skip wizard steps
+    # ═══════════════════════════════════════════════════════════════════════════
+    if [ -n "$ENV_FILE" ]; then
+        echo -e "  ${WHITE}Running in non-interactive mode...${NC}"
+        echo ""
+
+        # Check if base image exists
+        local base_image="${REPO_ROOT}/apps-code/one-apps/export/${BASE_OS}.qcow2"
+        if [ ! -f "$base_image" ]; then
+            echo -e "  ${YELLOW}⚠${NC} Base image not found: ${BASE_OS}.qcow2"
+            echo -e "  ${DIM}Building base image first (10-15 min)...${NC}"
+            echo ""
+            cd "${REPO_ROOT}/apps-code/one-apps"
+            if ! make "${BASE_OS}"; then
+                echo -e "  ${RED}✗${NC} Base image build failed"
+                exit 1
+            fi
+            echo -e "  ${GREEN}✓${NC} Base image built"
+            echo ""
+        fi
+
+        # Generate appliance files directly
+        generate_appliance
+
+        # Auto-build if requested
+        if [ "$AUTO_BUILD" = "true" ]; then
+            echo ""
+            echo -e "  ${WHITE}Auto-building appliance...${NC}"
+            cd "${REPO_ROOT}/apps-code/community-apps"
+            if make "$APPLIANCE_NAME"; then
+                echo -e "  ${GREEN}✓${NC} Build complete!"
+                echo -e "  ${DIM}Image: ${REPO_ROOT}/apps-code/community-apps/export/${APPLIANCE_NAME}.qcow2${NC}"
+            else
+                echo -e "  ${RED}✗${NC} Build failed"
+                # Cleanup on failure
+                rm -rf "${REPO_ROOT}/appliances/${APPLIANCE_NAME}" 2>/dev/null
+                rm -rf "${REPO_ROOT}/apps-code/community-apps/packer/${APPLIANCE_NAME}" 2>/dev/null
+                exit 1
+            fi
+        fi
+
+        echo ""
+        exit 0
+    fi
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # INTERACTIVE MODE: Run wizard steps
+    # ═══════════════════════════════════════════════════════════════════════════
 
     # Array of step functions
     local steps=(
