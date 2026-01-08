@@ -896,9 +896,13 @@ set_ssh_option() {
     fi
 }
 
-set_ssh_option "PasswordAuthentication" "no"
-set_ssh_option "PermitRootLogin" "without-password"
+# Allow both password and key-based authentication for easier access
+set_ssh_option "PasswordAuthentication" "yes"
+set_ssh_option "PermitRootLogin" "yes"
 set_ssh_option "UseDNS" "no"
+
+# Ensure root password is set (for password-based SSH fallback)
+echo "root:opennebula" | chpasswd
 
 sync
 EOF
