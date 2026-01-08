@@ -186,9 +186,9 @@ fi
 # Generate OS tag (lowercase version of OS name)
 OS_TAG=$(echo "$OS_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
 
-# Determine repository root (go up two levels from docs/automatic-appliance-tutorial/)
+# Determine repository root (go up one level from wizard/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Display clean header
 echo ""

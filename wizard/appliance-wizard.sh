@@ -54,9 +54,9 @@ CLEAR_LINE='\033[2K'
 WIZARD_VERSION="1.0.0"
 WIZARD_CODENAME="Nebula"
 
-# Script directory
+# Script directory (wizard/ is at repo root level)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Current step tracking for navigation
 CURRENT_STEP=0
@@ -1745,7 +1745,7 @@ check_base_image() {
 main() {
     # Check if we're in the right directory
     if [ ! -f "${SCRIPT_DIR}/generate-docker-appliance.sh" ]; then
-        echo -e "${RED}Error: This script must be run from the automatic-appliance-tutorial directory.${NC}"
+        echo -e "${RED}Error: This script must be run from the wizard directory.${NC}"
         echo -e "Please cd to: ${SCRIPT_DIR}"
         exit 1
     fi
