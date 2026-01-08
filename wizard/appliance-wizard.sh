@@ -60,7 +60,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Current step tracking for navigation
 CURRENT_STEP=0
-TOTAL_STEPS=9
+TOTAL_STEPS=11
 
 # Variables to collect
 DOCKER_IMAGE=""
@@ -78,6 +78,13 @@ DEFAULT_ENV_VARS=""
 DEFAULT_VOLUMES=""
 APP_PORT=""
 WEB_INTERFACE="true"
+
+# SSH and Login configuration
+SSH_KEY_SOURCE=""        # "host" or "custom"
+SSH_PUBLIC_KEY=""        # The actual SSH public key content
+AUTOLOGIN_ENABLED=""     # "true" or "false"
+LOGIN_USERNAME="root"    # Username for login
+ROOT_PASSWORD=""         # Password when autologin is disabled
 
 # Supported base OS options (id|name|category)
 # x86_64 OS options
@@ -110,6 +117,271 @@ declare -a OS_LIST_ARM=(
 
 # Combined list for lookups (populated based on selected architecture)
 declare -a OS_LIST=()
+
+# Base OS image sizes (approximate, in MB) - used for disk size recommendations
+# Format: base_os_id=base_size|recommended_with_docker
+declare -A OS_DISK_SIZES=(
+    # Ubuntu minimal images are smaller
+    ["ubuntu2204min"]="2048|10240"
+    ["ubuntu2404min"]="2048|10240"
+    # Full Ubuntu images
+    ["ubuntu2204"]="4096|12288"
+    ["ubuntu2404"]="4096|12288"
+    # Debian
+    ["debian11"]="2048|10240"
+    ["debian12"]="2048|10240"
+    # Enterprise Linux (larger base)
+    ["alma8"]="4096|12288"
+    ["alma9"]="4096|12288"
+    ["rocky8"]="4096|12288"
+    ["rocky9"]="4096|12288"
+    # openSUSE
+    ["opensuse15"]="4096|12288"
+)
+
+# Get recommended disk size for a base OS
+get_recommended_disk_size() {
+    local base_os="$1"
+    # Strip .aarch64 suffix for lookup
+    local lookup_os="${base_os%.aarch64}"
+
+    if [ -n "${OS_DISK_SIZES[$lookup_os]}" ]; then
+        echo "${OS_DISK_SIZES[$lookup_os]#*|}"
+    else
+        # Default recommendation
+        echo "12288"
+    fi
+}
+
+# Get base image size for a base OS
+get_base_image_size() {
+    local base_os="$1"
+    local lookup_os="${base_os%.aarch64}"
+
+    if [ -n "${OS_DISK_SIZES[$lookup_os]}" ]; then
+        echo "${OS_DISK_SIZES[$lookup_os]%%|*}"
+    else
+        echo "4096"
+    fi
+}
+
+# Parse Docker image into components
+# Args: $1=docker_image
+# Sets: PARSED_REGISTRY, PARSED_REPO, PARSED_TAG
+parse_docker_image() {
+    local image="$1"
+
+    # Extract tag (default to "latest")
+    if [[ "$image" == *":"* ]]; then
+        PARSED_TAG="${image##*:}"
+        image="${image%:*}"
+    else
+        PARSED_TAG="latest"
+    fi
+
+    # Extract registry and repository
+    if [[ "$image" == *"."*"/"* ]]; then
+        # Custom registry (e.g., ghcr.io/user/repo)
+        PARSED_REGISTRY="${image%%/*}"
+        PARSED_REPO="${image#*/}"
+    elif [[ "$image" == *"/"* ]]; then
+        # Docker Hub with namespace (e.g., user/repo)
+        PARSED_REGISTRY="registry-1.docker.io"
+        PARSED_REPO="$image"
+    else
+        # Docker Hub official image (e.g., nginx -> library/nginx)
+        PARSED_REGISTRY="registry-1.docker.io"
+        PARSED_REPO="library/$image"
+    fi
+}
+
+# Get Docker Hub token for anonymous access
+# Args: $1=repository (e.g., library/nginx)
+# Returns: token string or empty on failure
+get_dockerhub_token() {
+    local repo="$1"
+    curl -s --connect-timeout 3 --max-time 5 \
+        "https://auth.docker.io/token?service=registry.docker.io&scope=repository:${repo}:pull" \
+        2>/dev/null | grep -o '"token":"[^"]*"' | cut -d'"' -f4
+}
+
+# Cache for manifest - stored in temp file to persist across subshells
+MANIFEST_CACHE_FILE="/tmp/wizard_manifest_cache_$$"
+MANIFEST_CACHE_IMAGE_FILE="/tmp/wizard_manifest_image_$$"
+
+# Clean up cache on exit
+trap 'rm -f "$MANIFEST_CACHE_FILE" "$MANIFEST_CACHE_IMAGE_FILE"' EXIT
+
+# Fetch manifest from Docker registry (fast HTTP method)
+# Args: $1=docker_image
+# Returns: manifest JSON on stdout, sets MANIFEST_HTTP_CODE
+fetch_docker_manifest() {
+    local image="$1"
+
+    # Return cached manifest if same image (use file-based cache for subshell persistence)
+    if [[ -f "$MANIFEST_CACHE_IMAGE_FILE" ]] && [[ -f "$MANIFEST_CACHE_FILE" ]]; then
+        local cached_image
+        cached_image=$(cat "$MANIFEST_CACHE_IMAGE_FILE" 2>/dev/null)
+        if [[ "$image" == "$cached_image" ]]; then
+            MANIFEST_HTTP_CODE=0
+            cat "$MANIFEST_CACHE_FILE"
+            return
+        fi
+    fi
+
+    parse_docker_image "$image"
+
+    local manifest=""
+
+    if [[ "$PARSED_REGISTRY" == "registry-1.docker.io" ]]; then
+        # Docker Hub - need token
+        local token
+        token=$(get_dockerhub_token "$PARSED_REPO")
+
+        if [ -n "$token" ]; then
+            manifest=$(curl -s --connect-timeout 3 --max-time 10 \
+                -H "Authorization: Bearer $token" \
+                -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+                -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+                -H "Accept: application/vnd.oci.image.index.v1+json" \
+                "https://registry-1.docker.io/v2/${PARSED_REPO}/manifests/${PARSED_TAG}" 2>/dev/null)
+            MANIFEST_HTTP_CODE=$?
+        else
+            MANIFEST_HTTP_CODE=1
+        fi
+    else
+        # Other registries - try anonymous
+        manifest=$(curl -s --connect-timeout 3 --max-time 10 \
+            -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+            -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+            "https://${PARSED_REGISTRY}/v2/${PARSED_REPO}/manifests/${PARSED_TAG}" 2>/dev/null)
+        MANIFEST_HTTP_CODE=$?
+    fi
+
+    # Cache the result to temp files (persists across subshells)
+    if [[ "$MANIFEST_HTTP_CODE" -eq 0 ]] && [[ -n "$manifest" ]]; then
+        echo "$manifest" > "$MANIFEST_CACHE_FILE"
+        echo "$image" > "$MANIFEST_CACHE_IMAGE_FILE"
+    fi
+
+    echo "$manifest"
+}
+
+# Check if a Docker image supports a specific architecture (fast HTTP method)
+# Args: $1=docker_image, $2=target_arch (x86_64 or aarch64)
+# Returns: 0=supported, 1=not supported, 2=unknown, 3=auth required, 4=not found, 5=rate limited
+check_docker_image_arch() {
+    local image="$1"
+    local target_arch="$2"
+
+    # Map wizard arch to Docker arch naming
+    local docker_arch="amd64"
+    [[ "$target_arch" == "aarch64" || "$target_arch" == "arm64" ]] && docker_arch="arm64"
+
+    local manifest
+    manifest=$(fetch_docker_manifest "$image")
+
+    if [ -z "$manifest" ]; then
+        return 2  # Unknown/network error
+    fi
+
+    # Check for error responses
+    if echo "$manifest" | grep -q '"errors"'; then
+        if echo "$manifest" | grep -qi "TOOMANYREQUESTS"; then
+            return 5  # Rate limited
+        elif echo "$manifest" | grep -qi "UNAUTHORIZED\|DENIED"; then
+            return 3  # Auth required
+        elif echo "$manifest" | grep -qi "MANIFEST_UNKNOWN\|NAME_UNKNOWN"; then
+            return 4  # Not found
+        fi
+        return 2  # Other error
+    fi
+
+    # Check if the architecture is in the manifest
+    if echo "$manifest" | grep -q "\"architecture\":\"$docker_arch\""; then
+        return 0  # Supported
+    elif echo "$manifest" | grep -q "\"architecture\""; then
+        return 1  # Has architectures but not the one we want
+    else
+        return 2  # Unknown - can't determine (legacy manifest)
+    fi
+}
+
+# Get list of supported architectures for a Docker image (fast HTTP method)
+# Args: $1=docker_image
+# Returns: comma-separated list of architectures, or empty if unknown
+get_docker_image_archs() {
+    local image="$1"
+
+    local manifest
+    manifest=$(fetch_docker_manifest "$image")
+
+    if [ -z "$manifest" ]; then
+        echo ""
+        return
+    fi
+
+    # Check if this is an error response
+    if echo "$manifest" | grep -q '"errors"'; then
+        echo ""
+        return
+    fi
+
+    # Extract unique architectures (filter out "unknown")
+    echo "$manifest" | grep -o '"architecture"[[:space:]]*:[[:space:]]*"[^"]*"' | \
+        sed 's/.*"\([^"]*\)"$/\1/' | grep -v "unknown" | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+# Extract registry from Docker image name
+# Args: $1=docker_image
+# Returns: registry hostname or "docker.io" for Docker Hub
+get_image_registry() {
+    local image="$1"
+
+    # Check if image contains a registry (has a dot before the first slash)
+    if [[ "$image" == *"."*"/"* ]]; then
+        echo "${image%%/*}"
+    elif [[ "$image" == *"/"* ]]; then
+        # Docker Hub with namespace (e.g., library/nginx or myuser/myimage)
+        echo "docker.io"
+    else
+        # Docker Hub official image (e.g., nginx)
+        echo "docker.io"
+    fi
+}
+
+# Verify Docker image exists in registry (uses fetch_docker_manifest to populate cache)
+# Args: $1=docker_image
+# Returns: 0=exists, 1=not found, 2=auth required, 3=unknown/network error, 4=rate limited
+verify_docker_image_exists() {
+    local image="$1"
+
+    # Fetch the manifest (this populates the cache for get_docker_image_archs)
+    local manifest
+    manifest=$(fetch_docker_manifest "$image")
+
+    # Check result
+    if [ -z "$manifest" ]; then
+        return 3  # Network error or empty response
+    fi
+
+    # Check for error responses (Docker registry returns JSON with "errors" array)
+    if echo "$manifest" | grep -q '"errors"'; then
+        if echo "$manifest" | grep -qi "MANIFEST_UNKNOWN\|NAME_UNKNOWN"; then
+            return 1  # Not found
+        elif echo "$manifest" | grep -qi "UNAUTHORIZED\|DENIED"; then
+            return 2  # Auth required
+        elif echo "$manifest" | grep -qi "TOOMANYREQUESTS"; then
+            return 4  # Rate limited
+        else
+            return 3  # Other error
+        fi
+    fi
+
+    # If we got a non-empty response without errors, assume image exists
+    # Valid manifests contain schemaVersion, but we're lenient here
+    return 0
+}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ENV FILE SUPPORT (Non-interactive mode)
@@ -145,11 +417,19 @@ Env file format (myapp.env):
   WEB_INTERFACE="true"
   BASE_OS="ubuntu2204min"                  # or ubuntu2404.aarch64 for ARM
 
-  # Optional: VM sizing
-  VM_CPU="1"
-  VM_VCPU="2"
-  VM_MEMORY="2048"
-  VM_DISK_SIZE="12288"
+  # Image disk size (used during build)
+  VM_DISK_SIZE="12288"                     # Disk size in MB (must be >= 10GB)
+
+  # VM template defaults (used at deployment, not build time)
+  VM_CPU="1"                               # Default CPU cores for VM template
+  VM_VCPU="2"                              # Default vCPUs for VM template
+  VM_MEMORY="2048"                         # Default memory in MB for VM template
+
+  # Optional: SSH and Login configuration
+  SSH_PUBLIC_KEY="ssh-rsa AAAA..."         # Embedded SSH public key
+  AUTOLOGIN_ENABLED="true"                 # true = auto-login, false = password required
+  LOGIN_USERNAME="root"                    # Username for console login
+  ROOT_PASSWORD="mysecurepassword"         # Password when autologin disabled
 
   # Optional: Skip interactive build prompt
   AUTO_BUILD="true"                        # Auto-start build after generating
@@ -202,6 +482,21 @@ if [ -n "$1" ] && [ -f "$1" ]; then
     VM_VCPU="${VM_VCPU:-2}"
     VM_MEMORY="${VM_MEMORY:-2048}"
     VM_DISK_SIZE="${VM_DISK_SIZE:-12288}"
+
+    # SSH and Login configuration defaults for non-interactive mode
+    SSH_PUBLIC_KEY="${SSH_PUBLIC_KEY:-}"
+    AUTOLOGIN_ENABLED="${AUTOLOGIN_ENABLED:-true}"
+    LOGIN_USERNAME="${LOGIN_USERNAME:-root}"
+    ROOT_PASSWORD="${ROOT_PASSWORD:-opennebula}"
+
+    # If no SSH key provided, try to use host key
+    if [ -z "$SSH_PUBLIC_KEY" ]; then
+        if [ -f "$HOME/.ssh/id_rsa.pub" ]; then
+            SSH_PUBLIC_KEY=$(cat "$HOME/.ssh/id_rsa.pub")
+        elif [ -f "$HOME/.ssh/id_ed25519.pub" ]; then
+            SSH_PUBLIC_KEY=$(cat "$HOME/.ssh/id_ed25519.pub")
+        fi
+    fi
 
     # Detect architecture from BASE_OS
     if [[ "$BASE_OS" == *".aarch64"* ]]; then
@@ -409,6 +704,9 @@ monitor_build_progress() {
 # MENU SELECTOR (Arrow-key navigation)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Arrow menu selection with back support
+# Args: $1=result_var, $2...=options
+# Sets result_var to selected index, or returns NAV_BACK if user pressed 'b'
 menu_select() {
     local result_var=$1
     shift
@@ -417,29 +715,19 @@ menu_select() {
     local selected=0
     local key=""
 
-    # Find currently selected option if BASE_OS is already set
-    if [ -n "$BASE_OS" ]; then
-        for i in "${!OS_LIST[@]}"; do
-            local os_id="${OS_LIST[$i]%%|*}"
-            if [ "$os_id" = "$BASE_OS" ]; then
-                selected=$i
-                break
-            fi
-        done
-    fi
-
-    hide_cursor
-
-    # Print options
+    # Print options immediately - selected option has green arrow
+    echo ""
     for i in "${!options[@]}"; do
-        if [ $i -eq $selected ]; then
-            echo -e "  ${BRIGHT_GREEN}▸${NC} ${WHITE}${options[$i]}${NC}"
+        if [[ $i -eq $selected ]]; then
+            echo -e "    ${GREEN}>${NC} ${WHITE}${options[$i]}${NC}"
         else
-            echo -e "    ${DIM}${options[$i]}${NC}"
+            echo -e "      ${DIM}${options[$i]}${NC}"
         fi
     done
     echo ""
-    echo -e "  ${DIM}[↑↓] Navigate  [Enter] Select  [q] Quit${NC}"
+    echo -e "  ${DIM}[↑↓] Navigate  [Enter] Select  [b] Back  [q] Quit${NC}"
+
+    hide_cursor
 
     while true; do
         IFS= read -rsn1 key
@@ -457,31 +745,38 @@ menu_select() {
             echo ""
             print_warning "Cancelled."
             exit 0
+        elif [ "$key" = "b" ] || [ "$key" = "B" ]; then
+            show_cursor
+            eval "$result_var=-1"
+            return $NAV_BACK
         elif [ "$key" = "k" ]; then
             ((selected > 0)) && ((selected--))
         elif [ "$key" = "j" ]; then
             ((selected < num_options - 1)) && ((selected++))
         fi
 
-        # Redraw
-        for ((i=0; i<num_options+2; i++)); do printf '\033[A'; done
+        # Redraw (num_options + 3 lines: empty line, options, empty line, help line)
+        for ((i=0; i<num_options+3; i++)); do printf '\033[A'; done
 
+        printf '\033[2K'
+        echo ""
         for i in "${!options[@]}"; do
             printf '\033[2K'
-            if [ $i -eq $selected ]; then
-                echo -e "  ${BRIGHT_GREEN}▸${NC} ${WHITE}${options[$i]}${NC}"
+            if [[ $i -eq $selected ]]; then
+                echo -e "    ${GREEN}>${NC} ${WHITE}${options[$i]}${NC}"
             else
-                echo -e "    ${DIM}${options[$i]}${NC}"
+                echo -e "      ${DIM}${options[$i]}${NC}"
             fi
         done
         printf '\033[2K'
         echo ""
         printf '\033[2K'
-        echo -e "  ${DIM}[↑↓] Navigate  [Enter] Select  [q] Quit${NC}"
+        echo -e "  ${DIM}[↑↓] Navigate  [Enter] Select  [b] Back  [q] Quit${NC}"
     done
 
     show_cursor
     eval "$result_var=$selected"
+    return $NAV_CONTINUE
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -588,7 +883,7 @@ step_welcome() {
     echo -e "${WHITE}Create a Docker-based OpenNebula appliance${NC}\n"
     echo -e "${DIM}Navigation: [:b] back  [:q] quit  [↑↓] menus${NC}\n"
 
-    echo -en "${DIM}[Enter] Start${NC}"
+    echo -en "  Press ${WHITE}[Enter]${NC} to start..."
     read -r
     return $NAV_CONTINUE
 }
@@ -606,12 +901,143 @@ step_docker_image() {
         local result=$?
         [ $result -ne $NAV_CONTINUE ] && return $result
 
-        if validate_docker_image "$DOCKER_IMAGE"; then
-            sleep 0.3
-            return $NAV_CONTINUE
-        else
+        # Validate format first
+        if ! validate_docker_image "$DOCKER_IMAGE"; then
             print_error "Invalid format. Use: image:tag"
+            continue
         fi
+
+        # Verify image exists in registry
+        echo -e "  ${DIM}Verifying image exists...${NC}"
+
+        local verify_result
+        verify_docker_image_exists "$DOCKER_IMAGE"
+        verify_result=$?
+
+        case $verify_result in
+            0)
+                # Image exists - show clean screen with architectures
+                clear_screen
+                print_header
+                print_step 1 $TOTAL_STEPS "Docker Image"
+                echo ""
+                echo -e "  ${GREEN}✓${NC} Image found: ${CYAN}${DOCKER_IMAGE}${NC}"
+                echo ""
+
+                # Get and display supported architectures
+                local archs
+                archs=$(get_docker_image_archs "$DOCKER_IMAGE")
+
+                echo -e "  ${WHITE}Supported architectures:${NC}"
+                echo ""
+                if [ -n "$archs" ]; then
+                    if echo "$archs" | grep -q "amd64"; then
+                        echo -e "    ${GREEN}•${NC} AMD64 ${DIM}(x86_64 / Intel / AMD)${NC}"
+                    fi
+                    if echo "$archs" | grep -q "arm64"; then
+                        echo -e "    ${GREEN}•${NC} ARM64 ${DIM}(aarch64 / Apple Silicon / AWS Graviton)${NC}"
+                    fi
+                    # Show other architectures if present
+                    local other_archs
+                    other_archs=$(echo "$archs" | tr ',' '\n' | grep -v "amd64\|arm64" | tr '\n' ',' | sed 's/,$//')
+                    if [ -n "$other_archs" ]; then
+                        echo -e "    ${DIM}• Other: ${other_archs}${NC}"
+                    fi
+                else
+                    echo -e "    ${YELLOW}!${NC} Unknown ${DIM}(legacy image format - may only support AMD64)${NC}"
+                fi
+
+                echo ""
+                echo -e "  ─────────────────────────────────────────────────────"
+                echo ""
+                echo -ne "  ${DIM}Press${NC} ${WHITE}[Enter]${NC} ${DIM}to continue...${NC}"
+                read -r
+                return $NAV_CONTINUE
+                ;;
+            1)
+                # Image not found
+                echo -e "  ${RED}✗${NC} Image not found: ${CYAN}${DOCKER_IMAGE}${NC}"
+                echo ""
+                echo -e "  ${DIM}Please check the image name and tag are correct.${NC}"
+                echo ""
+                ;;
+            2)
+                # Auth required - might be private, allow to continue
+                local registry
+                registry=$(get_image_registry "$DOCKER_IMAGE")
+                echo -e "  ${YELLOW}!${NC} Cannot verify - authentication required for ${CYAN}${registry}${NC}"
+                echo ""
+                echo -e "  ${DIM}This appears to be a private image.${NC}"
+                echo ""
+                echo -e "    ${CYAN}1.${NC} Login to registry now"
+                echo -e "    ${CYAN}2.${NC} Continue without verification ${DIM}(assumes image exists)${NC}"
+                echo -e "    ${CYAN}3.${NC} Enter a different image"
+                echo ""
+
+                local auth_choice
+                while true; do
+                    echo -ne "  ${WHITE}›${NC} Choose [1-3]: "
+                    read -r auth_choice
+                    case "$auth_choice" in
+                        1)
+                            echo ""
+                            echo -e "  ${DIM}Running: docker login ${registry}${NC}"
+                            echo ""
+                            if docker login "$registry"; then
+                                echo ""
+                                echo -e "  ${GREEN}✓${NC} Login successful! Verifying image..."
+                                sleep 0.5
+                                # Re-verify by continuing the outer loop
+                                continue 2
+                            else
+                                echo ""
+                                echo -e "  ${RED}✗${NC} Login failed. Please try again."
+                                echo ""
+                            fi
+                            ;;
+                        2)
+                            echo ""
+                            echo -e "  ${YELLOW}!${NC} Continuing with unverified private image"
+                            echo ""
+                            echo -ne "  ${DIM}Press${NC} ${WHITE}[Enter]${NC} ${DIM}to continue...${NC}"
+                            read -r
+                            return $NAV_CONTINUE
+                            ;;
+                        3)
+                            # Re-prompt for image
+                            echo ""
+                            continue 2
+                            ;;
+                        *)
+                            echo -e "  ${RED}Invalid choice. Please enter 1, 2, or 3.${NC}"
+                            ;;
+                    esac
+                done
+                ;;
+            4)
+                # Rate limited - skip verification but continue
+                echo -e "  ${YELLOW}!${NC} Docker Hub rate limit reached"
+                echo ""
+                echo -e "  ${DIM}Cannot verify image - proceeding with unverified image.${NC}"
+                echo -e "  ${DIM}Tip: Run 'docker login' to avoid rate limits.${NC}"
+                echo ""
+                echo -ne "  ${DIM}Press${NC} ${WHITE}[Enter]${NC} ${DIM}to continue...${NC}"
+                read -r
+                return $NAV_CONTINUE
+                ;;
+            *)
+                # Network error or other issue - warn but allow
+                echo -e "  ${YELLOW}!${NC} Could not verify image ${DIM}(network issue?)${NC}"
+                echo ""
+                prompt_yes_no "Continue anyway?" CONTINUE_ANYWAY "true"
+                if [ "$CONTINUE_ANYWAY" = "true" ]; then
+                    echo ""
+                    echo -ne "  ${DIM}Press${NC} ${WHITE}[Enter]${NC} ${DIM}to continue...${NC}"
+                    read -r
+                    return $NAV_CONTINUE
+                fi
+                ;;
+        esac
     done
 }
 
@@ -630,6 +1056,8 @@ step_architecture() {
 
         local selected_idx
         menu_select selected_idx "${arch_options[@]}"
+        local result=$?
+        [ $result -eq $NAV_BACK ] && return $NAV_BACK
 
         if [ "$selected_idx" -eq 0 ]; then
             ARCH="x86_64"
@@ -649,10 +1077,163 @@ step_architecture() {
             fi
         fi
 
+        # Check if Docker image supports the selected architecture
+        echo ""
+        echo -e "  ${DIM}Checking Docker image architecture support...${NC}"
+
+        local arch_check_result
+        check_docker_image_arch "$DOCKER_IMAGE" "$ARCH"
+        arch_check_result=$?
+
+        case $arch_check_result in
+            0)
+                # Supported
+                echo -e "  ${GREEN}✓${NC} Docker image supports ${ARCH}"
+                ;;
+            1)
+                # Image does NOT support selected architecture
+                show_docker_arch_error "$DOCKER_IMAGE" "$ARCH"
+                local user_choice=$?
+                if [ $user_choice -eq 1 ]; then
+                    # User wants to change Docker image - go back
+                    return $NAV_BACK
+                fi
+                # User chose to continue anyway or try different arch
+                continue
+                ;;
+            3)
+                # Authentication required - offer to login
+                local registry
+                registry=$(get_image_registry "$DOCKER_IMAGE")
+                echo -e "  ${YELLOW}!${NC} Authentication required for ${CYAN}${registry}${NC}"
+                echo ""
+                echo -e "  ${DIM}This appears to be a private image. Options:${NC}"
+                echo ""
+                echo -e "    ${CYAN}1.${NC} Login to registry now ${DIM}(docker login ${registry})${NC}"
+                echo -e "    ${CYAN}2.${NC} Skip check and continue ${DIM}(assumes image is compatible)${NC}"
+                echo -e "    ${CYAN}3.${NC} Go back and use a different Docker image"
+                echo ""
+
+                local auth_choice
+                while true; do
+                    echo -ne "  ${WHITE}›${NC} Choose [1-3]: "
+                    read -r auth_choice
+                    case "$auth_choice" in
+                        1)
+                            echo ""
+                            echo -e "  ${DIM}Running: docker login ${registry}${NC}"
+                            echo ""
+                            if docker login "$registry"; then
+                                echo ""
+                                echo -e "  ${GREEN}✓${NC} Login successful! Rechecking image..."
+                                sleep 1
+                                # Re-run the check by continuing the outer loop
+                                continue 2
+                            else
+                                echo ""
+                                echo -e "  ${RED}✗${NC} Login failed"
+                                sleep 1
+                            fi
+                            ;;
+                        2)
+                            echo ""
+                            echo -e "  ${YELLOW}!${NC} Skipping architecture check for private image"
+                            sleep 0.5
+                            break
+                            ;;
+                        3)
+                            return $NAV_BACK
+                            ;;
+                        *)
+                            echo -e "  ${RED}Invalid choice. Please enter 1, 2, or 3.${NC}"
+                            ;;
+                    esac
+                done
+                ;;
+            4)
+                # Image not found
+                echo -e "  ${RED}✗${NC} Docker image not found: ${CYAN}${DOCKER_IMAGE}${NC}"
+                echo ""
+                echo -e "  ${DIM}The image doesn't exist or you may need to authenticate.${NC}"
+                echo ""
+                prompt_yes_no "Go back to change Docker image?" GO_BACK "true"
+                if [ "$GO_BACK" = "true" ]; then
+                    return $NAV_BACK
+                fi
+                ;;
+            5)
+                # Rate limited - skip check silently
+                echo -e "  ${YELLOW}!${NC} Rate limited - skipping architecture check"
+                echo -e "  ${DIM}Tip: Run 'docker login' to avoid rate limits${NC}"
+                sleep 0.5
+                ;;
+            *)
+                # Unknown/legacy format - show warning but continue
+                echo -e "  ${YELLOW}!${NC} Could not verify image architecture support"
+                echo -e "  ${DIM}(Image may use legacy format without multi-arch manifest)${NC}"
+                sleep 0.5
+                ;;
+        esac
+
         echo ""
         print_success "$ARCH"
         sleep 0.3
         return $NAV_CONTINUE
+    done
+}
+
+# Show Docker image architecture incompatibility error
+# Args: $1=docker_image, $2=target_arch
+# Returns: 0=try different arch, 1=go back to change image
+show_docker_arch_error() {
+    local docker_image="$1"
+    local target_arch="$2"
+
+    # Get available architectures
+    local available_archs
+    available_archs=$(get_docker_image_archs "$docker_image")
+
+    clear_screen
+    print_header
+    print_step 2 $TOTAL_STEPS "Target Architecture"
+    echo ""
+    echo -e "  ${RED}✗ Docker image incompatible with ${target_arch}${NC}"
+    echo ""
+    echo -e "  ${WHITE}Image:${NC}     ${CYAN}${docker_image}${NC}"
+    echo -e "  ${WHITE}Selected:${NC}  ${target_arch}"
+    if [ -n "$available_archs" ]; then
+        echo -e "  ${WHITE}Available:${NC} ${available_archs}"
+    fi
+    echo ""
+    echo -e "  ─────────────────────────────────────────────────────"
+    echo ""
+    echo -e "  ${WHITE}Options:${NC}"
+    echo -e "    ${CYAN}1.${NC} Choose a different architecture"
+    echo -e "    ${CYAN}2.${NC} Go back and use a different Docker image"
+    echo -e "    ${CYAN}3.${NC} Continue anyway ${DIM}(build may fail)${NC}"
+    echo ""
+
+    local choice
+    while true; do
+        echo -ne "  ${WHITE}›${NC} Choose [1-3]: "
+        read -r choice
+        case "$choice" in
+            1)
+                return 0  # Try different architecture
+                ;;
+            2)
+                return 1  # Go back to Docker image step
+                ;;
+            3)
+                echo ""
+                echo -e "  ${YELLOW}!${NC} Continuing with potentially incompatible image..."
+                sleep 1
+                return 0  # Continue (will exit the loop in caller)
+                ;;
+            *)
+                echo -e "  ${RED}Invalid choice. Please enter 1, 2, or 3.${NC}"
+                ;;
+        esac
     done
 }
 
@@ -694,6 +1275,8 @@ step_base_os() {
 
     local selected_idx
     menu_select selected_idx "${menu_options[@]}"
+    local result=$?
+    [ $result -eq $NAV_BACK ] && return $NAV_BACK
 
     # Extract selected OS
     local selected="${OS_LIST[$selected_idx]}"
@@ -818,30 +1401,53 @@ step_container_config() {
 step_vm_config() {
     clear_screen
     print_header
-    print_step 8 $TOTAL_STEPS "VM Configuration"
+    print_step 8 $TOTAL_STEPS "Image Disk Size"
     print_nav_hint
 
-    echo -e "  ${DIM}Configure VM resources (press Enter for defaults)${NC}"
+    # Get recommended disk size based on selected BASE_OS
+    local base_image_size
+    local recommended_size
+    base_image_size=$(get_base_image_size "$BASE_OS")
+    recommended_size=$(get_recommended_disk_size "$BASE_OS")
+
+    # Get display name for BASE_OS
+    local base_os_display="$BASE_OS"
+    for entry in "${OS_LIST[@]}"; do
+        local os_id="${entry%%|*}"
+        if [ "$os_id" = "$BASE_OS" ]; then
+            local os_name="${entry#*|}"
+            base_os_display="${os_name%%|*}"
+            break
+        fi
+    done
+
+    echo -e "  ${DIM}Configure the disk size for the appliance image${NC}"
+    echo ""
+    echo -e "  ${WHITE}Selected base OS:${NC} ${CYAN}${base_os_display}${NC}"
+    echo -e "  ${WHITE}Base image size:${NC}  ~${base_image_size} MB"
+    echo -e "  ${WHITE}Recommended:${NC}      ${GREEN}${recommended_size} MB${NC} ${DIM}(includes Docker + app space)${NC}"
     echo ""
 
-    prompt_optional "CPU cores" VM_CPU "1"
+    prompt_optional "Disk size (MB)" VM_DISK_SIZE "$recommended_size"
     local result=$?
     [ $result -ne $NAV_CONTINUE ] && return $result
-    echo ""
 
-    prompt_optional "vCPUs" VM_VCPU "2"
-    result=$?
-    [ $result -ne $NAV_CONTINUE ] && return $result
-    echo ""
+    # Validate disk size is at least the base image size
+    if [ "$VM_DISK_SIZE" -lt "$base_image_size" ]; then
+        echo ""
+        echo -e "  ${YELLOW}⚠${NC} Warning: Disk size smaller than base image (${base_image_size} MB)"
+        echo -e "  ${DIM}This may cause build failures. Recommended: ${recommended_size} MB${NC}"
+    fi
 
-    prompt_optional "Memory (MB)" VM_MEMORY "2048"
-    result=$?
-    [ $result -ne $NAV_CONTINUE ] && return $result
-    echo ""
+    # Set default VM template values (can be changed at deployment)
+    # These are just metadata defaults embedded in the appliance
+    VM_CPU="${VM_CPU:-1}"
+    VM_VCPU="${VM_VCPU:-2}"
+    VM_MEMORY="${VM_MEMORY:-2048}"
 
-    prompt_optional "Disk size (MB)" VM_DISK_SIZE "12288"
-    result=$?
-    [ $result -ne $NAV_CONTINUE ] && return $result
+    echo ""
+    echo -e "  ${DIM}Note: CPU, vCPU, and Memory are configured when deploying the VM,${NC}"
+    echo -e "  ${DIM}not during image build. Default template values: 1 CPU, 2 vCPU, 2GB RAM${NC}"
 
     # ONE_VERSION defaults to 7.0 (hidden from user)
     ONE_VERSION="${ONE_VERSION:-7.0}"
@@ -850,10 +1456,142 @@ step_vm_config() {
     return $NAV_CONTINUE
 }
 
+step_ssh_config() {
+    clear_screen
+    print_header
+    print_step 9 $TOTAL_STEPS "SSH Key Configuration"
+    print_nav_hint
+
+    echo -e "  ${DIM}Configure SSH access for the appliance${NC}"
+    echo ""
+
+    # Check if host SSH key exists
+    local host_key_path="$HOME/.ssh/id_rsa.pub"
+    local host_key_exists=false
+    local host_key_content=""
+
+    if [ -f "$host_key_path" ]; then
+        host_key_exists=true
+        host_key_content=$(cat "$host_key_path")
+    elif [ -f "$HOME/.ssh/id_ed25519.pub" ]; then
+        host_key_path="$HOME/.ssh/id_ed25519.pub"
+        host_key_exists=true
+        host_key_content=$(cat "$host_key_path")
+    fi
+
+    local ssh_options=()
+    if [ "$host_key_exists" = true ]; then
+        # Create truncated key preview for menu option
+        local key_preview="${host_key_content:0:50}..."
+        ssh_options+=("Use this host SSH key (${key_preview})")
+        ssh_options+=("Provide a different SSH public key")
+    else
+        echo -e "  ${YELLOW}!${NC} ${DIM}No SSH key found on this host${NC}"
+        echo ""
+        ssh_options+=("Provide SSH public key")
+    fi
+
+    echo -e "  ${WHITE}Select SSH key source:${NC}"
+    echo ""
+
+    local selected_idx
+    menu_select selected_idx "${ssh_options[@]}"
+    local result=$?
+    [ $result -ne $NAV_CONTINUE ] && return $result
+
+    if [ "$host_key_exists" = true ] && [ "$selected_idx" -eq 0 ]; then
+        SSH_KEY_SOURCE="host"
+        SSH_PUBLIC_KEY="$host_key_content"
+        echo ""
+        echo -e "  ${GREEN}✓${NC} Host SSH key selected"
+    else
+        SSH_KEY_SOURCE="custom"
+        echo ""
+        while true; do
+            prompt_required "SSH public key" SSH_PUBLIC_KEY
+            result=$?
+            [ $result -ne $NAV_CONTINUE ] && return $result
+
+            # Validate SSH key format (basic check)
+            if [[ "$SSH_PUBLIC_KEY" =~ ^ssh-(rsa|ed25519|ecdsa) ]]; then
+                echo -e "  ${GREEN}✓${NC} SSH key accepted"
+                break
+            else
+                echo -e "  ${RED}✗ Invalid SSH key format${NC}"
+                echo -e "  ${DIM}Key should start with ssh-rsa, ssh-ed25519, or ssh-ecdsa${NC}"
+                echo ""
+            fi
+        done
+    fi
+
+    sleep 0.3
+    return $NAV_CONTINUE
+}
+
+step_login_config() {
+    clear_screen
+    print_header
+    print_step 10 $TOTAL_STEPS "Console Login Configuration"
+    print_nav_hint
+
+    echo -e "  ${DIM}Configure console/VNC login behavior${NC}"
+    echo ""
+
+    local login_options=(
+        "Enable autologin (no password required on console)"
+        "Disable autologin (require username and password)"
+    )
+
+    echo -e "  ${WHITE}Select login method:${NC}"
+    echo ""
+
+    local selected_idx
+    menu_select selected_idx "${login_options[@]}"
+    local result=$?
+    [ $result -ne $NAV_CONTINUE ] && return $result
+
+    if [ "$selected_idx" -eq 0 ]; then
+        AUTOLOGIN_ENABLED="true"
+        LOGIN_USERNAME="root"
+        ROOT_PASSWORD=""
+        echo ""
+        echo -e "  ${GREEN}✓${NC} Autologin enabled - VM will login automatically as root"
+    else
+        AUTOLOGIN_ENABLED="false"
+        echo ""
+        echo -e "  ${DIM}Set login credentials for console access${NC}"
+        echo ""
+
+        # Ask for username
+        prompt_optional "Username" LOGIN_USERNAME "root"
+        result=$?
+        [ $result -ne $NAV_CONTINUE ] && return $result
+        echo ""
+
+        # Ask for password
+        while true; do
+            prompt_required "Password for ${LOGIN_USERNAME}" ROOT_PASSWORD
+            result=$?
+            [ $result -ne $NAV_CONTINUE ] && return $result
+
+            if [ ${#ROOT_PASSWORD} -lt 4 ]; then
+                echo -e "  ${RED}✗ Password too short (minimum 4 characters)${NC}"
+                echo ""
+            else
+                echo -e "  ${GREEN}✓${NC} Credentials set: ${LOGIN_USERNAME} / ****"
+                break
+            fi
+        done
+    fi
+
+    sleep 0.3
+    return $NAV_CONTINUE
+}
+
 step_summary() {
     clear_screen
     print_header
-    print_step 9 $TOTAL_STEPS "Summary"
+    print_step 11 $TOTAL_STEPS "Summary"
 
     # Get display name for BASE_OS from OS_LIST
     local base_os_display="$BASE_OS"
@@ -889,10 +1627,16 @@ step_summary() {
     echo -e "${CYAN}Environment Vars:${NC}    ${DEFAULT_ENV_VARS:-None}"
     echo -e "${CYAN}Volume Mappings:${NC}     ${DEFAULT_VOLUMES:-None}"
     echo ""
-    echo -e "${CYAN}CPU Cores:${NC}           ${VM_CPU:-1}"
-    echo -e "${CYAN}vCPUs:${NC}               ${VM_VCPU:-2}"
-    echo -e "${CYAN}Memory:${NC}              ${VM_MEMORY:-2048} MB"
-    echo -e "${CYAN}Disk Size:${NC}           ${VM_DISK_SIZE:-12288} MB"
+    echo -e "${CYAN}Image Disk Size:${NC}     ${VM_DISK_SIZE:-12288} MB"
+    echo -e "${DIM}(VM CPU/Memory configured at deployment, defaults: ${VM_CPU:-1} CPU, ${VM_VCPU:-2} vCPU, ${VM_MEMORY:-2048}MB)${NC}"
+    echo ""
+    # SSH and Login configuration
+    local ssh_key_display="Host key"
+    [ "$SSH_KEY_SOURCE" = "custom" ] && ssh_key_display="Custom key"
+    local autologin_display="Enabled (auto-login as root)"
+    [ "$AUTOLOGIN_ENABLED" = "false" ] && autologin_display="Disabled (user: ${LOGIN_USERNAME}, password: ****)"
+    echo -e "${CYAN}SSH Key:${NC}             $ssh_key_display (${SSH_PUBLIC_KEY:0:30}...)"
+    echo -e "${CYAN}Console Login:${NC}       $autologin_display"
     echo ""
 
     echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
@@ -1571,6 +2315,12 @@ VM_VCPU="${VM_VCPU:-2}"
 VM_MEMORY="${VM_MEMORY:-2048}"
 VM_DISK_SIZE="${VM_DISK_SIZE:-12288}"
 ONE_VERSION="${ONE_VERSION:-7.0}"
+
+# SSH and Login Configuration
+SSH_PUBLIC_KEY="${SSH_PUBLIC_KEY}"
+AUTOLOGIN_ENABLED="${AUTOLOGIN_ENABLED:-true}"
+LOGIN_USERNAME="${LOGIN_USERNAME:-root}"
+ROOT_PASSWORD="${ROOT_PASSWORD}"
 ENVEOF
 
     if [ -f "${SCRIPT_DIR}/generate-docker-appliance.sh" ]; then
@@ -1654,41 +2404,117 @@ handle_quit() {
     exit 0
 }
 
+# Estimated build times for base OS images (in minutes)
+# Format: os_id=build_time
+declare -A OS_BUILD_TIMES=(
+    ["ubuntu2204min"]="8"
+    ["ubuntu2404min"]="8"
+    ["ubuntu2204"]="12"
+    ["ubuntu2404"]="12"
+    ["debian11"]="10"
+    ["debian12"]="10"
+    ["alma8"]="15"
+    ["alma9"]="15"
+    ["rocky8"]="15"
+    ["rocky9"]="15"
+    ["opensuse15"]="12"
+)
+
+# Get estimated build time for OS
+get_build_time() {
+    local os_id="$1"
+    local lookup="${os_id%.aarch64}"  # Strip ARM suffix
+    echo "${OS_BUILD_TIMES[$lookup]:-12}"
+}
+
+# Scan for available (already built) base images
+scan_available_images() {
+    local export_dir="${REPO_ROOT}/apps-code/one-apps/export"
+    local -n result_array=$1  # nameref to return array
+
+    result_array=()
+
+    if [ -d "$export_dir" ]; then
+        for qcow2 in "$export_dir"/*.qcow2; do
+            [ -f "$qcow2" ] || continue
+            local filename=$(basename "$qcow2" .qcow2)
+            result_array+=("$filename")
+        done
+    fi
+}
+
+# Get display name for an OS ID
+get_os_display_name() {
+    local os_id="$1"
+    for entry in "${OS_LIST[@]}"; do
+        local entry_id="${entry%%|*}"
+        if [ "$entry_id" = "$os_id" ]; then
+            local os_name="${entry#*|}"
+            echo "${os_name%%|*}"
+            return
+        fi
+    done
+    echo "$os_id"
+}
+
 # Check if base OS image exists and offer to build it
 check_base_image() {
     local base_image="${REPO_ROOT}/apps-code/one-apps/export/${BASE_OS}.qcow2"
-
-    # Get display name for BASE_OS
-    local base_os_display="$BASE_OS"
-    for entry in "${OS_LIST[@]}"; do
-        local os_id="${entry%%|*}"
-        if [ "$os_id" = "$BASE_OS" ]; then
-            local os_name="${entry#*|}"
-            base_os_display="${os_name%%|*}"
-            break
-        fi
-    done
+    local base_os_display
+    base_os_display=$(get_os_display_name "$BASE_OS")
+    local build_time
+    build_time=$(get_build_time "$BASE_OS")
 
     if [ -f "$base_image" ]; then
         return 0  # Image exists, continue
     fi
 
-    # Image doesn't exist - alert and offer to build
+    # Scan for available images
+    local available_images=()
+    scan_available_images available_images
+
+    # Image doesn't exist - alert and offer options
     clear_screen
     print_header
 
     echo ""
-    echo -e "  ${YELLOW}⚠  Base image not found${NC}"
+    echo -e "  ${YELLOW}⚠  Base Image Required${NC}"
     echo ""
-    echo -e "  The base OS image for ${WHITE}${base_os_display}${NC} hasn't been built yet."
-    echo -e "  ${DIM}Required: ${base_image}${NC}"
+    echo -e "  Your selected OS: ${WHITE}${base_os_display}${NC}"
+    echo -e "  ${DIM}Image path: ${base_image}${NC}"
+    echo ""
+
+    # Show available images if any exist
+    if [ ${#available_images[@]} -gt 0 ]; then
+        echo -e "  ${GREEN}✓${NC} ${WHITE}Available base images on this host:${NC}"
+        echo ""
+        for img in "${available_images[@]}"; do
+            local img_display
+            img_display=$(get_os_display_name "$img")
+            local img_size
+            img_size=$(du -h "${REPO_ROOT}/apps-code/one-apps/export/${img}.qcow2" 2>/dev/null | cut -f1)
+            echo -e "      ${CYAN}•${NC} ${img_display} ${DIM}(${img_size:-unknown})${NC}"
+        done
+        echo ""
+        echo -e "  ${DIM}Tip: Choosing an available image skips the build step${NC}"
+    else
+        echo -e "  ${DIM}No pre-built base images found on this host.${NC}"
+    fi
+
     echo ""
     echo -e "  ─────────────────────────────────────────────────────"
     echo ""
-    echo -e "  ${WHITE}Options:${NC}"
-    echo -e "    ${CYAN}1.${NC} Build it now ${DIM}(~10-15 min, recommended)${NC}"
-    echo -e "    ${CYAN}2.${NC} Continue anyway ${DIM}(build manually later)${NC}"
-    echo -e "    ${CYAN}3.${NC} Go back and choose a different base OS"
+    echo -e "  ${WHITE}What would you like to do?${NC}"
+    echo ""
+    echo -e "    ${CYAN}1.${NC} Build ${WHITE}${base_os_display}${NC} now ${DIM}(~${build_time} min)${NC}"
+    echo -e "    ${CYAN}2.${NC} Continue without image ${DIM}(build manually later)${NC}"
+    echo -e "    ${CYAN}3.${NC} Choose a different base OS"
+    echo ""
+
+    # Show build time estimates for other OS options
+    echo -e "  ${DIM}Estimated build times:${NC}"
+    echo -e "  ${DIM}  Ubuntu Minimal: ~8 min  │  Debian: ~10 min${NC}"
+    echo -e "  ${DIM}  Ubuntu Full: ~12 min    │  Alma/Rocky: ~15 min${NC}"
     echo ""
 
     local choice
@@ -1699,7 +2525,7 @@ check_base_image() {
             1)
                 echo ""
                 echo -e "  ${BRIGHT_CYAN}Building ${base_os_display} base image...${NC}"
-                echo -e "  ${DIM}This may take 10-15 minutes${NC}"
+                echo -e "  ${DIM}Estimated time: ~${build_time} minutes${NC}"
                 echo ""
 
                 # Build the base image
@@ -1811,6 +2637,8 @@ main() {
         "step_app_details"
         "step_container_config"
         "step_vm_config"
+        "step_ssh_config"
+        "step_login_config"
         "step_summary"
     )
 
@@ -1864,11 +2692,15 @@ main() {
                 handle_quit
                 ;;
             2)
-                # Go back to architecture selection (step 2) so user can change arch and OS
-                current=2  # step_architecture index
-                while [ $current -lt $total ]; do
+                # User wants to change OS - go directly to OS selection step
+                # Step indices: 2=architecture, 3=base_os
+                local os_step=3  # step_base_os index
+
+                # Run only the OS selection step (and architecture if they go back)
+                local temp_current=$os_step
+                while [ $temp_current -ge 2 ] && [ $temp_current -le 3 ]; do
                     local result
-                    if ${steps[$current]}; then
+                    if ${steps[$temp_current]}; then
                         result=0
                     else
                         result=$?
@@ -1876,11 +2708,19 @@ main() {
 
                     case $result in
                         $NAV_CONTINUE)
-                            current=$((current + 1))
+                            if [ $temp_current -eq 3 ]; then
+                                # OS selected, break out and re-check base image
+                                break
+                            else
+                                temp_current=$((temp_current + 1))
+                            fi
                             ;;
                         $NAV_BACK)
-                            if [ $current -gt 0 ]; then
-                                current=$((current - 1))
+                            if [ $temp_current -gt 2 ]; then
+                                temp_current=$((temp_current - 1))
+                            else
+                                # At architecture step, allow going back further
+                                temp_current=$((temp_current - 1))
                             fi
                             ;;
                         $NAV_QUIT)
