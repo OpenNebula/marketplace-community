@@ -46,45 +46,38 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           VPN_SERVER: ${{ secrets.VPN_SERVER }}
           JENKINS_URL: ${{ secrets.JENKINS_URL }}
-          ONE_DISTRO_TOKEN: ${{ secrets.ONE_DISTRO_TOKEN }}
           JENKINS_USER: ${{ secrets.JENKINS_USER }}
           JENKINS_TOKEN: ${{ secrets.JENKINS_TOKEN }}
         run: |
-          # 1. Extract app name
-          # We use 'tr' to delete carriage returns and newlines to prevent breakage
           app_name=$(echo "$PR_BODY" | grep -oP '(?<=^:app: ).*' | tr -d '\r\n' || true)
-          echo "Extracted app name: '$app_name'"
-
-          # 2. Validate app_name was found
+          
           if [[ -z "$app_name" ]]; then
             echo "::error::Could not extract :app: from PR body."
             exit 1
           fi
 
-          # 3. Define Jenkins params
           METADATA_PATH="appliances/${app_name}/metadata.yaml"
           
-          # Check if metadata file actually exists to prevent yq errors
           if [[ ! -f "$METADATA_PATH" ]]; then
             echo "::error::Metadata file not found at $METADATA_PATH"
-            ls -R appliances/ # Debugging helper
+            ls -R appliances/
             exit 1
           fi
 
-          DISTRO=$(yq '.[":app"][":name"]' "$METADATA_PATH")
-          REQUIREMENTS=$(yq '.[":app"][":os"][":base"]' "$METADATA_PATH")
-          
-          echo "Distro: $DISTRO"
-          echo "Requirements: $REQUIREMENTS"
+          DISTRO=$(yq '.[":app"][":name"]' "$METADATA_PATH" | tr -d '\r\n')
+          REQUIREMENTS=$(yq '.[":app"][":os"][":base"]' "$METADATA_PATH" | tr -d '\r\n')
 
-          # 4. Start Jenkins job
-          # Using -g (globoff) in curl prevents issues with brackets [] in URLs
-          ssh -i ~/.ssh/id_rsa gitact@$VPN_SERVER -p 2222 "curl -g -X POST \"$JENKINS_URL/job/one-community-distro/buildWithParameters?token=$ONE_DISTRO_TOKEN\" \
+          echo "Triggering build for:"
+          echo "  App: $app_name"
+          echo "  Distro: [$DISTRO]"
+          echo "  Requirements: [$REQUIREMENTS]"
+          
+          ssh -i ~/.ssh/id_rsa gitact@$VPN_SERVER -p 2222 "curl -v --fail -g -X POST \"$JENKINS_URL/job/one-community-distro/buildWithParameters\" \
             --user $JENKINS_USER:$JENKINS_TOKEN \
             --data-urlencode \"DISTROS=$DISTRO\" \
             --data-urlencode \"REQUIREMENTS=$REQUIREMENTS\" \
             --data \"RUN_CONTEXT=true\" \
-            --data \"PR_NUMBER=${{ github.event.pull_request.number }}\""
+            --data \"PR_NUMBER=104\""
             
       - name: Update labels
         run: |
