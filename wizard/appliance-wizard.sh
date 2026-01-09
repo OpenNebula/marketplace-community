@@ -60,7 +60,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Current step tracking for navigation
 CURRENT_STEP=0
-TOTAL_STEPS=11
+TOTAL_STEPS=12
 
 # Variables to collect
 DOCKER_IMAGE=""
@@ -85,6 +85,9 @@ SSH_PUBLIC_KEY=""        # The actual SSH public key content
 AUTOLOGIN_ENABLED=""     # "true" or "false"
 LOGIN_USERNAME="root"    # Username for login
 ROOT_PASSWORD=""         # Password when autologin is disabled
+
+# Docker update mode: CHECK (notify only), YES (auto-update), NO (never check)
+DOCKER_AUTO_UPDATE="CHECK"
 
 # Supported base OS options (id|name|category)
 # x86_64 OS options
@@ -457,6 +460,9 @@ Env file format (myapp.env):
   LOGIN_USERNAME="root"                    # Username for console login
   ROOT_PASSWORD="mysecurepassword"         # Password when autologin disabled
 
+  # Optional: Docker update behavior
+  DOCKER_AUTO_UPDATE="CHECK"               # CHECK=notify, YES=auto-update, NO=never
+
   # Optional: Skip interactive build prompt
   AUTO_BUILD="true"                        # Auto-start build after generating
 
@@ -514,6 +520,7 @@ if [ -n "$1" ] && [ -f "$1" ]; then
     AUTOLOGIN_ENABLED="${AUTOLOGIN_ENABLED:-true}"
     LOGIN_USERNAME="${LOGIN_USERNAME:-root}"
     ROOT_PASSWORD="${ROOT_PASSWORD:-opennebula}"
+    DOCKER_AUTO_UPDATE="${DOCKER_AUTO_UPDATE:-CHECK}"
 
     # If no SSH key provided, try to use host key
     if [ -z "$SSH_PUBLIC_KEY" ]; then
@@ -1614,10 +1621,62 @@ step_login_config() {
     return $NAV_CONTINUE
 }
 
+step_docker_updates() {
+    clear_screen
+    print_header
+    print_step 11 $TOTAL_STEPS "Docker Updates"
+
+    echo -e "${WHITE}How should Docker image updates be handled?${NC}\n"
+    echo -e "${DIM}When a new version of the Docker image is released, the appliance can:${NC}"
+    echo -e "${DIM}  - Check for updates and notify you (default)${NC}"
+    echo -e "${DIM}  - Automatically update on boot${NC}"
+    echo -e "${DIM}  - Never check for updates${NC}\n"
+
+    local update_options=(
+        "Check for updates (notify only)"
+        "Auto-update on boot"
+        "Never check for updates"
+    )
+
+    local selected_idx=0
+    case "$DOCKER_AUTO_UPDATE" in
+        CHECK) selected_idx=0 ;;
+        YES) selected_idx=1 ;;
+        NO) selected_idx=2 ;;
+    esac
+
+    menu_select selected_idx "${update_options[@]}"
+    local result=$?
+    [ $result -ne $NAV_CONTINUE ] && return $result
+
+    case $selected_idx in
+        0)
+            DOCKER_AUTO_UPDATE="CHECK"
+            echo ""
+            echo -e "  ${GREEN}✓${NC} Will check for updates and notify on boot"
+            ;;
+        1)
+            DOCKER_AUTO_UPDATE="YES"
+            echo ""
+            echo -e "  ${GREEN}✓${NC} Will auto-update Docker image on boot"
+            ;;
+        2)
+            DOCKER_AUTO_UPDATE="NO"
+            echo ""
+            echo -e "  ${GREEN}✓${NC} Will never check for updates"
+            ;;
+    esac
+
+    echo -e "\n${DIM}Users can override this at deployment via ONEAPP_DOCKER_AUTO_UPDATE context variable${NC}"
+
+    sleep 0.5
+    return $NAV_CONTINUE
+}
+
 step_summary() {
     clear_screen
     print_header
-    print_step 11 $TOTAL_STEPS "Summary"
+    print_step 12 $TOTAL_STEPS "Summary"
 
     # Get display name for BASE_OS from OS_LIST
     local base_os_display="$BASE_OS"
@@ -1663,6 +1722,11 @@ step_summary() {
     [ "$AUTOLOGIN_ENABLED" = "false" ] && autologin_display="Disabled (user: ${LOGIN_USERNAME}, password: ****)"
     echo -e "${CYAN}SSH Key:${NC}             $ssh_key_display (${SSH_PUBLIC_KEY:0:30}...)"
     echo -e "${CYAN}Console Login:${NC}       $autologin_display"
+    # Docker update mode display
+    local update_mode_display="Check & notify"
+    [ "$DOCKER_AUTO_UPDATE" = "YES" ] && update_mode_display="Auto-update on boot"
+    [ "$DOCKER_AUTO_UPDATE" = "NO" ] && update_mode_display="Never check"
+    echo -e "${CYAN}Docker Updates:${NC}      $update_mode_display"
     echo ""
 
     echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
@@ -2420,6 +2484,9 @@ SSH_PUBLIC_KEY="${SSH_PUBLIC_KEY}"
 AUTOLOGIN_ENABLED="${AUTOLOGIN_ENABLED:-true}"
 LOGIN_USERNAME="${LOGIN_USERNAME:-root}"
 ROOT_PASSWORD="${ROOT_PASSWORD}"
+
+# Docker Update Configuration
+DOCKER_AUTO_UPDATE="${DOCKER_AUTO_UPDATE:-CHECK}"
 ENVEOF
 
     if [ -f "${SCRIPT_DIR}/generate-docker-appliance.sh" ]; then
@@ -2738,6 +2805,7 @@ main() {
         "step_vm_config"
         "step_ssh_config"
         "step_login_config"
+        "step_docker_updates"
         "step_summary"
     )
 

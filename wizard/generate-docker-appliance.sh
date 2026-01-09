@@ -127,6 +127,9 @@ AUTOLOGIN_ENABLED="${AUTOLOGIN_ENABLED:-true}"
 LOGIN_USERNAME="${LOGIN_USERNAME:-root}"
 ROOT_PASSWORD="${ROOT_PASSWORD:-opennebula}"
 
+# Docker update mode: CHECK (notify only), YES (auto-update), NO (never check)
+DOCKER_AUTO_UPDATE="${DOCKER_AUTO_UPDATE:-CHECK}"
+
 # Detect OpenNebula version (from installed version or default)
 if command -v onevm &>/dev/null; then
     ONE_VERSION=$(onevm --version 2>/dev/null | grep -oP 'OpenNebula \K[0-9]+\.[0-9]+' || echo "7.0")
@@ -438,6 +441,7 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_CONTAINER_PORTS'    'configure'  'Docker container port mappings'           'O|text'
     'ONEAPP_CONTAINER_ENV'      'configure'  'Docker container environment variables'   'O|text'
     'ONEAPP_CONTAINER_VOLUMES'  'configure'  'Docker container volume mappings'         'O|text'
+    'ONEAPP_DOCKER_AUTO_UPDATE' 'configure'  'Docker update mode (CHECK/YES/NO)'        'O|text'
 )
 
 # Configuration from user input
@@ -448,6 +452,8 @@ DEFAULT_ENV_VARS="$DEFAULT_ENV_VARS"
 DEFAULT_VOLUMES="$DEFAULT_VOLUMES"
 APP_NAME="$APP_NAME"
 APPLIANCE_NAME="$APPLIANCE_NAME"
+DOCKER_AUTO_UPDATE="${DOCKER_AUTO_UPDATE:-CHECK}"
+DOCKER_VERSION_FILE="/opt/one-appliance/.docker_image_digest"
 
 ### Appliance metadata ###############################################
 
@@ -467,6 +473,145 @@ cat >> "$REPO_ROOT/appliances/$APPLIANCE_NAME/appliance.sh" << 'APPLIANCE_BODY'
 service_cleanup()
 {
     :
+}
+
+# Check for Docker image updates
+check_docker_updates()
+{
+    local update_mode="${ONEAPP_DOCKER_AUTO_UPDATE:-$DOCKER_AUTO_UPDATE}"
+
+    if [ "$update_mode" = "NO" ]; then
+        msg info "Docker update check disabled"
+        return 0
+    fi
+
+    msg info "Checking for Docker image updates..."
+
+    # Get current saved digest
+    local current_digest=""
+    if [ -f "$DOCKER_VERSION_FILE" ]; then
+        current_digest=$(cat "$DOCKER_VERSION_FILE")
+    fi
+
+    # Get latest remote digest without pulling the full image
+    local latest_digest
+    latest_digest=$(docker manifest inspect "$DOCKER_IMAGE" 2>/dev/null | \
+                    grep -o '"digest": "sha256:[a-f0-9]*"' | head -1 | \
+                    cut -d'"' -f4) || true
+
+    if [ -z "$latest_digest" ]; then
+        msg warning "Could not check for updates (network issue or private registry)"
+        return 0
+    fi
+
+    # Save current digest if first run
+    if [ -z "$current_digest" ]; then
+        local running_digest
+        running_digest=$(docker inspect "$DOCKER_IMAGE" --format='{{.Id}}' 2>/dev/null) || true
+        if [ -n "$running_digest" ]; then
+            echo "$running_digest" > "$DOCKER_VERSION_FILE"
+            current_digest="$running_digest"
+        fi
+    fi
+
+    if [ "$current_digest" = "$latest_digest" ]; then
+        msg info "Docker image is up to date"
+        return 0
+    fi
+
+    # Update available!
+    case "$update_mode" in
+        YES)
+            msg info "New Docker image version available - auto-updating..."
+            perform_docker_update "$latest_digest"
+            ;;
+        CHECK|*)
+            echo ""
+            echo "════════════════════════════════════════════════════════════════"
+            echo "  🆕 UPDATE AVAILABLE for $APP_NAME"
+            echo "════════════════════════════════════════════════════════════════"
+            echo "  Image: $DOCKER_IMAGE"
+            [ -n "$current_digest" ] && echo "  Current: ${current_digest:0:30}..."
+            echo "  Latest:  ${latest_digest:0:30}..."
+            echo ""
+            echo "  To update, run:  docker-appliance-update"
+            echo "  To auto-update:  Set ONEAPP_DOCKER_AUTO_UPDATE=YES in context"
+            echo "════════════════════════════════════════════════════════════════"
+            echo ""
+            ;;
+    esac
+}
+
+# Perform the Docker image update
+perform_docker_update()
+{
+    local new_digest="$1"
+
+    msg info "Pulling latest image: $DOCKER_IMAGE"
+    if ! docker pull "$DOCKER_IMAGE"; then
+        msg error "Failed to pull image"
+        return 1
+    fi
+
+    msg info "Stopping current container..."
+    docker stop "$DEFAULT_CONTAINER_NAME" 2>/dev/null || true
+
+    msg info "Removing old container..."
+    docker rm "$DEFAULT_CONTAINER_NAME" 2>/dev/null || true
+
+    msg info "Starting updated container..."
+    start_docker_container
+
+    # Save new digest
+    local updated_digest
+    updated_digest=$(docker inspect "$DOCKER_IMAGE" --format='{{.Id}}' 2>/dev/null) || true
+    if [ -n "$updated_digest" ]; then
+        echo "$updated_digest" > "$DOCKER_VERSION_FILE"
+    fi
+
+    msg info "✅ Update complete!"
+}
+
+# Start the Docker container with configured settings
+start_docker_container()
+{
+    local container_name="${ONEAPP_CONTAINER_NAME:-$DEFAULT_CONTAINER_NAME}"
+    local ports="${ONEAPP_CONTAINER_PORTS:-$DEFAULT_PORTS}"
+    local env_vars="${ONEAPP_CONTAINER_ENV:-$DEFAULT_ENV_VARS}"
+    local volumes="${ONEAPP_CONTAINER_VOLUMES:-$DEFAULT_VOLUMES}"
+
+    # Build docker run command
+    local docker_cmd="docker run -d --name $container_name --restart unless-stopped"
+
+    # Add port mappings
+    if [ -n "$ports" ]; then
+        for port in $(echo "$ports" | tr ',' ' '); do
+            docker_cmd="$docker_cmd -p $port"
+        done
+    fi
+
+    # Add environment variables
+    if [ -n "$env_vars" ]; then
+        for env in $(echo "$env_vars" | tr ',' ' '); do
+            docker_cmd="$docker_cmd -e $env"
+        done
+    fi
+
+    # Add volume mappings
+    if [ -n "$volumes" ]; then
+        for vol in $(echo "$volumes" | tr ',' ' '); do
+            # Create host directory if it doesn't exist
+            local host_path=$(echo "$vol" | cut -d: -f1)
+            [ -n "$host_path" ] && mkdir -p "$host_path"
+            docker_cmd="$docker_cmd -v $vol"
+        done
+    fi
+
+    # Add the image
+    docker_cmd="$docker_cmd $DOCKER_IMAGE"
+
+    # Run the container
+    eval $docker_cmd
 }
 
 service_install()
@@ -521,6 +666,86 @@ service_install()
     # Configure console auto-login
     configure_console_autologin
 
+    # Create the docker-appliance-update helper script
+    cat > /usr/local/bin/docker-appliance-update << 'UPDATE_SCRIPT_EOF'
+#!/bin/bash
+# Docker Appliance Update Script
+
+echo ""
+echo "🔄 Updating Docker image..."
+echo ""
+
+# Source the appliance config
+DOCKER_IMAGE="$DOCKER_IMAGE"
+DEFAULT_CONTAINER_NAME="$DEFAULT_CONTAINER_NAME"
+DEFAULT_PORTS="$DEFAULT_PORTS"
+DEFAULT_ENV_VARS="$DEFAULT_ENV_VARS"
+DEFAULT_VOLUMES="$DEFAULT_VOLUMES"
+DOCKER_VERSION_FILE="/opt/one-appliance/.docker_image_digest"
+
+# Pull latest image
+echo "Pulling latest image: \$DOCKER_IMAGE"
+if ! docker pull "\$DOCKER_IMAGE"; then
+    echo "❌ Failed to pull image"
+    exit 1
+fi
+
+# Stop current container
+echo "Stopping current container..."
+docker stop "\$DEFAULT_CONTAINER_NAME" 2>/dev/null || true
+
+# Remove old container
+echo "Removing old container..."
+docker rm "\$DEFAULT_CONTAINER_NAME" 2>/dev/null || true
+
+# Build and run new container
+echo "Starting updated container..."
+docker_cmd="docker run -d --name \$DEFAULT_CONTAINER_NAME --restart unless-stopped"
+
+# Add port mappings
+if [ -n "\$DEFAULT_PORTS" ]; then
+    for port in \$(echo "\$DEFAULT_PORTS" | tr ',' ' '); do
+        docker_cmd="\$docker_cmd -p \$port"
+    done
+fi
+
+# Add environment variables
+if [ -n "\$DEFAULT_ENV_VARS" ]; then
+    for env in \$(echo "\$DEFAULT_ENV_VARS" | tr ',' ' '); do
+        docker_cmd="\$docker_cmd -e \$env"
+    done
+fi
+
+# Add volume mappings
+if [ -n "\$DEFAULT_VOLUMES" ]; then
+    for vol in \$(echo "\$DEFAULT_VOLUMES" | tr ',' ' '); do
+        host_path=\$(echo "\$vol" | cut -d: -f1)
+        [ -n "\$host_path" ] && mkdir -p "\$host_path"
+        docker_cmd="\$docker_cmd -v \$vol"
+    done
+fi
+
+docker_cmd="\$docker_cmd \$DOCKER_IMAGE"
+eval \$docker_cmd
+
+# Save new digest
+mkdir -p "\$(dirname "\$DOCKER_VERSION_FILE")"
+docker inspect "\$DOCKER_IMAGE" --format='{{.Id}}' > "\$DOCKER_VERSION_FILE" 2>/dev/null
+
+echo ""
+echo "✅ Update complete!"
+echo ""
+docker ps --filter "name=\$DEFAULT_CONTAINER_NAME"
+UPDATE_SCRIPT_EOF
+
+    chmod +x /usr/local/bin/docker-appliance-update
+
+    # Create directory for version tracking
+    mkdir -p /opt/one-appliance
+
+    # Save initial image digest
+    docker inspect "$DOCKER_IMAGE" --format='{{.Id}}' > "$DOCKER_VERSION_FILE" 2>/dev/null || true
+
     # Create welcome message
     cat > /etc/profile.d/99-${APPLIANCE_NAME}-welcome.sh << WELCOME_EOF
 #!/bin/bash
@@ -540,6 +765,7 @@ echo "  Commands:"
 echo "    docker ps                    - Show running containers"
 echo "    docker logs $DEFAULT_CONTAINER_NAME   - View container logs"
 echo "    docker exec -it $DEFAULT_CONTAINER_NAME /bin/bash - Access container"
+echo "    docker-appliance-update      - Update to latest image version"
 echo ""
 echo "  Access Methods:"
 echo "    SSH: Enabled (password: 'opennebula' + context keys)"
@@ -740,6 +966,10 @@ service_configure()
     fi
 
     msg info "Docker is running"
+
+    # Check for Docker image updates
+    check_docker_updates
+
     return 0
 }
 
