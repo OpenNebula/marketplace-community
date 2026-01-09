@@ -43,28 +43,49 @@ jobs:
 
       - name: Trigger Jenkins
         env:
+          # PASS DATA AS ENV VARS TO PREVENT SHELL INJECTION
+          PR_BODY: ${{ github.event.pull_request.body }}
           VPN_SERVER: ${{ secrets.VPN_SERVER }}
           JENKINS_URL: ${{ secrets.JENKINS_URL }}
           ONE_DISTRO_TOKEN: ${{ secrets.ONE_DISTRO_TOKEN }}
           JENKINS_USER: ${{ secrets.JENKINS_USER }}
           JENKINS_TOKEN: ${{ secrets.JENKINS_TOKEN }}
         run: |
-          # Extract app name from PR body
-          app_name=$(echo "${{ github.event.pull_request.body }}" | grep -oP '(?<=^:app: )[^\r]*' || true)
-          echo "Extracted app name: $app_name"
+          # 1. Extract app name
+          # We use 'tr' to delete carriage returns and newlines to prevent breakage
+          app_name=$(echo "$PR_BODY" | grep -oP '(?<=^:app: ).*' | tr -d '\r\n' || true)
+          echo "Extracted app name: '$app_name'"
 
-          # Define Jenkins params
+          # 2. Validate app_name was found
+          if [[ -z "$app_name" ]]; then
+            echo "::error::Could not extract :app: from PR body."
+            exit 1
+          fi
+
+          # 3. Define Jenkins params
           METADATA_PATH="appliances/${app_name}/metadata.yaml"
-          DISTRO=$(yq '.[":app"][":name"]' $METADATA_PATH)
-          REQUIREMENTS=$(yq '.[":app"][":os"][":base"]' $METADATA_PATH)
+          
+          # Check if metadata file actually exists to prevent yq errors
+          if [[ ! -f "$METADATA_PATH" ]]; then
+            echo "::error::Metadata file not found at $METADATA_PATH"
+            ls -R appliances/ # Debugging helper
+            exit 1
+          fi
 
-          # Start Jenkins job
-          ssh -i ~/.ssh/id_rsa gitact@$VPN_SERVER -p 2222 "curl -X POST $JENKINS_URL/job/one-community-distro/buildWithParameters?token=$ONE_DISTRO_TOKEN \
+          DISTRO=$(yq '.[":app"][":name"]' "$METADATA_PATH")
+          REQUIREMENTS=$(yq '.[":app"][":os"][":base"]' "$METADATA_PATH")
+          
+          echo "Distro: $DISTRO"
+          echo "Requirements: $REQUIREMENTS"
+
+          # 4. Start Jenkins job
+          # Using -g (globoff) in curl prevents issues with brackets [] in URLs
+          ssh -i ~/.ssh/id_rsa gitact@$VPN_SERVER -p 2222 "curl -g -X POST \"$JENKINS_URL/job/one-community-distro/buildWithParameters?token=$ONE_DISTRO_TOKEN\" \
             --user $JENKINS_USER:$JENKINS_TOKEN \
-            --data DISTROS=$DISTRO \
-            --data REQUIREMENTS=$REQUIREMENTS \
-            --data RUN_CONTEXT=true \
-            --data PR_NUMBER=${{ github.event.pull_request.number }}"
+            --data-urlencode \"DISTROS=$DISTRO\" \
+            --data-urlencode \"REQUIREMENTS=$REQUIREMENTS\" \
+            --data \"RUN_CONTEXT=true\" \
+            --data \"PR_NUMBER=${{ github.event.pull_request.number }}\""
             
       - name: Update labels
         run: |
