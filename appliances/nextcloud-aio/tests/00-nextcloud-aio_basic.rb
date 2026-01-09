@@ -61,8 +61,8 @@ describe 'Appliance Certification' do
 
     # Check if the Nextcloud AIO container is running
     it 'nextcloud aio container is running' do
-        # The container name is nextcloud-suse-container which creates nextcloud-aio-mastercontainer
-        cmd = "docker ps | grep -E 'nextcloud-suse-container|nextcloud-aio'"
+        # The container name is nextcloud-aio-mastercontainer (required by Nextcloud AIO)
+        cmd = "docker ps | grep -E 'nextcloud-aio-mastercontainer|nextcloud-aio'"
         start_time = Time.now
         timeout = 300  # 5 minutes - Nextcloud AIO takes time to initialize
 

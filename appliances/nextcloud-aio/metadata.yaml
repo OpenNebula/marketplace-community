@@ -1,6 +1,6 @@
 ---
 :app:
-  :name: nextcloud-suse # name used to make the app with the makefile
+  :name: nextcloud-aio # name used to make the app with the makefile
   :type: service # there are service (complex apps) and distro (base apps)
   :os:
     :type: linux # linux, freebsd or windows
@@ -12,7 +12,7 @@
       # Only CONTAINER_NAME is passed via context for testing
       # Other params (PORTS, ENV, VOLUMES) use defaults from appliance.sh
       # to avoid OpenNebula template parse errors with special characters
-      :CONTAINER_NAME: 'nextcloud-suse-container'
+      :CONTAINER_NAME: 'nextcloud-aio-mastercontainer'
 
 :one:
   # reference template for running the virtual appliance.
