@@ -205,6 +205,16 @@ get_dockerhub_token() {
         2>/dev/null | grep -o '"token":"[^"]*"' | cut -d'"' -f4
 }
 
+# Get GitHub Container Registry (ghcr.io) token for anonymous access
+# Args: $1=repository (e.g., home-assistant/home-assistant)
+# Returns: token string or empty on failure
+get_ghcr_token() {
+    local repo="$1"
+    curl -s --connect-timeout 3 --max-time 5 \
+        "https://ghcr.io/token?scope=repository:${repo}:pull" \
+        2>/dev/null | grep -o '"token":"[^"]*"' | cut -d'"' -f4
+}
+
 # Cache for manifest - stored in temp file to persist across subshells
 MANIFEST_CACHE_FILE="/tmp/wizard_manifest_cache_$$"
 MANIFEST_CACHE_IMAGE_FILE="/tmp/wizard_manifest_image_$$"
@@ -245,6 +255,22 @@ fetch_docker_manifest() {
                 -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
                 -H "Accept: application/vnd.oci.image.index.v1+json" \
                 "https://registry-1.docker.io/v2/${PARSED_REPO}/manifests/${PARSED_TAG}" 2>/dev/null)
+            MANIFEST_HTTP_CODE=$?
+        else
+            MANIFEST_HTTP_CODE=1
+        fi
+    elif [[ "$PARSED_REGISTRY" == "ghcr.io" ]]; then
+        # GitHub Container Registry - need token for anonymous access
+        local token
+        token=$(get_ghcr_token "$PARSED_REPO")
+
+        if [ -n "$token" ]; then
+            manifest=$(curl -s --connect-timeout 3 --max-time 10 \
+                -H "Authorization: Bearer $token" \
+                -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+                -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+                -H "Accept: application/vnd.oci.image.index.v1+json" \
+                "https://ghcr.io/v2/${PARSED_REPO}/manifests/${PARSED_TAG}" 2>/dev/null)
             MANIFEST_HTTP_CODE=$?
         else
             MANIFEST_HTTP_CODE=1
@@ -297,10 +323,10 @@ check_docker_image_arch() {
         return 2  # Other error
     fi
 
-    # Check if the architecture is in the manifest
-    if echo "$manifest" | grep -q "\"architecture\":\"$docker_arch\""; then
+    # Check if the architecture is in the manifest (handle optional whitespace in JSON)
+    if echo "$manifest" | grep -qE "\"architecture\"[[:space:]]*:[[:space:]]*\"$docker_arch\""; then
         return 0  # Supported
-    elif echo "$manifest" | grep -q "\"architecture\""; then
+    elif echo "$manifest" | grep -qE "\"architecture\"[[:space:]]*:"; then
         return 1  # Has architectures but not the one we want
     else
         return 2  # Unknown - can't determine (legacy manifest)
@@ -1832,6 +1858,7 @@ check_existing_resources() {
 
 # Wait for VM to be running and get its IP
 # Args: vm_id, max_wait_seconds
+# Returns: 0=running, 1=timeout, 2=failed
 wait_for_vm_running() {
     local vm_id="$1"
     local max_wait="${2:-120}"
@@ -1840,6 +1867,8 @@ wait_for_vm_running() {
     local state=""
     local state_str=""
     local lcm_state=""
+    local lcm_state_str=""
+    local vm_error=""
 
     echo ""
     echo -e "  ${WHITE}Waiting for VM to start...${NC}"
@@ -1850,21 +1879,58 @@ wait_for_vm_running() {
         if [ $((elapsed % 10)) -eq 0 ]; then
             state=$(onevm show "$vm_id" -x 2>/dev/null | grep '<STATE>' | sed 's/.*<STATE>\([0-9]*\)<\/STATE>.*/\1/' | head -1)
             state_str=$(onevm show "$vm_id" -x 2>/dev/null | grep '<STATE_STR>' | sed 's/.*<STATE_STR>\([^<]*\)<\/STATE_STR>.*/\1/' | head -1)
+            lcm_state=$(onevm show "$vm_id" -x 2>/dev/null | grep '<LCM_STATE>' | sed 's/.*<LCM_STATE>\([0-9]*\)<\/LCM_STATE>.*/\1/' | head -1)
+            lcm_state_str=$(onevm show "$vm_id" -x 2>/dev/null | grep '<LCM_STATE_STR>' | sed 's/.*<LCM_STATE_STR>\([^<]*\)<\/LCM_STATE_STR>.*/\1/' | head -1)
 
-            # State 3 = ACTIVE, LCM_STATE 3 = RUNNING
+            # State 7 = FAILED - immediately stop and report error
+            if [ "$state" = "7" ]; then
+                printf "\r${CLEAR_LINE}"
+                show_cursor
+                echo -e "  ${RED}✗ VM failed to start${NC}"
+                # Get the error message from VM log
+                vm_error=$(onevm show "$vm_id" 2>/dev/null | grep -A1 "SCHED_MESSAGE\|USER_TEMPLATE/ERROR" | grep -v "^--$" | head -5)
+                if [ -z "$vm_error" ]; then
+                    vm_error=$(onevm log "$vm_id" 2>/dev/null | tail -5)
+                fi
+                if [ -n "$vm_error" ]; then
+                    echo ""
+                    echo -e "  ${RED}Error:${NC}"
+                    echo "$vm_error" | sed 's/^/    /'
+                fi
+                return 2
+            fi
+
+            # State 3 = ACTIVE, check LCM states
             if [ "$state" = "3" ]; then
-                lcm_state=$(onevm show "$vm_id" -x 2>/dev/null | grep '<LCM_STATE>' | sed 's/.*<LCM_STATE>\([0-9]*\)<\/LCM_STATE>.*/\1/' | head -1)
+                # LCM_STATE 3 = RUNNING
                 if [ "$lcm_state" = "3" ]; then
                     printf "\r${CLEAR_LINE}"
                     echo -e "  ${GREEN}✓${NC} VM is running!"
                     show_cursor
                     return 0
                 fi
+                # LCM_STATE 36 = FAILURE - boot failed
+                if [ "$lcm_state" = "36" ]; then
+                    printf "\r${CLEAR_LINE}"
+                    show_cursor
+                    echo -e "  ${RED}✗ VM boot failed${NC}"
+                    vm_error=$(onevm show "$vm_id" 2>/dev/null | grep -A1 "SCHED_MESSAGE\|ERROR" | head -3)
+                    if [ -n "$vm_error" ]; then
+                        echo ""
+                        echo -e "  ${RED}Error:${NC}"
+                        echo "$vm_error" | sed 's/^/    /'
+                    fi
+                    return 2
+                fi
             fi
         fi
 
-        # Show current state with fast spinner
-        printf "\r  ${CYAN}${SPINNER_FRAMES[$spin_idx]}${NC} State: %-15s" "${state_str:-pending}"
+        # Show current state with fast spinner (include LCM state if active)
+        local display_state="${state_str:-pending}"
+        if [ "$state" = "3" ] && [ -n "$lcm_state_str" ]; then
+            display_state="${lcm_state_str}"
+        fi
+        printf "\r  ${CYAN}${SPINNER_FRAMES[$spin_idx]}${NC} State: %-20s" "$display_state"
         spin_idx=$(( (spin_idx + 1) % ${#SPINNER_FRAMES[@]} ))
 
         sleep 0.2
@@ -2160,7 +2226,12 @@ ${arch_config}"
     echo ""
     echo -e "  ${WHITE}[4/4] Starting VM...${NC}"
 
-    if wait_for_vm_running "$vm_id" 1500; then  # 5 minutes (1500 iterations at 0.2s each)
+    local wait_result
+    wait_for_vm_running "$vm_id" 1500  # 5 minutes (1500 iterations at 0.2s each)
+    wait_result=$?
+
+    if [ $wait_result -eq 0 ]; then
+        # Success - VM is running
         # Get VM IP
         sleep 3  # Wait for network to initialize
         local vm_ip
@@ -2199,8 +2270,36 @@ ${arch_config}"
             echo -e "  ${DIM}SSH: ssh root@${vm_ip}${NC}"
         fi
         echo ""
+    elif [ $wait_result -eq 2 ]; then
+        # VM failed - show error and cleanup options
+        echo ""
+        echo -e "  ${DIM}┌─ onevm show ${vm_id}${NC}"
+        onevm show "$vm_id" 2>/dev/null | head -25 | sed 's/^/  │ /'
+        echo -e "  ${DIM}└─${NC}"
+
+        echo ""
+        echo -e "  ${RED}════════════════════════════════════════════════════════════════${NC}"
+        echo -e "  ${RED}✗ VM deployment failed${NC}"
+        echo -e "  ${RED}════════════════════════════════════════════════════════════════${NC}"
+
+        local sunstone_url
+        sunstone_url=$(get_sunstone_url)
+        echo ""
+        echo -e "  ${WHITE}Check VM details in Sunstone:${NC}"
+        echo -e "    ${CYAN}${sunstone_url}/#vms-tab/${vm_id}${NC}"
+        echo ""
+        echo -e "  ${WHITE}Common causes:${NC}"
+        echo -e "    ${DIM}• Not enough space in datastore - free up disk space${NC}"
+        echo -e "    ${DIM}• Insufficient resources (CPU/RAM) on host${NC}"
+        echo -e "    ${DIM}• Image transfer or network issues${NC}"
+        echo ""
+        echo -e "  ${WHITE}To cleanup and retry:${NC}"
+        echo -e "    ${CYAN}onevm terminate --hard ${vm_id}${NC}"
+        echo ""
+
+        show_vm_access_info "" "$image_id" "$template_id"
     else
-        # VM didn't start in time, show details anyway
+        # Timeout - VM didn't start in time, show details anyway
         echo ""
         echo -e "  ${DIM}┌─ onevm show ${vm_id}${NC}"
         onevm show "$vm_id" 2>/dev/null | head -20 | sed 's/^/  │ /'

@@ -122,6 +122,11 @@ VM_VCPU="${VM_VCPU:-2}"
 VM_MEMORY="${VM_MEMORY:-2048}"
 VM_DISK_SIZE="${VM_DISK_SIZE:-12288}"  # 12GB - must be >= base image size (10GB)
 
+# Login configuration defaults
+AUTOLOGIN_ENABLED="${AUTOLOGIN_ENABLED:-true}"
+LOGIN_USERNAME="${LOGIN_USERNAME:-root}"
+ROOT_PASSWORD="${ROOT_PASSWORD:-opennebula}"
+
 # Detect OpenNebula version (from installed version or default)
 if command -v onevm &>/dev/null; then
     ONE_VERSION=$(onevm --version 2>/dev/null | grep -oP 'OpenNebula \K[0-9]+\.[0-9]+' || echo "7.0")
@@ -469,25 +474,39 @@ service_install()
     # Detect OS family
     if [ -f /etc/os-release ]; then
         . /etc/os-release
-        OS_FAMILY="$ID"
+        OS_FAMILY=""
+        case "$ID" in
+            ubuntu|debian|linuxmint)
+                OS_FAMILY="debian"
+                ;;
+            almalinux|rocky|centos|rhel|fedora)
+                OS_FAMILY="rhel"
+                ;;
+            opensuse*|suse|sles)
+                OS_FAMILY="suse"
+                ;;
+            *)
+                msg error "Unsupported OS: $ID"
+                return 1
+                ;;
+        esac
+    else
+        msg error "Cannot detect OS - /etc/os-release not found"
+        return 1
     fi
 
-    msg info "Detected OS: $OS_FAMILY"
+    msg info "Detected OS: $ID $VERSION_ID (family: $OS_FAMILY)"
 
     # Install Docker based on OS family
     case "$OS_FAMILY" in
-        ubuntu|debian)
+        debian)
             install_docker_debian
             ;;
-        almalinux|rocky|rhel|centos|fedora)
+        rhel)
             install_docker_rhel
             ;;
-        opensuse*|sles)
+        suse)
             install_docker_suse
-            ;;
-        *)
-            msg error "Unsupported OS: $OS_FAMILY"
-            return 1
             ;;
     esac
 
@@ -542,15 +561,31 @@ WELCOME_EOF
 install_docker_debian()
 {
     export DEBIAN_FRONTEND=noninteractive
+
     apt-get update
     apt-get upgrade -y
-    apt-get install -y ca-certificates curl gnupg
 
+    # Install generic kernel for VNC console support and proper initramfs
+    msg info "Installing generic kernel for VNC console support"
+    apt-get install -y linux-image-generic || true
+
+    if [ -f /etc/default/grub ]; then
+        sed -i 's/^GRUB_DEFAULT=.*/GRUB_DEFAULT=0/' /etc/default/grub
+        update-grub
+    fi
+
+    # Install Docker
+    apt-get install -y ca-certificates curl gnupg
     install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/$ID/gpg -o /etc/apt/keyrings/docker.asc
+
+    # Handle Linux Mint by using Ubuntu repos
+    local DOCKER_DISTRO="$ID"
+    [ "$ID" = "linuxmint" ] && DOCKER_DISTRO="ubuntu"
+
+    curl -fsSL "https://download.docker.com/linux/${DOCKER_DISTRO}/gpg" -o /etc/apt/keyrings/docker.asc
     chmod a+r /etc/apt/keyrings/docker.asc
 
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/$ID $VERSION_CODENAME stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/${DOCKER_DISTRO} $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
 
     apt-get update
     apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -589,25 +624,84 @@ install_docker_suse()
 
 configure_console_autologin()
 {
-    # Configure auto-login on console
+    msg info "Configuring VNC and serial console access..."
+
+    # Create TTY devices at boot (fallback for kernels without VT support)
+    cat > /etc/systemd/system/create-tty-devices.service << 'TTY_SERVICE_EOF'
+[Unit]
+Description=Create TTY device nodes for KVM kernel
+DefaultDependencies=no
+Before=getty@tty1.service
+After=systemd-tmpfiles-setup-dev.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'for i in 0 1 2 3 4 5 6; do [ -e /dev/tty$i ] || mknod /dev/tty$i c 4 $i; done'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+TTY_SERVICE_EOF
+    systemctl enable create-tty-devices.service
+
+    # Configure console login based on AUTOLOGIN_ENABLED setting
     mkdir -p /etc/systemd/system/getty@tty1.service.d
-    cat > /etc/systemd/system/getty@tty1.service.d/override.conf << 'CONSOLE_EOF'
+
+    if [ "${AUTOLOGIN_ENABLED}" = "true" ]; then
+        msg info "Configuring autologin for user: ${LOGIN_USERNAME}"
+        cat > /etc/systemd/system/getty@tty1.service.d/override.conf << CONSOLE_EOF
+[Unit]
+# Remove ConditionPathExists to avoid skipping on KVM kernels
+ConditionPathExists=
+
 [Service]
 ExecStart=
-ExecStart=-/sbin/agetty --noissue --autologin root %I \$TERM
+ExecStart=-/sbin/agetty --noissue --autologin ${LOGIN_USERNAME} %I \$TERM
 Type=idle
 CONSOLE_EOF
+    else
+        msg info "Configuring password-based login for user: ${LOGIN_USERNAME}"
+        cat > /etc/systemd/system/getty@tty1.service.d/override.conf << 'CONSOLE_EOF'
+[Unit]
+# Remove ConditionPathExists to avoid skipping on KVM kernels
+ConditionPathExists=
 
-    # Configure serial console
-    mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
-    cat > /etc/systemd/system/serial-getty@ttyS0.service.d/override.conf << 'SERIAL_EOF'
 [Service]
 ExecStart=
-ExecStart=-/sbin/agetty --noissue --autologin root %I 115200,38400,9600 vt102
+ExecStart=-/sbin/agetty --noissue %I $TERM
+Type=idle
+CONSOLE_EOF
+    fi
+
+    # Configure serial console (PRIMARY console for cloud VMs)
+    mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
+
+    if [ "${AUTOLOGIN_ENABLED}" = "true" ]; then
+        cat > /etc/systemd/system/serial-getty@ttyS0.service.d/override.conf << SERIAL_EOF
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --noissue --autologin ${LOGIN_USERNAME} %I 115200,38400,9600 vt102
 Type=idle
 SERIAL_EOF
+    else
+        cat > /etc/systemd/system/serial-getty@ttyS0.service.d/override.conf << 'SERIAL_EOF'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --noissue %I 115200,38400,9600 vt102
+Type=idle
+SERIAL_EOF
+    fi
 
-    echo 'root:opennebula' | chpasswd
+    # Set user password
+    if [ -n "${ROOT_PASSWORD}" ]; then
+        msg info "Setting password for ${LOGIN_USERNAME}"
+        echo "${LOGIN_USERNAME}:${ROOT_PASSWORD}" | chpasswd
+    else
+        # Default password if none specified
+        echo "${LOGIN_USERNAME}:opennebula" | chpasswd
+    fi
+
+    # Enable getty services
     systemctl enable getty@tty1.service serial-getty@ttyS0.service
 }
 
