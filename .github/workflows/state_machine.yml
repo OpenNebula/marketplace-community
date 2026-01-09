@@ -43,7 +43,6 @@ jobs:
 
       - name: Trigger Jenkins
         env:
-          # PASS DATA AS ENV VARS TO PREVENT SHELL INJECTION
           PR_BODY: ${{ github.event.pull_request.body }}
           VPN_SERVER: ${{ secrets.VPN_SERVER }}
           JENKINS_URL: ${{ secrets.JENKINS_URL }}
