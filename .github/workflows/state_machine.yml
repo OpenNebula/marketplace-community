@@ -44,6 +44,7 @@ jobs:
       - name: Trigger Jenkins
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           VPN_SERVER: ${{ secrets.VPN_SERVER }}
           JENKINS_URL: ${{ secrets.JENKINS_URL }}
           JENKINS_USER: ${{ secrets.JENKINS_USER }}
@@ -71,13 +72,14 @@ jobs:
           echo "  App: $app_name"
           echo "  Distro: [$DISTRO]"
           echo "  Requirements: [$REQUIREMENTS]"
-          
+          echo "  PR Number: $PR_NUMBER"
+
           ssh -i ~/.ssh/id_rsa gitact@$VPN_SERVER -p 2222 "curl -v --fail -g -X POST \"$JENKINS_URL/job/one-community-distro/buildWithParameters\" \
             --user $JENKINS_USER:$JENKINS_TOKEN \
             --data-urlencode \"DISTROS=$DISTRO\" \
             --data-urlencode \"REQUIREMENTS=$REQUIREMENTS\" \
             --data \"RUN_CONTEXT=true\" \
-            --data \"PR_NUMBER=104\""
+            --data \"PR_NUMBER=$PR_NUMBER\""
             
       - name: Update labels
         run: |
