@@ -65,8 +65,8 @@ jobs:
             exit 1
           fi
 
-          DISTRO=$(yq '.[":app"][":name"]' "$METADATA_PATH" | tr -d '\r\n')
-          REQUIREMENTS=$(yq '.[":app"][":os"][":base"]' "$METADATA_PATH" | tr -d '\r\n')
+          DISTRO=$(yq '.[":app"][":name"]' "$METADATA_PATH" | tr -d '[]"\r\n')
+          REQUIREMENTS=$(yq '.[":app"][":os"][":base"]' "$METADATA_PATH" | tr -d '[]"\r\n')
 
           echo "Triggering build for:"
           echo "  App: $app_name"
