@@ -14,7 +14,7 @@ build {
 }
 
 # Build VM image
-source "qemu" "nextcloud-suse" {
+source "qemu" "nextcloud-aio" {
   cpus        = 2
   memory      = 2048
   accelerator = "kvm"
@@ -51,7 +51,7 @@ source "qemu" "nextcloud-suse" {
 }
 
 build {
-  sources = ["source.qemu.nextcloud-suse"]
+  sources = ["source.qemu.nextcloud-aio"]
 
   # revert insecure ssh options done by context start_script
   provisioner "shell" {
@@ -85,7 +85,7 @@ build {
     destination = "/etc/one-appliance/service"
   }
   provisioner "file" {
-    sources     = ["../../appliances/nextcloud-suse/appliance.sh"]
+    sources     = ["../../appliances/nextcloud-aio/appliance.sh"]
     destination = "/etc/one-appliance/service.d/"
   }
 

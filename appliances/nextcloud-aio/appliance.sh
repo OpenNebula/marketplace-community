@@ -24,15 +24,15 @@ DEFAULT_PORTS="80:80,8080:8080,8443:8443"
 DEFAULT_ENV_VARS="SKIP_DOMAIN_VALIDATION=true"
 DEFAULT_VOLUMES="/var/run/docker.sock:/var/run/docker.sock:ro,nextcloud_aio_mastercontainer:/mnt/docker-aio-config"
 APP_NAME="Nextcloud All-in-One"
-APPLIANCE_NAME="nextcloud-suse"
+APPLIANCE_NAME="nextcloud-aio"
 
 ### Appliance metadata ###############################################
 
-ONE_SERVICE_NAME='Nextcloud SUSE'
+ONE_SERVICE_NAME='Nextcloud All-in-One'
 ONE_SERVICE_VERSION=   #latest
 ONE_SERVICE_BUILD=$(date +%s)
-ONE_SERVICE_SHORT_DESCRIPTION='Nextcloud SUSE Docker Container Appliance'
-ONE_SERVICE_DESCRIPTION='Nextcloud SUSE running in Docker container'
+ONE_SERVICE_SHORT_DESCRIPTION='Nextcloud All-in-One Docker Container Appliance'
+ONE_SERVICE_DESCRIPTION='Nextcloud All-in-One running in Docker container'
 ONE_SERVICE_RECONFIGURABLE=true
 
 ### Appliance functions ##############################################

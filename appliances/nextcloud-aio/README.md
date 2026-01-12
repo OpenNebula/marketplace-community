@@ -6,12 +6,12 @@
 
 1. **Export from Marketplace:**
    ```bash
-   onemarketapp export 'Nextcloud All-in-One' nextcloud-suse --datastore default
+   onemarketapp export 'Nextcloud All-in-One' nextcloud-aio --datastore default
    ```
 
 2. **Instantiate the template:**
    ```bash
-   onetemplate instantiate nextcloud-suse
+   onetemplate instantiate nextcloud-aio
    ```
 
 3. **Attach network:**
