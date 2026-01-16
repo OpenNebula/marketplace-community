@@ -29,8 +29,8 @@ description: |-
   - Web: Nextcloud All-in-One interface at http://VM_IP:8080
 
   **Documentation:**
-  - OpenNebula Appliance Guide: https://github.com/OpenNebula/marketplace-community/blob/master/appliances/nextcloud-aio/README.md
-  - Nextcloud All-in-One Website: https://nextcloud.com/all-in-one/
+  - [OpenNebula Appliance Guide](https://github.com/OpenNebula/marketplace-community/blob/master/appliances/nextcloud-aio/README.md)
+  - [Nextcloud All-in-One Website](https://nextcloud.com/all-in-one/)
 
 short_description: Nextcloud All-in-One with VNC access and SSH key auth
 tags:
