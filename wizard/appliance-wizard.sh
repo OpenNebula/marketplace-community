@@ -1,14 +1,16 @@
 #!/bin/bash
 #
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  OpenNebula Community Marketplace - Appliance Creation Wizard             ║
-# ║  Interactive wizard for creating Docker-based appliances                  ║
-# ║  Production-ready with arrow-key navigation and step back/forward support ║
+# ║  OpenNebula Appliance Wizard                                              ║
+# ║  Build production-ready appliances for OpenNebula                         ║
+# ║                                                                           ║
+# ║  • Docker Appliances - Turn any container into a full VM                  ║
+# ║  • LXC Containers - Lightweight Alpine with pre-configured services       ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
 # Author: OpenNebula Community
 # License: Apache 2.0
-# Version: 1.0.0
+# Version: 2.0.0
 #
 
 set -e
@@ -51,7 +53,7 @@ CLEAR_LINE='\033[2K'
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Version info
-WIZARD_VERSION="1.0.0"
+WIZARD_VERSION="2.0.0"
 WIZARD_CODENAME="Nebula"
 
 # Script directory (wizard/ is at repo root level)
@@ -88,6 +90,424 @@ ROOT_PASSWORD=""         # Password when autologin is disabled
 
 # Docker update mode: CHECK (notify only), YES (auto-update), NO (never check)
 DOCKER_AUTO_UPDATE="CHECK"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LXC CONFIGURATION (Added for LXC container support)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Appliance type: "docker" or "lxc"
+APPLIANCE_TYPE="docker"
+
+# LXC-specific variables
+LXC_APPLICATION=""
+LXC_PACKAGES=""
+LXC_PORTS=""
+LXC_SETUP_CMD=""
+CONTEXT_MODE="auto"  # "auto", "context", "contextless"
+
+# LXC Application Catalog
+# Format: app_id="Display Name|packages|ports|setup_function"
+# Setup functions are defined below and called during appliance build
+declare -A LXC_APP_CATALOG=(
+    ["mqtt"]="Mosquitto MQTT Broker|mosquitto mosquitto-clients|1883|setup_mqtt"
+    ["nodered"]="Node-RED Flow Editor|nodejs npm|1880|setup_nodered"
+    ["nginx"]="Nginx Web Server|nginx nginx-mod-http-lua|80,443|setup_nginx"
+    ["redis"]="Redis In-Memory Database|redis|6379|setup_redis"
+    ["postgres"]="PostgreSQL Database|postgresql postgresql-contrib|5432|setup_postgres"
+    ["influxdb"]="InfluxDB Time Series DB|influxdb|8086|setup_influxdb"
+    ["telegraf"]="Telegraf Metrics Agent|telegraf|8125|setup_telegraf"
+    ["grafana"]="Grafana Dashboard|grafana|3000|setup_grafana"
+    ["homebridge"]="Homebridge HomeKit|nodejs npm avahi avahi-compat-libdns_sd|8581|setup_homebridge"
+    ["zigbee2mqtt"]="Zigbee2MQTT|nodejs npm|8080|setup_zigbee2mqtt"
+    ["netdata"]="Netdata Monitoring|netdata|19999|setup_netdata"
+    ["custom"]="Custom Application|<specify packages>|<specify ports>|setup_custom"
+)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LXC APPLICATION SETUP FUNCTIONS
+# These functions configure each application inside the chroot environment
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Setup Mosquitto MQTT Broker
+setup_app_mqtt() {
+    local rootfs="$1"
+    $SUDO chroot "$rootfs" /bin/sh << 'SETUPEOF'
+# Configure Mosquitto for network access
+cat > /etc/mosquitto/mosquitto.conf << 'MQTTCONF'
+# Mosquitto MQTT Broker Configuration
+listener 1883 0.0.0.0
+allow_anonymous true
+persistence true
+persistence_location /var/lib/mosquitto/
+log_dest file /var/log/mosquitto/mosquitto.log
+MQTTCONF
+
+mkdir -p /var/lib/mosquitto /var/log/mosquitto
+chown mosquitto:mosquitto /var/lib/mosquitto /var/log/mosquitto
+rc-update add mosquitto default
+SETUPEOF
+}
+
+# Setup Node-RED Flow Editor
+setup_app_nodered() {
+    local rootfs="$1"
+    $SUDO chroot "$rootfs" /bin/sh << 'SETUPEOF'
+# Install Node-RED globally
+npm install -g --unsafe-perm node-red
+
+# Create Node-RED user and directories
+adduser -D -h /opt/node-red nodered 2>/dev/null || true
+mkdir -p /opt/node-red/.node-red
+chown -R nodered:nodered /opt/node-red
+
+# Create init script
+cat > /etc/init.d/nodered << 'INITSCRIPT'
+#!/sbin/openrc-run
+name="Node-RED"
+description="Node-RED Flow Editor"
+command="/usr/bin/node-red"
+command_args="--userDir /opt/node-red/.node-red"
+command_user="nodered"
+command_background="yes"
+pidfile="/run/nodered.pid"
+output_log="/var/log/nodered.log"
+error_log="/var/log/nodered.log"
+
+depend() {
+    need net
+    after firewall
+}
+INITSCRIPT
+chmod +x /etc/init.d/nodered
+
+# Create default settings
+cat > /opt/node-red/.node-red/settings.js << 'SETTINGS'
+module.exports = {
+    uiPort: process.env.PORT || 1880,
+    uiHost: "0.0.0.0",
+    flowFile: 'flows.json',
+    userDir: '/opt/node-red/.node-red',
+    logging: {
+        console: { level: "info", metrics: false, audit: false }
+    }
+}
+SETTINGS
+chown -R nodered:nodered /opt/node-red
+
+rc-update add nodered default
+SETUPEOF
+}
+
+# Setup Nginx Web Server
+setup_app_nginx() {
+    local rootfs="$1"
+    $SUDO chroot "$rootfs" /bin/sh << 'SETUPEOF'
+# Create default HTML page
+mkdir -p /var/www/html
+cat > /var/www/html/index.html << 'HTML'
+<!DOCTYPE html>
+<html>
+<head><title>OpenNebula LXC Appliance</title></head>
+<body>
+<h1>Nginx is running!</h1>
+<p>OpenNebula LXC Appliance - Alpine Linux</p>
+</body>
+</html>
+HTML
+
+# Configure nginx for container
+sed -i 's/user nginx;/user root;/' /etc/nginx/nginx.conf 2>/dev/null || true
+rc-update add nginx default
+SETUPEOF
+}
+
+# Setup Redis In-Memory Database
+setup_app_redis() {
+    local rootfs="$1"
+    $SUDO chroot "$rootfs" /bin/sh << 'SETUPEOF'
+# Configure Redis for network access
+sed -i 's/^bind 127.0.0.1/bind 0.0.0.0/' /etc/redis.conf 2>/dev/null || true
+sed -i 's/^protected-mode yes/protected-mode no/' /etc/redis.conf 2>/dev/null || true
+
+# Ensure data directory exists
+mkdir -p /var/lib/redis
+chown redis:redis /var/lib/redis
+
+rc-update add redis default
+SETUPEOF
+}
+
+# Setup PostgreSQL Database
+setup_app_postgres() {
+    local rootfs="$1"
+    $SUDO chroot "$rootfs" /bin/sh << 'SETUPEOF'
+# Create postgres directories
+mkdir -p /var/lib/postgresql/data /run/postgresql
+chown -R postgres:postgres /var/lib/postgresql /run/postgresql
+
+# Initialize database
+su - postgres -c "initdb -D /var/lib/postgresql/data" 2>/dev/null || true
+
+# Configure for network access
+if [ -f /var/lib/postgresql/data/postgresql.conf ]; then
+    echo "listen_addresses = '*'" >> /var/lib/postgresql/data/postgresql.conf
+fi
+if [ -f /var/lib/postgresql/data/pg_hba.conf ]; then
+    echo "host all all 0.0.0.0/0 md5" >> /var/lib/postgresql/data/pg_hba.conf
+fi
+
+rc-update add postgresql default
+SETUPEOF
+}
+
+# Setup InfluxDB Time Series Database
+setup_app_influxdb() {
+    local rootfs="$1"
+    $SUDO chroot "$rootfs" /bin/sh << 'SETUPEOF'
+# Create directories
+mkdir -p /var/lib/influxdb /etc/influxdb
+
+# Basic configuration
+cat > /etc/influxdb/influxdb.conf << 'INFLUXCONF'
+[meta]
+  dir = "/var/lib/influxdb/meta"
+
+[data]
+  dir = "/var/lib/influxdb/data"
+  wal-dir = "/var/lib/influxdb/wal"
+
+[http]
+  enabled = true
+  bind-address = ":8086"
+INFLUXCONF
+
+chown -R influxdb:influxdb /var/lib/influxdb 2>/dev/null || true
+rc-update add influxdb default
+SETUPEOF
+}
+
+# Setup Telegraf Metrics Agent
+setup_app_telegraf() {
+    local rootfs="$1"
+    $SUDO chroot "$rootfs" /bin/sh << 'SETUPEOF'
+# Create basic Telegraf configuration
+mkdir -p /etc/telegraf
+
+cat > /etc/telegraf/telegraf.conf << 'TELEGRAFCONF'
+[global_tags]
+[agent]
+  interval = "10s"
+  round_interval = true
+  metric_batch_size = 1000
+  metric_buffer_limit = 10000
+  collection_jitter = "0s"
+  flush_interval = "10s"
+  flush_jitter = "0s"
+  precision = ""
+  hostname = ""
+  omit_hostname = false
+
+[[outputs.influxdb]]
+  urls = ["http://127.0.0.1:8086"]
+  database = "telegraf"
+
+[[inputs.cpu]]
+  percpu = true
+  totalcpu = true
+  collect_cpu_time = false
+  report_active = false
+
+[[inputs.disk]]
+  ignore_fs = ["tmpfs", "devtmpfs", "devfs", "iso9660", "overlay", "aufs", "squashfs"]
+
+[[inputs.mem]]
+[[inputs.net]]
+[[inputs.processes]]
+[[inputs.system]]
+
+[[inputs.statsd]]
+  protocol = "udp"
+  service_address = ":8125"
+TELEGRAFCONF
+
+rc-update add telegraf default
+SETUPEOF
+}
+
+# Setup Grafana Dashboard
+setup_app_grafana() {
+    local rootfs="$1"
+    $SUDO chroot "$rootfs" /bin/sh << 'SETUPEOF'
+# Create directories
+mkdir -p /var/lib/grafana /var/log/grafana
+
+# Configure Grafana for network access
+if [ -f /etc/grafana.ini ]; then
+    sed -i 's/;http_addr =/http_addr = 0.0.0.0/' /etc/grafana.ini
+fi
+
+chown -R grafana:grafana /var/lib/grafana /var/log/grafana 2>/dev/null || true
+rc-update add grafana default
+SETUPEOF
+}
+
+# Setup Homebridge HomeKit
+setup_app_homebridge() {
+    local rootfs="$1"
+    $SUDO chroot "$rootfs" /bin/sh << 'SETUPEOF'
+# Install Homebridge globally
+npm install -g --unsafe-perm homebridge homebridge-config-ui-x
+
+# Create homebridge user and directories
+adduser -D -h /var/lib/homebridge homebridge 2>/dev/null || true
+mkdir -p /var/lib/homebridge
+
+# Create config
+cat > /var/lib/homebridge/config.json << 'HBCONFIG'
+{
+    "bridge": {
+        "name": "Homebridge",
+        "username": "CC:22:3D:E3:CE:30",
+        "port": 51826,
+        "pin": "031-45-154"
+    },
+    "platforms": [
+        {
+            "platform": "config",
+            "name": "Config",
+            "port": 8581,
+            "auth": "form",
+            "theme": "auto"
+        }
+    ]
+}
+HBCONFIG
+chown -R homebridge:homebridge /var/lib/homebridge
+
+# Create init script
+cat > /etc/init.d/homebridge << 'INITSCRIPT'
+#!/sbin/openrc-run
+name="Homebridge"
+description="Homebridge HomeKit Server"
+command="/usr/bin/homebridge"
+command_args="-U /var/lib/homebridge"
+command_user="homebridge"
+command_background="yes"
+pidfile="/run/homebridge.pid"
+output_log="/var/log/homebridge.log"
+error_log="/var/log/homebridge.log"
+
+depend() {
+    need net
+    after firewall
+}
+INITSCRIPT
+chmod +x /etc/init.d/homebridge
+
+# Enable Avahi for mDNS
+rc-update add avahi-daemon default 2>/dev/null || true
+rc-update add homebridge default
+SETUPEOF
+}
+
+# Setup Zigbee2MQTT
+setup_app_zigbee2mqtt() {
+    local rootfs="$1"
+    $SUDO chroot "$rootfs" /bin/sh << 'SETUPEOF'
+# Install Zigbee2MQTT globally
+npm install -g --unsafe-perm zigbee2mqtt
+
+# Create zigbee2mqtt user and directories
+adduser -D -h /opt/zigbee2mqtt zigbee2mqtt 2>/dev/null || true
+mkdir -p /opt/zigbee2mqtt/data
+
+# Create default configuration
+cat > /opt/zigbee2mqtt/data/configuration.yaml << 'Z2MCONFIG'
+# Zigbee2MQTT Configuration
+homeassistant: false
+permit_join: true
+mqtt:
+  base_topic: zigbee2mqtt
+  server: mqtt://localhost:1883
+serial:
+  # Update this to your Zigbee adapter path
+  port: /dev/ttyUSB0
+  # adapter: ezsp  # Uncomment for EZSP adapters
+frontend:
+  port: 8080
+  host: 0.0.0.0
+advanced:
+  log_level: info
+  log_output:
+    - console
+    - file
+  log_directory: /opt/zigbee2mqtt/data/log
+  network_key: GENERATE
+Z2MCONFIG
+chown -R zigbee2mqtt:zigbee2mqtt /opt/zigbee2mqtt
+
+# Create init script
+cat > /etc/init.d/zigbee2mqtt << 'INITSCRIPT'
+#!/sbin/openrc-run
+name="Zigbee2MQTT"
+description="Zigbee to MQTT bridge"
+command="/usr/bin/zigbee2mqtt"
+command_user="zigbee2mqtt"
+command_background="yes"
+directory="/opt/zigbee2mqtt"
+pidfile="/run/zigbee2mqtt.pid"
+output_log="/var/log/zigbee2mqtt.log"
+error_log="/var/log/zigbee2mqtt.log"
+
+depend() {
+    need net
+    after firewall mosquitto
+}
+INITSCRIPT
+chmod +x /etc/init.d/zigbee2mqtt
+
+rc-update add zigbee2mqtt default
+SETUPEOF
+}
+
+# Setup Netdata Monitoring
+setup_app_netdata() {
+    local rootfs="$1"
+    $SUDO chroot "$rootfs" /bin/sh << 'SETUPEOF'
+# Configure Netdata for network access
+if [ -f /etc/netdata/netdata.conf ]; then
+    sed -i 's/bind to = localhost/bind to = 0.0.0.0/' /etc/netdata/netdata.conf 2>/dev/null || true
+fi
+
+rc-update add netdata default
+SETUPEOF
+}
+
+# Setup Custom Application (placeholder)
+setup_app_custom() {
+    local rootfs="$1"
+    # Custom apps use the LXC_SETUP_CMD variable set by user
+    if [ -n "$LXC_SETUP_CMD" ] && [ "$LXC_SETUP_CMD" != "<specify setup>" ]; then
+        $SUDO chroot "$rootfs" /bin/sh -c "$LXC_SETUP_CMD" 2>/dev/null || true
+    fi
+}
+
+# LXC Base OS options (lightweight, optimized for containers)
+declare -a LXC_OS_LIST_ARM=(
+    "alpine320.aarch64|Alpine Linux 3.20|Minimal - Recommended"
+    "alpine319.aarch64|Alpine Linux 3.19|Minimal"
+)
+
+declare -a LXC_OS_LIST_X86=(
+    "alpine320|Alpine Linux 3.20|Minimal - Recommended"
+    "alpine319|Alpine Linux 3.19|Minimal"
+)
+
+# LXC disk sizes (base|with-app, in MB) - much smaller than Docker
+declare -A LXC_DISK_SIZES=(
+    ["alpine320"]="64|256"
+    ["alpine319"]="64|256"
+)
 
 # Supported base OS options (id|name|category)
 # x86_64 OS options
@@ -485,8 +905,13 @@ if [ -n "$1" ] && [ -f "$1" ]; then
     echo -e "  ${WHITE}Loading configuration from:${NC} ${CYAN}$ENV_FILE${NC}"
     source "$ENV_FILE"
 
-    # Validate required variables
-    REQUIRED_VARS=("DOCKER_IMAGE" "APPLIANCE_NAME" "APP_NAME" "PUBLISHER_NAME" "PUBLISHER_EMAIL")
+    # Validate required variables based on appliance type
+    if [ "$APPLIANCE_TYPE" = "lxc" ]; then
+        REQUIRED_VARS=("APPLIANCE_NAME" "BASE_OS" "LXC_APPLICATION" "LXC_PACKAGES")
+    else
+        REQUIRED_VARS=("DOCKER_IMAGE" "APPLIANCE_NAME" "APP_NAME" "PUBLISHER_NAME" "PUBLISHER_EMAIL")
+    fi
+
     MISSING_VARS=()
     for var in "${REQUIRED_VARS[@]}"; do
         if [ -z "${!var}" ]; then
@@ -592,23 +1017,27 @@ NAV_QUIT=2
 # ═══════════════════════════════════════════════════════════════════════════════
 
 print_logo() {
-    echo -e "${BRIGHT_CYAN}"
-    cat << 'EOF'
-       ___                   _   _      _           _
-      / _ \ _ __   ___ _ __ | \ | | ___| |__  _   _| | __ _
-     | | | | '_ \ / _ \ '_ \|  \| |/ _ \ '_ \| | | | |/ _` |
-     | |_| | |_) |  __/ | | | |\  |  __/ |_) | |_| | | (_| |
-      \___/| .__/ \___|_| |_|_| \_|\___|_.__/ \__,_|_|\__,_|
-           |_|
-EOF
-    echo -e "${NC}"
+    echo ""
+    # OpenNebula logo with space elements
+    echo -e "${DIM}                                                              ·${NC}"
+    echo -e "${DIM}          ·                                           ✦${NC}"
+    echo -e "${DIM}                    ✦                      ·${NC}"
+    echo -e "${WHITE}${BOLD}     ___                   _   _      _           _${NC}"
+    echo -e "${WHITE}${BOLD}    / _ \\ _ __   ___ _ __ | \\ | | ___| |__  _   _| | __ _${NC}      ${DIM}·${NC}"
+    echo -e "${WHITE}${BOLD}   | | | | '_ \\ / _ \\ '_ \\|  \\| |/ _ \\ '_ \\| | | | |/ _\` |${NC}"
+    echo -e "${WHITE}${BOLD}   | |_| | |_) |  __/ | | | |\\  |  __/ |_) | |_| | | (_| |${NC}   ${DIM}✦${NC}"
+    echo -e "${WHITE}${BOLD}    \\___/| .__/ \\___|_| |_|_| \\_|\\___|_.__/ \\__,_|_|\\__,_|${NC}"
+    echo -e "${WHITE}${BOLD}         |_|${NC}"
+    echo -e "${BRIGHT_CYAN}    ════════════════════════════════════════════════════════${NC}"
+    echo -e "${DIM}                   ·                                      ✦${NC}"
+    echo -e "${DIM}         ✦                          ·${NC}"
+    echo ""
+    echo -e "                      ${DIM}Appliance Wizard v${WIZARD_VERSION}${NC}"
+    echo ""
 }
 
 print_header() {
     print_logo
-    echo -e "  ${WHITE}${BOLD}Appliance Wizard${NC} ${DIM}v${WIZARD_VERSION}${NC}"
-    echo -e "  ${DIM}Docker → OpenNebula in minutes${NC}"
-    echo ""
     echo -e "  ${GRAY}─────────────────────────────────────────────────────${NC}"
     echo ""
 }
@@ -766,10 +1195,13 @@ menu_select() {
         IFS= read -rsn1 key
 
         if [ "$key" = $'\x1b' ]; then
-            read -rsn2 -t 0.1 key
+            read -rsn2 -t 0.5 key
             case "$key" in
                 '[A') ((selected > 0)) && ((selected--)) ;;
                 '[B') ((selected < num_options - 1)) && ((selected++)) ;;
+                '[C') ;;  # Right arrow - ignore
+                '[D') ;;  # Left arrow - ignore
+                *) ;;     # Other escape sequences - ignore
             esac
         elif [ "$key" = "" ]; then
             break
@@ -911,15 +1343,532 @@ validate_appliance_name() {
 
 step_welcome() {
     clear_screen
-    print_header
+    print_logo
 
-    echo -e "${WHITE}Create a Docker-based OpenNebula appliance${NC}\n"
-    echo -e "${DIM}Navigation: [:b] back  [:q] quit  [↑↓] menus${NC}\n"
-
-    echo -en "  Press ${WHITE}[Enter]${NC} to start..."
+    echo -e "  ${WHITE}Build production-ready appliances for OpenNebula${NC}"
+    echo ""
+    echo -e "  ${GRAY}─────────────────────────────────────────────────────${NC}"
+    echo ""
+    echo -e "  ${BRIGHT_CYAN}›${NC} ${WHITE}Docker Appliances${NC}"
+    echo -e "    ${DIM}Turn any container into a full VM with networking,${NC}"
+    echo -e "    ${DIM}persistent storage, and OpenNebula context support${NC}"
+    echo ""
+    echo -e "  ${BRIGHT_CYAN}›${NC} ${WHITE}LXC System Containers${NC}"
+    echo -e "    ${DIM}Lightweight Alpine-based appliances with pre-configured${NC}"
+    echo -e "    ${DIM}services: MQTT, Node-RED, Nginx, PostgreSQL, and more${NC}"
+    echo ""
+    echo -e "  ${GRAY}─────────────────────────────────────────────────────${NC}"
+    echo ""
+    echo -e "  ${DIM}Navigation${NC}"
+    echo -e "  ${DIM}  [↑↓] Select   [Enter] Confirm   [:b] Back   [:q] Quit${NC}"
+    echo ""
+    echo -e "  ${GRAY}─────────────────────────────────────────────────────${NC}"
+    echo ""
+    echo -ne "  Press ${WHITE}[Enter]${NC} to continue "
     read -r
+    # Flush any remaining input and reset terminal
+    read -t 0.1 -n 10000 discard 2>/dev/null || true
     return $NAV_CONTINUE
 }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NEW LXC STEPS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+step_appliance_type() {
+    local type_options=("Docker Appliance  │ KVM VM running any Docker image" "LXC Container     │ Lightweight Alpine with pre-configured apps")
+
+    while true; do
+        clear_screen
+        print_header
+        print_step 1 $TOTAL_STEPS "Appliance Type"
+
+        echo -e "  ${DIM}Select the type of appliance to create${NC}"
+        echo ""
+
+        local selected_idx
+        menu_select selected_idx "${type_options[@]}"
+        local result=$?
+
+        [ $result -eq $NAV_BACK ] && return $NAV_BACK
+
+        if [ "$selected_idx" -eq 0 ]; then
+            APPLIANCE_TYPE="docker"
+            TOTAL_STEPS=12
+            print_success "Docker Appliance"
+        else
+            APPLIANCE_TYPE="lxc"
+            TOTAL_STEPS=6
+            print_success "LXC Container"
+        fi
+
+        sleep 0.3
+        return $NAV_CONTINUE
+    done
+}
+
+step_lxc_application() {
+    # Skip if not LXC
+    [ "$APPLIANCE_TYPE" != "lxc" ] && return $NAV_CONTINUE
+
+    clear_screen
+    print_header
+    print_step 2 $TOTAL_STEPS "Select LXC Application"
+
+    echo ""
+    echo -e "  ${WHITE}Choose a pre-configured application:${NC}"
+
+    # Build sorted list of applications and display names
+    local app_ids=($(echo "${!LXC_APP_CATALOG[@]}" | tr ' ' '\n' | sort))
+    local app_options=()
+    for app_id in "${app_ids[@]}"; do
+        IFS='|' read -r name packages ports setup <<< "${LXC_APP_CATALOG[$app_id]}"
+        app_options+=("${name} (ports: ${ports})")
+    done
+
+    local selected_idx
+    menu_select selected_idx "${app_options[@]}"
+    local result=$?
+
+    [ $result -eq $NAV_BACK ] && return $NAV_BACK
+
+    LXC_APPLICATION="${app_ids[$selected_idx]}"
+    IFS='|' read -r name LXC_PACKAGES LXC_PORTS LXC_SETUP_CMD <<< "${LXC_APP_CATALOG[$LXC_APPLICATION]}"
+
+    if [ "$LXC_APPLICATION" = "custom" ]; then
+        echo ""
+        prompt_input "Application name" LXC_APPLICATION ""
+        [ $? -ne $NAV_CONTINUE ] && return $?
+        prompt_input "Alpine packages (space-separated)" LXC_PACKAGES ""
+        [ $? -ne $NAV_CONTINUE ] && return $?
+        prompt_input "Exposed ports (comma-separated)" LXC_PORTS ""
+        [ $? -ne $NAV_CONTINUE ] && return $?
+        prompt_input "Setup command (or empty)" LXC_SETUP_CMD ""
+    fi
+
+    # Auto-generate appliance name from application
+    APPLIANCE_NAME="${LXC_APPLICATION}-alpine-lxc"
+
+    print_success "Selected: $LXC_APPLICATION"
+    sleep 0.3
+    return $NAV_CONTINUE
+}
+
+step_lxc_base_os() {
+    # Skip if not LXC
+    [ "$APPLIANCE_TYPE" != "lxc" ] && return $NAV_CONTINUE
+
+    clear_screen
+    print_header
+    print_step 4 $TOTAL_STEPS "Select LXC Base OS"
+
+    echo ""
+    echo -e "  ${WHITE}Choose base operating system:${NC}"
+    echo -e "  ${DIM}(Alpine is recommended for minimal footprint)${NC}"
+
+    # Select OS list based on architecture
+    local os_list=()
+    if [ "$ARCH" = "aarch64" ]; then
+        os_list=("${LXC_OS_LIST_ARM[@]}")
+    else
+        os_list=("${LXC_OS_LIST_X86[@]}")
+    fi
+
+    # Build display options
+    local os_options=()
+    for os_entry in "${os_list[@]}"; do
+        IFS='|' read -r os_id os_name os_cat <<< "$os_entry"
+        os_options+=("${os_name} (${os_cat})")
+    done
+
+    local selected_idx
+    menu_select selected_idx "${os_options[@]}"
+    local result=$?
+
+    [ $result -eq $NAV_BACK ] && return $NAV_BACK
+
+    IFS='|' read -r BASE_OS os_name os_cat <<< "${os_list[$selected_idx]}"
+    print_success "Selected: $os_name"
+    sleep 0.3
+    return $NAV_CONTINUE
+}
+
+step_context_mode() {
+    # Skip if not LXC
+    [ "$APPLIANCE_TYPE" != "lxc" ] && return $NAV_CONTINUE
+
+    clear_screen
+    print_header
+    print_step 5 $TOTAL_STEPS "Contextualization Mode"
+
+    echo ""
+    echo -e "  ${WHITE}Select how the container gets its configuration:${NC}"
+    echo ""
+    echo -e "  ${CYAN}Standard Context:${NC}"
+    echo -e "    ${DIM}• VM gets IP/hostname from OpenNebula${NC}"
+    echo -e "    ${DIM}• Requires iso9660 kernel support${NC}"
+    echo ""
+    echo -e "  ${CYAN}Contextless (DHCP):${NC}"
+    echo -e "    ${DIM}• VM uses DHCP for networking${NC}"
+    echo -e "    ${DIM}• No kernel module requirements${NC}"
+    echo -e "    ${DIM}• Best for edge/IoT devices${NC}"
+
+    local context_options=("Standard Context" "Contextless (DHCP) - Recommended")
+    local modes=("context" "contextless")
+
+    local selected_idx
+    menu_select selected_idx "${context_options[@]}"
+    local result=$?
+
+    [ $result -eq $NAV_BACK ] && return $NAV_BACK
+
+    CONTEXT_MODE="${modes[$selected_idx]}"
+    print_success "Selected: ${context_options[$selected_idx]}"
+    sleep 0.3
+    return $NAV_CONTINUE
+}
+
+step_lxc_vm_config() {
+    # Skip if not LXC
+    [ "$APPLIANCE_TYPE" != "lxc" ] && return $NAV_CONTINUE
+
+    clear_screen
+    print_header
+    print_step 6 $TOTAL_STEPS "VM Configuration"
+    print_nav_hint
+
+    echo ""
+    echo -e "  ${WHITE}Configure VM resources:${NC}"
+    echo -e "  ${DIM}(LXC containers need minimal resources)${NC}"
+    echo ""
+
+    # Get recommended disk size from catalog
+    local base_disk="${LXC_DISK_SIZES[${BASE_OS%.aarch64}]%%|*}"
+    local rec_disk="${LXC_DISK_SIZES[${BASE_OS%.aarch64}]#*|}"
+    [ -z "$rec_disk" ] && rec_disk="256"
+
+    local result
+    prompt_optional "Memory (MB)" VM_MEMORY "256"
+    result=$?; [ $result -ne $NAV_CONTINUE ] && return $result
+
+    prompt_optional "VCPUs" VM_VCPU "1"
+    result=$?; [ $result -ne $NAV_CONTINUE ] && return $result
+
+    prompt_optional "Disk size (MB)" VM_DISK_SIZE "$rec_disk"
+    result=$?; [ $result -ne $NAV_CONTINUE ] && return $result
+
+    return $NAV_CONTINUE
+}
+
+step_lxc_summary() {
+    # Skip if not LXC
+    [ "$APPLIANCE_TYPE" != "lxc" ] && return $NAV_CONTINUE
+
+    clear_screen
+    print_header
+
+    echo ""
+    echo -e "  ${WHITE}╔════════════════════════════════════════════════════════╗${NC}"
+    echo -e "  ${WHITE}║              LXC Appliance Configuration               ║${NC}"
+    echo -e "  ${WHITE}╚════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "  ${CYAN}Application:${NC}    $LXC_APPLICATION"
+    echo -e "  ${CYAN}Packages:${NC}       $LXC_PACKAGES"
+    echo -e "  ${CYAN}Ports:${NC}          $LXC_PORTS"
+    echo ""
+    echo -e "  ${CYAN}Base OS:${NC}        $BASE_OS"
+    echo -e "  ${CYAN}Architecture:${NC}   $ARCH"
+    echo -e "  ${CYAN}Context Mode:${NC}   $CONTEXT_MODE"
+    echo ""
+    echo -e "  ${CYAN}Memory:${NC}         ${VM_MEMORY}MB"
+    echo -e "  ${CYAN}VCPUs:${NC}          $VM_VCPU"
+    echo -e "  ${CYAN}Disk:${NC}           ${VM_DISK_SIZE}MB"
+    echo ""
+
+    prompt_yes_no "Generate LXC appliance?" CONFIRM "true"
+    [ "$CONFIRM" != "true" ] && return $NAV_BACK
+
+    return $NAV_CONTINUE
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LXC BUILD FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+generate_lxc_appliance() {
+    clear_screen
+    print_header
+
+    # Determine if we need sudo for privileged operations
+    local SUDO=""
+    if [ "$EUID" -ne 0 ]; then
+        SUDO="sudo"
+        echo ""
+        echo -e "  ${YELLOW}!${NC} Some build steps require elevated privileges"
+        echo -e "  ${DIM}(chroot, mount, mkfs.ext4)${NC}"
+        echo ""
+
+        # Check if sudo credentials are cached
+        if ! sudo -n true 2>/dev/null; then
+            echo -e "  ${DIM}You will be prompted for your password.${NC}"
+            echo ""
+            # Pre-authenticate to avoid prompts during build
+            if ! sudo true; then
+                echo -e "  ${RED}✗${NC} Failed to obtain sudo privileges"
+                echo ""
+                echo -ne "  ${DIM}Press [Enter] to exit...${NC}"
+                read -r
+                return 1
+            fi
+        fi
+        echo -e "  ${GREEN}✓${NC} Sudo access confirmed"
+        echo ""
+    fi
+
+    echo -e "  ${WHITE}Building LXC Appliance: ${CYAN}${APPLIANCE_NAME}${NC}"
+    echo ""
+
+    local build_dir="/tmp/lxc-build-$$"
+    local rootfs_dir="$build_dir/rootfs"
+    mkdir -p "$rootfs_dir"
+
+    # Step 1: Download Alpine minirootfs
+    echo -e "  ${BRIGHT_CYAN}[1/6]${NC} Downloading Alpine rootfs..."
+
+    local alpine_version="${BASE_OS#alpine}"
+    alpine_version="${alpine_version%.aarch64}"
+    local alpine_ver="${alpine_version:0:1}.${alpine_version:1}"
+    local alpine_arch="aarch64"
+    [ "$ARCH" = "x86_64" ] && alpine_arch="x86_64"
+
+    local rootfs_url="https://dl-cdn.alpinelinux.org/alpine/v${alpine_ver}/releases/${alpine_arch}/alpine-minirootfs-${alpine_ver}.0-${alpine_arch}.tar.gz"
+
+    if ! wget -q "$rootfs_url" -O "$build_dir/rootfs.tar.gz" 2>/dev/null; then
+        # Try with full version
+        rootfs_url="https://dl-cdn.alpinelinux.org/alpine/v${alpine_ver}/releases/${alpine_arch}/alpine-minirootfs-${alpine_ver}.1-${alpine_arch}.tar.gz"
+        if ! wget -q "$rootfs_url" -O "$build_dir/rootfs.tar.gz" 2>/dev/null; then
+            echo -e "  ${RED}✗${NC} Failed to download Alpine rootfs"
+            rm -rf "$build_dir"
+            return 1
+        fi
+    fi
+
+    tar -xzf "$build_dir/rootfs.tar.gz" -C "$rootfs_dir"
+    echo -e "  ${GREEN}✓${NC} Alpine ${alpine_ver} rootfs extracted"
+
+    # Step 2: Configure networking
+    echo -e "  ${BRIGHT_CYAN}[2/6]${NC} Configuring networking..."
+
+    # DNS
+    echo "nameserver 1.1.1.1" > "$rootfs_dir/etc/resolv.conf"
+    echo "nameserver 8.8.8.8" >> "$rootfs_dir/etc/resolv.conf"
+
+    # DHCP networking
+    mkdir -p "$rootfs_dir/etc/network"
+    cat > "$rootfs_dir/etc/network/interfaces" << 'NETEOF'
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet dhcp
+NETEOF
+
+    # Inittab for LXC
+    cat > "$rootfs_dir/etc/inittab" << 'INITEOF'
+::sysinit:/sbin/openrc sysinit
+::sysinit:/sbin/openrc boot
+::wait:/sbin/openrc default
+tty1::respawn:/sbin/getty 38400 tty1
+tty2::respawn:/sbin/getty 38400 tty2
+::shutdown:/sbin/openrc shutdown
+INITEOF
+
+    echo -e "  ${GREEN}✓${NC} Network configured (DHCP on eth0)"
+
+    # Step 3: Install packages via chroot
+    echo -e "  ${BRIGHT_CYAN}[3/6]${NC} Installing packages..."
+
+    # Set up resolv.conf for chroot
+    cp /etc/resolv.conf "$rootfs_dir/etc/resolv.conf" 2>/dev/null || true
+
+    # Install packages
+    local pkg_list="${LXC_PACKAGES}"
+    $SUDO chroot "$rootfs_dir" /bin/sh << CHROOTEOF
+apk update
+apk add openrc $pkg_list openssh
+rc-update add networking boot
+rc-update add sshd default
+CHROOTEOF
+
+    echo -e "  ${GREEN}✓${NC} Packages installed: $pkg_list"
+
+    # Step 4: Run application-specific setup
+    echo -e "  ${BRIGHT_CYAN}[4/6]${NC} Configuring application..."
+
+    local app_setup="${LXC_APP_CATALOG[$LXC_APPLICATION]}"
+    local setup_func="${app_setup##*|}"
+
+    # Call the setup function for this application
+    if [ -n "$setup_func" ] && [ "$setup_func" != "<specify setup>" ]; then
+        local func_name="setup_app_${LXC_APPLICATION}"
+        echo -e "  ${DIM}Running setup for: ${LXC_APPLICATION}${NC}"
+
+        # Check if setup function exists and call it
+        if type "$func_name" &>/dev/null; then
+            # npm-based apps take longer, show progress
+            case "$LXC_APPLICATION" in
+                nodered|homebridge|zigbee2mqtt)
+                    echo -e "  ${DIM}(npm install may take several minutes...)${NC}"
+                    $func_name "$rootfs_dir" 2>&1 | while IFS= read -r line; do
+                        # Filter out noise, show important lines
+                        case "$line" in
+                            *"added"*"packages"*|*"npm"*"WARN"*|*"Creating"*|*"Install"*)
+                                echo -e "  ${DIM}  ${line}${NC}"
+                                ;;
+                        esac
+                    done
+                    ;;
+                *)
+                    $func_name "$rootfs_dir" 2>/dev/null || true
+                    ;;
+            esac
+        else
+            echo -e "  ${YELLOW}!${NC} Setup function not found: $func_name"
+        fi
+    fi
+
+    echo -e "  ${GREEN}✓${NC} Application configured: $LXC_APPLICATION"
+
+    # Step 5: Configure SSH
+    echo -e "  ${BRIGHT_CYAN}[5/6]${NC} Configuring SSH access..."
+
+    # Enable root login and empty passwords
+    $SUDO sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' "$rootfs_dir/etc/ssh/sshd_config"
+    $SUDO sed -i 's/#PermitEmptyPasswords.*/PermitEmptyPasswords yes/' "$rootfs_dir/etc/ssh/sshd_config"
+
+    # Generate SSH host keys during build (required for unprivileged LXC containers)
+    $SUDO chroot "$rootfs_dir" /bin/sh -c "ssh-keygen -A" 2>/dev/null || true
+
+    # Clear root password
+    $SUDO chroot "$rootfs_dir" /bin/sh -c "passwd -d root" 2>/dev/null || true
+
+    echo -e "  ${GREEN}✓${NC} SSH configured"
+
+    # Step 6: Create disk image
+    echo -e "  ${BRIGHT_CYAN}[6/6]${NC} Creating disk image..."
+
+    local output_dir="${SCRIPT_DIR}/export"
+    mkdir -p "$output_dir"
+    local output_image="$output_dir/${APPLIANCE_NAME}.raw"
+
+    # Calculate required disk size based on actual rootfs content
+    local rootfs_size_kb
+    rootfs_size_kb=$($SUDO du -sk "$rootfs_dir" 2>/dev/null | awk '{print $1}')
+    # Add 30% buffer + 50MB for filesystem overhead, minimum 256MB
+    local required_mb=$(( (rootfs_size_kb * 130 / 100 / 1024) + 50 ))
+    local size_mb="${VM_DISK_SIZE:-$required_mb}"
+    # Ensure minimum size
+    [ "$size_mb" -lt "$required_mb" ] && size_mb="$required_mb"
+
+    echo -e "  ${DIM}Rootfs size: $((rootfs_size_kb/1024))MB, creating ${size_mb}MB image${NC}"
+
+    # Create raw disk
+    echo -ne "  ${DIM}  Creating raw image...${NC}"
+    dd if=/dev/zero of="$output_image" bs=1M count="$size_mb" status=none
+    echo -e " ${GREEN}done${NC}"
+
+    echo -ne "  ${DIM}  Formatting ext4...${NC}"
+    $SUDO mkfs.ext4 -F -L rootfs "$output_image" >/dev/null 2>&1
+    echo -e " ${GREEN}done${NC}"
+
+    # Mount and copy
+    local mnt_dir="/tmp/lxc-mnt-$$"
+    mkdir -p "$mnt_dir"
+    echo -ne "  ${DIM}  Copying rootfs...${NC}"
+    $SUDO mount -o loop "$output_image" "$mnt_dir"
+    $SUDO cp -a "$rootfs_dir"/* "$mnt_dir/"
+    $SUDO umount "$mnt_dir"
+    rmdir "$mnt_dir"
+    echo -e " ${GREEN}done${NC}"
+
+    # Get actual file size
+    local actual_size_mb
+    actual_size_mb=$(du -m "$output_image" 2>/dev/null | awk '{print $1}')
+    echo -e "  ${GREEN}✓${NC} Disk image created: ${actual_size_mb:-$size_mb}MB"
+
+    # Cleanup
+    $SUDO rm -rf "$build_dir"
+
+    echo ""
+    echo -e "  ${GREEN}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "  ${GREEN}✓ LXC Appliance built successfully!${NC}"
+    echo -e "  ${GREEN}═══════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "  ${WHITE}Output:${NC} $output_image"
+    echo ""
+    echo -e "  ${WHITE}To register in OpenNebula:${NC}"
+    echo -e "  ${CYAN}oneimage create --name ${APPLIANCE_NAME} --path $output_image${NC} \\"
+    echo -e "  ${CYAN}  --datastore default --type OS --driver raw --format raw${NC}"
+    echo ""
+    echo -e "  ${WHITE}Template settings:${NC}"
+    echo -e "  ${DIM}HYPERVISOR = lxc${NC}"
+    echo -e "  ${DIM}MEMORY = ${VM_MEMORY}${NC}"
+    echo -e "  ${DIM}VCPU = ${VM_VCPU}${NC}"
+    echo -e "  ${DIM}DISK = [ IMAGE = \"${APPLIANCE_NAME}\" ]${NC}"
+    if [ "$CONTEXT_MODE" = "contextless" ]; then
+        echo -e "  ${DIM}(No CONTEXT section needed - uses DHCP)${NC}"
+    fi
+    echo ""
+
+    # Generate env file for future reference
+    local env_file="${SCRIPT_DIR}/${APPLIANCE_NAME}.env"
+    cat > "$env_file" << ENVEOF
+# Generated by OpenNebula Appliance Wizard v${WIZARD_VERSION}
+# $(date)
+
+APPLIANCE_TYPE="lxc"
+LXC_APPLICATION="${LXC_APPLICATION}"
+LXC_PACKAGES="${LXC_PACKAGES}"
+LXC_PORTS="${LXC_PORTS}"
+APPLIANCE_NAME="${APPLIANCE_NAME}"
+BASE_OS="${BASE_OS}"
+ARCH="${ARCH}"
+CONTEXT_MODE="${CONTEXT_MODE}"
+
+# VM Configuration
+VM_MEMORY="${VM_MEMORY}"
+VM_VCPU="${VM_VCPU}"
+VM_DISK_SIZE="${VM_DISK_SIZE}"
+ENVEOF
+
+    echo -e "  ${DIM}Config saved: ${env_file}${NC}"
+    echo ""
+
+    # Check if OpenNebula is running locally and offer deployment
+    if check_opennebula_local; then
+        local one_version
+        one_version=$(onevm --version 2>/dev/null | grep 'OpenNebula' | sed 's/.*OpenNebula \([0-9.]*\).*/\1/' | head -1)
+        if [ -n "$one_version" ]; then
+            echo -e "  ${BRIGHT_GREEN}OpenNebula ${one_version} detected on this host${NC}"
+        else
+            echo -e "  ${BRIGHT_GREEN}OpenNebula detected on this host${NC}"
+        fi
+        echo ""
+        prompt_yes_no "  Deploy LXC to OpenNebula now?" DEPLOY_NOW "true"
+
+        if [ "$DEPLOY_NOW" = "true" ]; then
+            deploy_lxc_to_opennebula "$output_image"
+            return
+        fi
+    fi
+
+    # Show manual deployment instructions if not deploying
+    show_lxc_manual_deploy_instructions "$output_image"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DOCKER WIZARD STEPS
+# ═══════════════════════════════════════════════════════════════════════════════
 
 step_docker_image() {
     clear_screen
@@ -1074,6 +2023,94 @@ step_docker_image() {
     done
 }
 
+# Check if cross-architecture LXC build is supported (via qemu-user-static)
+# Returns 0 if supported, 1 if not (and user declined to install)
+check_cross_arch_lxc_support() {
+    local target_arch="$1"
+    local qemu_binary=""
+    local binfmt_file=""
+
+    if [ "$target_arch" = "aarch64" ]; then
+        qemu_binary="qemu-aarch64-static"
+        binfmt_file="/proc/sys/fs/binfmt_misc/qemu-aarch64"
+    else
+        qemu_binary="qemu-x86_64-static"
+        binfmt_file="/proc/sys/fs/binfmt_misc/qemu-x86_64"
+    fi
+
+    echo ""
+    echo -e "  ${YELLOW}!${NC} Cross-architecture build detected"
+    echo -e "  ${DIM}Host: $(uname -m), Target: ${target_arch}${NC}"
+    echo ""
+
+    # Check if qemu-user-static is available
+    if [ -f "$binfmt_file" ] && grep -q "enabled" "$binfmt_file" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} QEMU user-static emulation available for ${target_arch}"
+        echo ""
+        sleep 0.5
+        return 0
+    fi
+
+    echo -e "  ${YELLOW}!${NC} QEMU user-static not configured for ${target_arch}"
+    echo ""
+    echo -e "  ${WHITE}LXC cross-architecture builds require qemu-user-static.${NC}"
+    echo -e "  ${DIM}This allows running ${target_arch} binaries on your host.${NC}"
+    echo ""
+    echo -e "  ${WHITE}Options:${NC}"
+    echo -e "    ${CYAN}y${NC} - Install qemu-user-static (requires sudo)"
+    echo -e "    ${CYAN}n${NC} - Cancel and select a different architecture"
+    echo ""
+
+    local install_choice
+    echo -ne "  "
+    prompt_yes_no "Install qemu-user-static?" install_choice "false"
+
+    if [ "$install_choice" = "true" ]; then
+        echo ""
+        echo -e "  ${DIM}Installing qemu-user-static...${NC}"
+        echo ""
+
+        if command -v apt-get &>/dev/null; then
+            if sudo apt-get update -qq && sudo apt-get install -y qemu-user-static binfmt-support; then
+                echo ""
+                echo -e "  ${GREEN}✓${NC} qemu-user-static installed successfully"
+                sleep 1
+                return 0
+            else
+                echo ""
+                echo -e "  ${RED}✗${NC} Installation failed"
+                echo -e "  ${DIM}Try manually: sudo apt install qemu-user-static binfmt-support${NC}"
+                sleep 2
+                return 1
+            fi
+        elif command -v dnf &>/dev/null; then
+            if sudo dnf install -y qemu-user-static; then
+                echo ""
+                echo -e "  ${GREEN}✓${NC} qemu-user-static installed successfully"
+                sleep 1
+                return 0
+            fi
+        elif command -v pacman &>/dev/null; then
+            if sudo pacman -S --noconfirm qemu-user-static; then
+                echo ""
+                echo -e "  ${GREEN}✓${NC} qemu-user-static installed successfully"
+                sleep 1
+                return 0
+            fi
+        else
+            echo -e "  ${RED}✗${NC} Unsupported package manager"
+            echo -e "  ${DIM}Please install qemu-user-static manually${NC}"
+            sleep 2
+            return 1
+        fi
+    else
+        echo ""
+        echo -e "  ${DIM}Select a different architecture or install qemu-user-static manually${NC}"
+        sleep 1
+        return 1
+    fi
+}
+
 step_architecture() {
     # Detect host architecture
     local host_arch
@@ -1096,18 +2133,40 @@ step_architecture() {
             ARCH="x86_64"
             OS_LIST=("${OS_LIST_X86[@]}")
 
+            # For LXC, allow cross-arch with qemu-user-static
             if [ "$host_arch" = "aarch64" ] || [ "$host_arch" = "arm64" ]; then
-                show_cross_arch_error "x86_64" "ARM64"
-                continue  # Loop back to architecture selection
+                if [ "$APPLIANCE_TYPE" = "lxc" ]; then
+                    if ! check_cross_arch_lxc_support "x86_64"; then
+                        continue
+                    fi
+                else
+                    show_cross_arch_error "x86_64" "ARM64"
+                    continue  # Loop back to architecture selection
+                fi
             fi
         else
             ARCH="aarch64"
             OS_LIST=("${OS_LIST_ARM[@]}")
 
+            # For LXC, allow cross-arch with qemu-user-static
             if [ "$host_arch" = "x86_64" ]; then
-                show_cross_arch_error "ARM64" "x86_64"
-                continue  # Loop back to architecture selection
+                if [ "$APPLIANCE_TYPE" = "lxc" ]; then
+                    if ! check_cross_arch_lxc_support "aarch64"; then
+                        continue
+                    fi
+                else
+                    show_cross_arch_error "ARM64" "x86_64"
+                    continue  # Loop back to architecture selection
+                fi
             fi
+        fi
+
+        # For LXC, skip Docker image check
+        if [ "$APPLIANCE_TYPE" = "lxc" ]; then
+            echo ""
+            print_success "$ARCH"
+            sleep 0.3
+            return $NAV_CONTINUE
         fi
 
         # Check if Docker image supports the selected architecture
@@ -1751,7 +2810,17 @@ step_summary() {
 
 # Check if OpenNebula is running locally
 check_opennebula_local() {
-    command -v onevm &>/dev/null && systemctl is-active --quiet opennebula 2>/dev/null
+    # Check if onevm command exists
+    if ! command -v onevm &>/dev/null; then
+        return 1
+    fi
+    # Check if opennebula service is active (try different service names)
+    systemctl is-active --quiet opennebula 2>/dev/null && return 0
+    systemctl is-active --quiet opennebula-oned 2>/dev/null && return 0
+    systemctl is-active --quiet oned 2>/dev/null && return 0
+    # Also check if oned process is running
+    pgrep -x oned &>/dev/null && return 0
+    return 1
 }
 
 # Get Sunstone URL (detect from oned.conf or use default)
@@ -2384,6 +3453,361 @@ ${arch_config}"
     fi
 }
 
+# Deploy LXC image to local OpenNebula
+deploy_lxc_to_opennebula() {
+    local image_path="$1"
+    local image_name="${APPLIANCE_NAME}"
+
+    echo ""
+    echo -e "  ${BRIGHT_CYAN}Deploying LXC to OpenNebula...${NC}"
+    echo ""
+
+    # Check for existing resources and offer cleanup
+    check_existing_resources "$image_name"
+
+    # Get default datastore (look for 'img' type which is image datastore)
+    local datastore_id datastore_name
+    datastore_id=$(onedatastore list 2>/dev/null | awk '/[[:space:]]img[[:space:]]/ {print $1; exit}')
+
+    if [ -z "$datastore_id" ]; then
+        echo -e "  ${RED}✗ Could not find an image datastore${NC}"
+        echo ""
+        show_lxc_manual_deploy_instructions "$image_path"
+        return
+    fi
+
+    datastore_name=$(onedatastore list 2>/dev/null | awk -v id="$datastore_id" '$1==id {print $2}')
+    echo -e "  ${DIM}Using datastore: ${datastore_name} (ID: ${datastore_id})${NC}"
+    echo ""
+
+    # Select network
+    select_network
+    echo ""
+
+    # Step 1: Create image
+    echo -e "  ${WHITE}[1/3] Creating image...${NC}"
+
+    # Copy image to /var/tmp/ so OpenNebula (oneadmin) can access it
+    local upload_path="/var/tmp/${image_name}.raw"
+    if [[ "$image_path" != "$upload_path" ]]; then
+        echo -e "  ${DIM}Copying image to shared location...${NC}"
+        cp "$image_path" "$upload_path" 2>/dev/null || {
+            echo -e "  ${RED}✗ Failed to copy image to $upload_path${NC}"
+            show_lxc_manual_deploy_instructions "$image_path"
+            return
+        }
+        chmod 644 "$upload_path"
+    fi
+
+    # Run oneimage create in background and show spinner
+    local tmpfile=$(mktemp)
+    oneimage create --name "$image_name" --path "$upload_path" \
+        --format raw --driver raw --type OS --datastore "$datastore_id" > "$tmpfile" 2>&1 &
+    local pid=$!
+
+    # Show spinner while waiting
+    hide_cursor
+    local spin_idx=0
+    while kill -0 "$pid" 2>/dev/null; do
+        printf "\r  ${CYAN}${SPINNER_FRAMES[$spin_idx]}${NC} Uploading image..."
+        spin_idx=$(( (spin_idx + 1) % ${#SPINNER_FRAMES[@]} ))
+        sleep 0.2
+    done
+    wait "$pid"
+    local exit_code=$?
+    printf "\r${CLEAR_LINE}"
+    show_cursor
+
+    local image_id
+    image_id=$(cat "$tmpfile")
+    rm -f "$tmpfile"
+
+    if [[ "$image_id" =~ ID:\ ([0-9]+) ]]; then
+        image_id="${BASH_REMATCH[1]}"
+        echo -e "  ${GREEN}✓${NC} Image created (ID: ${image_id})"
+    else
+        echo -e "  ${RED}✗ Failed to create image${NC}"
+        echo -e "  ${DIM}${image_id}${NC}"
+        show_lxc_manual_deploy_instructions "$image_path"
+        return
+    fi
+
+    # Wait for image to be ready with progress
+    echo ""
+    echo -e "  ${DIM}Waiting for image to be ready...${NC}"
+    local max_wait=300  # 1 minute max for small LXC images
+    local elapsed=0
+    local spin_idx=0
+    local state=""
+    local state_str=""
+    hide_cursor
+    while [ $elapsed -lt $max_wait ]; do
+        if [ $((elapsed % 10)) -eq 0 ]; then
+            state=$(oneimage show "$image_id" -x 2>/dev/null | grep '<STATE>' | sed 's/.*<STATE>\([0-9]*\)<\/STATE>.*/\1/' | head -1)
+            state_str=$(oneimage show "$image_id" 2>/dev/null | awk '/^STATE/ {print $3}')
+        fi
+
+        if [ "$state" = "1" ]; then  # READY state
+            printf "\r${CLEAR_LINE}"
+            echo -e "  ${GREEN}✓${NC} Image ready"
+            break
+        fi
+
+        printf "\r  ${CYAN}${SPINNER_FRAMES[$spin_idx]}${NC} State: %-15s" "${state_str:-uploading}"
+        spin_idx=$(( (spin_idx + 1) % ${#SPINNER_FRAMES[@]} ))
+
+        sleep 0.2
+        elapsed=$((elapsed + 1))
+    done
+    show_cursor
+
+    # Cleanup temporary upload file
+    if [[ "$upload_path" == "/var/tmp/"* ]] && [[ -f "$upload_path" ]]; then
+        rm -f "$upload_path" 2>/dev/null
+    fi
+
+    # Show image details
+    echo ""
+    echo -e "  ${DIM}┌─ oneimage show ${image_id}${NC}"
+    oneimage show "$image_id" 2>/dev/null | head -12 | sed 's/^/  │ /'
+    echo -e "  ${DIM}└─${NC}"
+
+    # Step 2: Create LXC template
+    echo ""
+    echo -e "  ${WHITE}[2/3] Creating LXC template...${NC}"
+
+    # Build NIC configuration
+    local nic_config
+    if [ -n "$SELECTED_NETWORK_ID" ]; then
+        nic_config="NIC=[NETWORK_ID=\"${SELECTED_NETWORK_ID}\"]"
+    else
+        nic_config="NIC=[NETWORK=\"${SELECTED_NETWORK}\",NETWORK_UNAME=\"oneadmin\"]"
+    fi
+
+    # LXC template - note HYPERVISOR=lxc, no OS/UEFI config needed
+    # Determine architecture for scheduling
+    local sched_arch="aarch64"
+    [ "$ARCH" = "x86_64" ] && sched_arch="x86_64"
+
+    local template_content
+    template_content="NAME=\"${image_name}\"
+HYPERVISOR=\"lxc\"
+CPU=\"1\"
+VCPU=\"${VM_VCPU:-1}\"
+MEMORY=\"${VM_MEMORY:-256}\"
+DISK=[IMAGE_ID=\"${image_id}\"]
+${nic_config}
+GRAPHICS=[LISTEN=\"0.0.0.0\",TYPE=\"VNC\"]
+SCHED_REQUIREMENTS=\"HYPERVISOR=\\\"lxc\\\" & ARCH=\\\"${sched_arch}\\\"\"
+LXC_UNPRIVILEGED=\"no\""
+
+    # Add context only if not contextless mode
+    if [ "$CONTEXT_MODE" != "contextless" ]; then
+        template_content="${template_content}
+CONTEXT=[NETWORK=\"YES\",SSH_PUBLIC_KEY=\"\$USER[SSH_PUBLIC_KEY]\"]"
+    fi
+
+    local template_id
+    template_id=$(echo "$template_content" | onetemplate create 2>&1)
+
+    if [[ "$template_id" =~ ID:\ ([0-9]+) ]]; then
+        template_id="${BASH_REMATCH[1]}"
+        echo -e "  ${GREEN}✓${NC} Template created (ID: ${template_id})"
+    else
+        echo -e "  ${RED}✗ Failed to create template${NC}"
+        echo -e "  ${DIM}${template_id}${NC}"
+        show_lxc_vm_access_info "" "$image_id" ""
+        return
+    fi
+
+    # Show template details
+    echo ""
+    echo -e "  ${DIM}┌─ onetemplate show ${template_id}${NC}"
+    onetemplate show "$template_id" 2>/dev/null | head -15 | sed 's/^/  │ /'
+    echo -e "  ${DIM}└─${NC}"
+
+    # Step 3: Instantiate LXC container
+    echo ""
+    echo -e "  ${WHITE}[3/3] Creating LXC container...${NC}"
+    local vm_id
+    vm_id=$(onetemplate instantiate "$template_id" --name "${image_name}-lxc" 2>&1)
+
+    if [[ "$vm_id" =~ ID:\ ([0-9]+) ]]; then
+        vm_id="${BASH_REMATCH[1]}"
+        echo -e "  ${GREEN}✓${NC} LXC container created (ID: ${vm_id})"
+    else
+        echo -e "  ${RED}✗ Failed to create LXC container${NC}"
+        echo -e "  ${DIM}${vm_id}${NC}"
+        show_lxc_vm_access_info "" "$image_id" "$template_id"
+        return
+    fi
+
+    # Wait for LXC to be running
+    echo ""
+    echo -e "  ${DIM}Waiting for container to start...${NC}"
+
+    local wait_result
+    wait_for_vm_running "$vm_id" 300  # 1 minute (300 iterations at 0.2s)
+    wait_result=$?
+
+    if [ $wait_result -eq 0 ]; then
+        # Success - Container is running
+        sleep 3  # Wait for network to initialize
+        local vm_ip
+        vm_ip=$(get_vm_ip "$vm_id")
+
+        # Show container details
+        echo ""
+        echo -e "  ${DIM}┌─ onevm show ${vm_id}${NC}"
+        onevm show "$vm_id" 2>/dev/null | head -20 | sed 's/^/  │ /'
+        echo -e "  ${DIM}└─${NC}"
+
+        echo ""
+        echo -e "  ${GREEN}════════════════════════════════════════════════════════════════${NC}"
+        echo -e "  ${GREEN}✓ LXC Deployment complete!${NC}"
+        echo -e "  ${GREEN}════════════════════════════════════════════════════════════════${NC}"
+
+        # Show Sunstone URL
+        local sunstone_url
+        sunstone_url=$(get_sunstone_url)
+        echo ""
+        echo -e "  ${WHITE}Sunstone Web UI:${NC}"
+        echo -e "    ${CYAN}${sunstone_url}/#vms-tab/${vm_id}${NC}"
+
+        show_lxc_vm_access_info "$vm_id" "$image_id" "$template_id"
+
+        # Show container IP if available
+        if [ -z "$vm_ip" ]; then
+            echo -e "  ${DIM}Waiting for container to get IP address...${NC}"
+            sleep 5
+            vm_ip=$(get_vm_ip "$vm_id")
+        fi
+
+        if [ -n "$vm_ip" ]; then
+            echo ""
+            echo -e "  ${WHITE}Container IP Address:${NC} ${CYAN}${vm_ip}${NC}"
+            echo -e "  ${DIM}SSH: ssh root@${vm_ip}${NC}"
+            if [ -n "$LXC_PORTS" ]; then
+                echo ""
+                echo -e "  ${WHITE}Application ports:${NC} ${LXC_PORTS}"
+            fi
+        fi
+        echo ""
+    elif [ $wait_result -eq 2 ]; then
+        # Container failed
+        echo ""
+        echo -e "  ${DIM}┌─ onevm show ${vm_id}${NC}"
+        onevm show "$vm_id" 2>/dev/null | head -25 | sed 's/^/  │ /'
+        echo -e "  ${DIM}└─${NC}"
+
+        echo ""
+        echo -e "  ${RED}════════════════════════════════════════════════════════════════${NC}"
+        echo -e "  ${RED}✗ LXC deployment failed${NC}"
+        echo -e "  ${RED}════════════════════════════════════════════════════════════════${NC}"
+
+        local sunstone_url
+        sunstone_url=$(get_sunstone_url)
+        echo ""
+        echo -e "  ${WHITE}Check container details in Sunstone:${NC}"
+        echo -e "    ${CYAN}${sunstone_url}/#vms-tab/${vm_id}${NC}"
+        echo ""
+        echo -e "  ${WHITE}Common causes:${NC}"
+        echo -e "    ${DIM}• LXC driver not enabled on host${NC}"
+        echo -e "    ${DIM}• Insufficient resources${NC}"
+        echo -e "    ${DIM}• Network configuration issues${NC}"
+        echo ""
+        echo -e "  ${WHITE}To cleanup and retry:${NC}"
+        echo -e "    ${CYAN}onevm terminate --hard ${vm_id}${NC}"
+        echo ""
+
+        show_lxc_vm_access_info "" "$image_id" "$template_id"
+    else
+        # Timeout
+        echo ""
+        echo -e "  ${DIM}┌─ onevm show ${vm_id}${NC}"
+        onevm show "$vm_id" 2>/dev/null | head -20 | sed 's/^/  │ /'
+        echo -e "  ${DIM}└─${NC}"
+
+        echo ""
+        echo -e "  ${YELLOW}════════════════════════════════════════════════════════════════${NC}"
+        echo -e "  ${YELLOW}! Container created but not yet running${NC}"
+        echo -e "  ${YELLOW}════════════════════════════════════════════════════════════════${NC}"
+
+        local sunstone_url
+        sunstone_url=$(get_sunstone_url)
+        echo ""
+        echo -e "  ${WHITE}Check status in Sunstone:${NC}"
+        echo -e "    ${CYAN}${sunstone_url}/#vms-tab/${vm_id}${NC}"
+
+        show_lxc_vm_access_info "$vm_id" "$image_id" "$template_id"
+    fi
+}
+
+# Show LXC VM access and troubleshooting info
+show_lxc_vm_access_info() {
+    local vm_id="$1"
+    local image_id="$2"
+    local template_id="$3"
+    local sunstone_url
+    sunstone_url=$(get_sunstone_url)
+
+    echo ""
+    echo -e "  ${WHITE}Created resources:${NC}"
+    if [ -n "$image_id" ]; then
+        echo -e "    Image:    ID ${CYAN}${image_id}${NC}  ${DIM}→ ${sunstone_url}/#images-tab/${image_id}${NC}"
+    fi
+    if [ -n "$template_id" ]; then
+        echo -e "    Template: ID ${CYAN}${template_id}${NC}  ${DIM}→ ${sunstone_url}/#templates-tab/${template_id}${NC}"
+    fi
+    if [ -n "$vm_id" ]; then
+        echo -e "    LXC:      ID ${CYAN}${vm_id}${NC}  ${DIM}→ ${sunstone_url}/#vms-tab/${vm_id}${NC}"
+    fi
+
+    if [ -n "$vm_id" ]; then
+        echo ""
+        echo -e "  ${WHITE}Quick commands:${NC}"
+        echo -e "    ${CYAN}onevm show ${vm_id}${NC}           ${DIM}# Container status${NC}"
+        echo -e "    ${CYAN}onevm vnc ${vm_id}${NC}            ${DIM}# VNC console${NC}"
+        echo -e "    ${CYAN}onevm log ${vm_id}${NC}            ${DIM}# Container log${NC}"
+        echo ""
+        echo -e "  ${WHITE}Inside the container:${NC}"
+        echo -e "    ${CYAN}apk list --installed${NC}          ${DIM}# List packages${NC}"
+        echo -e "    ${CYAN}rc-status${NC}                     ${DIM}# Service status${NC}"
+    fi
+    echo ""
+}
+
+# Show LXC manual deployment instructions
+show_lxc_manual_deploy_instructions() {
+    local image_path="$1"
+
+    echo ""
+    echo -e "  ${WHITE}To deploy manually:${NC}"
+    echo ""
+    echo -e "  ${DIM}# 1. Copy image to OpenNebula frontend${NC}"
+    echo -e "  ${CYAN}scp ${image_path} <frontend>:/var/tmp/${NC}"
+    echo ""
+    echo -e "  ${DIM}# 2. Create image in OpenNebula${NC}"
+    echo -e "  ${CYAN}oneimage create --name ${APPLIANCE_NAME}${NC} \\"
+    echo -e "  ${CYAN}  --path /var/tmp/${APPLIANCE_NAME}.raw${NC} \\"
+    echo -e "  ${CYAN}  --format raw --driver raw --type OS --datastore default${NC}"
+    echo ""
+    echo -e "  ${DIM}# 3. Create LXC template${NC}"
+    echo -e "  ${CYAN}onetemplate create << 'EOF'${NC}"
+    echo -e "  ${DIM}NAME=\"${APPLIANCE_NAME}\"${NC}"
+    echo -e "  ${DIM}HYPERVISOR=\"lxc\"${NC}"
+    echo -e "  ${DIM}MEMORY=\"${VM_MEMORY:-256}\"${NC}"
+    echo -e "  ${DIM}VCPU=\"${VM_VCPU:-1}\"${NC}"
+    echo -e "  ${DIM}DISK=[IMAGE=\"${APPLIANCE_NAME}\"]${NC}"
+    echo -e "  ${DIM}NIC=[NETWORK=\"vnet\"]${NC}"
+    echo -e "  ${DIM}GRAPHICS=[LISTEN=\"0.0.0.0\",TYPE=\"VNC\"]${NC}"
+    echo -e "  ${CYAN}EOF${NC}"
+    echo ""
+    echo -e "  ${DIM}# 4. Instantiate the container${NC}"
+    echo -e "  ${CYAN}onetemplate instantiate ${APPLIANCE_NAME}${NC}"
+    echo ""
+}
+
 # Show VM access and troubleshooting info
 show_vm_access_info() {
     local vm_id="$1"
@@ -2430,8 +3854,8 @@ show_manual_deploy_instructions() {
     echo -e "  ${CYAN}scp ${image_path} <frontend>:/var/tmp/${NC}"
     echo ""
     echo -e "  ${DIM}# 2. Create image in OpenNebula${NC}"
-    echo -e "  ${CYAN}oneimage create --name ${APPLIANCE_NAME} \\${NC}"
-    echo -e "  ${CYAN}  --path /var/tmp/${APPLIANCE_NAME}.qcow2 \\${NC}"
+    echo -e "  ${CYAN}oneimage create --name ${APPLIANCE_NAME}${NC} \\"
+    echo -e "  ${CYAN}  --path /var/tmp/${APPLIANCE_NAME}.qcow2${NC} \\"
     echo -e "  ${CYAN}  --format qcow2 --datastore <DATASTORE_ID>${NC}"
     echo ""
     echo -e "  ${DIM}# 3. Create template and VM from Sunstone UI${NC}"
@@ -2735,12 +4159,8 @@ check_base_image() {
 
 # Main wizard flow with navigation support
 main() {
-    # Check if we're in the right directory
-    if [ ! -f "${SCRIPT_DIR}/generate-docker-appliance.sh" ]; then
-        echo -e "${RED}Error: This script must be run from the wizard directory.${NC}"
-        echo -e "Please cd to: ${SCRIPT_DIR}"
-        exit 1
-    fi
+    # Check if we're in the right directory (only needed for Docker appliances)
+    # LXC appliances don't need the generate-docker-appliance.sh script
 
     # ═══════════════════════════════════════════════════════════════════════════
     # NON-INTERACTIVE MODE: If env file was loaded, skip wizard steps
@@ -2748,6 +4168,21 @@ main() {
     if [ -n "$ENV_FILE" ]; then
         echo -e "  ${WHITE}Running in non-interactive mode...${NC}"
         echo ""
+
+        # Check appliance type and run appropriate generator
+        if [ "$APPLIANCE_TYPE" = "lxc" ]; then
+            echo -e "  ${CYAN}Building LXC appliance...${NC}"
+            generate_lxc_appliance
+            echo ""
+            exit 0
+        fi
+
+        # Docker appliance flow (original)
+        if [ ! -f "${SCRIPT_DIR}/generate-docker-appliance.sh" ]; then
+            echo -e "${RED}Error: generate-docker-appliance.sh not found.${NC}"
+            echo -e "Please cd to: ${SCRIPT_DIR}"
+            exit 1
+        fi
 
         # Check if base image exists
         local base_image="${REPO_ROOT}/apps-code/one-apps/export/${BASE_OS}.qcow2"
@@ -2792,30 +4227,69 @@ main() {
     # INTERACTIVE MODE: Run wizard steps
     # ═══════════════════════════════════════════════════════════════════════════
 
-    # Array of step functions
-    local steps=(
-        "step_welcome"
-        "step_docker_image"
-        "step_architecture"
-        "step_base_os"
-        "step_appliance_info"
-        "step_publisher_info"
-        "step_app_details"
-        "step_container_config"
-        "step_vm_config"
-        "step_ssh_config"
-        "step_login_config"
-        "step_docker_updates"
-        "step_summary"
-    )
-
+    # Initial steps to determine appliance type
+    local steps=("step_welcome" "step_appliance_type")
     local current=0
     local total=${#steps[@]}
+    local result
+
+    while [ $current -lt $total ]; do
+        if ${steps[$current]}; then
+            result=0
+        else
+            result=$?
+        fi
+        case $result in
+            $NAV_CONTINUE) current=$((current + 1)) ;;
+            $NAV_BACK)
+                if [ $current -gt 0 ]; then
+                    current=$((current - 1))
+                fi
+                ;;
+            $NAV_QUIT) handle_quit ;;
+        esac
+    done
+
+    # Now build the type-specific steps array
+    if [ "$APPLIANCE_TYPE" = "lxc" ]; then
+        # LXC workflow
+        steps=(
+            "step_lxc_application"
+            "step_architecture"
+            "step_lxc_base_os"
+            "step_context_mode"
+            "step_lxc_vm_config"
+            "step_lxc_summary"
+        )
+    else
+        # Docker workflow (original)
+        if [ ! -f "${SCRIPT_DIR}/generate-docker-appliance.sh" ]; then
+            echo -e "${RED}Error: Docker appliance generation requires generate-docker-appliance.sh${NC}"
+            echo -e "Please cd to: ${SCRIPT_DIR}"
+            exit 1
+        fi
+
+        steps=(
+            "step_docker_image"
+            "step_architecture"
+            "step_base_os"
+            "step_appliance_info"
+            "step_publisher_info"
+            "step_app_details"
+            "step_container_config"
+            "step_vm_config"
+            "step_ssh_config"
+            "step_login_config"
+            "step_docker_updates"
+            "step_summary"
+        )
+    fi
+
+    current=0
+    total=${#steps[@]}
 
     while [ $current -lt $total ]; do
         # Execute current step and capture result
-        # Use subshell + variable to avoid set -e issues
-        local result
         if ${steps[$current]}; then
             result=0
         else
@@ -2840,67 +4314,73 @@ main() {
         esac
     done
 
-    # Check if base image exists before generating
-    while true; do
-        local check_result
-        if check_base_image; then
-            check_result=0
-        else
-            check_result=$?
-        fi
+    # Generate the appliance based on type
+    if [ "$APPLIANCE_TYPE" = "lxc" ]; then
+        # LXC appliances don't need base image check - we download Alpine rootfs on the fly
+        generate_lxc_appliance
+    else
+        # Docker appliances need base image check
+        while true; do
+            local check_result
+            if check_base_image; then
+                check_result=0
+            else
+                check_result=$?
+            fi
 
-        case $check_result in
-            0)
-                # Continue to generate
-                break
-                ;;
-            1)
-                # User cancelled
-                handle_quit
-                ;;
-            2)
-                # User wants to change OS - go directly to OS selection step
-                # Step indices: 2=architecture, 3=base_os
-                local os_step=3  # step_base_os index
+            case $check_result in
+                0)
+                    # Continue to generate
+                    break
+                    ;;
+                1)
+                    # User cancelled
+                    handle_quit
+                    ;;
+                2)
+                    # User wants to change OS - go directly to OS selection step
+                    # Step indices: 2=architecture, 3=base_os (in Docker workflow, step_base_os is at index 2)
+                    local os_step=2  # step_base_os index in Docker workflow
 
-                # Run only the OS selection step (and architecture if they go back)
-                local temp_current=$os_step
-                while [ $temp_current -ge 2 ] && [ $temp_current -le 3 ]; do
-                    local result
-                    if ${steps[$temp_current]}; then
-                        result=0
-                    else
-                        result=$?
-                    fi
+                    # Run only the OS selection step (and architecture if they go back)
+                    local temp_current=$os_step
+                    while [ $temp_current -ge 1 ] && [ $temp_current -le 2 ]; do
+                        local result
+                        if ${steps[$temp_current]}; then
+                            result=0
+                        else
+                            result=$?
+                        fi
 
-                    case $result in
-                        $NAV_CONTINUE)
-                            if [ $temp_current -eq 3 ]; then
-                                # OS selected, break out and re-check base image
-                                break
-                            else
-                                temp_current=$((temp_current + 1))
-                            fi
-                            ;;
-                        $NAV_BACK)
-                            if [ $temp_current -gt 2 ]; then
-                                temp_current=$((temp_current - 1))
-                            else
-                                # At architecture step, allow going back further
-                                temp_current=$((temp_current - 1))
-                            fi
-                            ;;
-                        $NAV_QUIT)
-                            handle_quit
-                            ;;
-                    esac
-                done
-                # Loop back to check_base_image with new OS
-                ;;
-        esac
-    done
+                        case $result in
+                            $NAV_CONTINUE)
+                                if [ $temp_current -eq 2 ]; then
+                                    # OS selected, break out and re-check base image
+                                    break
+                                else
+                                    temp_current=$((temp_current + 1))
+                                fi
+                                ;;
+                            $NAV_BACK)
+                                if [ $temp_current -gt 1 ]; then
+                                    temp_current=$((temp_current - 1))
+                                else
+                                    # At architecture step, allow going back further
+                                    temp_current=$((temp_current - 1))
+                                fi
+                                ;;
+                            $NAV_QUIT)
+                                handle_quit
+                                ;;
+                        esac
+                    done
+                    # Loop back to check_base_image with new OS
+                    ;;
+            esac
+        done
 
-    generate_appliance
+        generate_appliance
+    fi
     echo ""
 }
 
