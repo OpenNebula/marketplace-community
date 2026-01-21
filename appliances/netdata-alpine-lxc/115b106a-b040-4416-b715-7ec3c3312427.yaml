@@ -62,7 +62,7 @@ logo: alpine.png
 
 images:
 - name: netdata-alpine-lxc
-  url: https://your-cdn.cloudfront.net/netdata-alpine-lxc.raw
+  url: https://d38nm155miqkyg.cloudfront.net/netdata-alpine-lxc.raw
   type: OS
   dev_prefix: sd
   driver: raw
