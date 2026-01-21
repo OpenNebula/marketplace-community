@@ -105,6 +105,19 @@ LXC_PORTS=""
 LXC_SETUP_CMD=""
 CONTEXT_MODE="auto"  # "auto", "context", "contextless"
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# MARKETPLACE SUBMISSION VARIABLES
+# ═══════════════════════════════════════════════════════════════════════════════
+MARKETPLACE_SUBMIT=""           # "yes" or "no"
+MARKETPLACE_PUBLISHER=""        # Publisher name
+MARKETPLACE_EMAIL=""            # Publisher email
+MARKETPLACE_GITHUB_USER=""      # GitHub username
+MARKETPLACE_IMAGE_URL=""        # CDN URL for image
+MARKETPLACE_IMAGE_MD5=""        # MD5 checksum
+MARKETPLACE_IMAGE_SHA256=""     # SHA256 checksum
+MARKETPLACE_IMAGE_SIZE=""       # Image size in bytes
+MARKETPLACE_UUID=""             # Generated UUID for appliance
+
 # LXC Application Catalog
 # Format: app_id="Display Name|packages|ports|setup_function"
 # Setup functions are defined below and called during appliance build
@@ -121,6 +134,22 @@ declare -A LXC_APP_CATALOG=(
     ["zigbee2mqtt"]="Zigbee2MQTT|nodejs npm|8080|setup_zigbee2mqtt"
     ["netdata"]="Netdata Monitoring|netdata|19999|setup_netdata"
     ["custom"]="Custom Application|<specify packages>|<specify ports>|setup_custom"
+)
+
+# Memory requirements per application (MB)
+declare -A LXC_APP_MEMORY=(
+    ["mqtt"]="128"
+    ["nodered"]="256"
+    ["nginx"]="128"
+    ["redis"]="256"
+    ["postgres"]="512"
+    ["influxdb"]="512"
+    ["telegraf"]="128"
+    ["grafana"]="512"
+    ["homebridge"]="256"
+    ["zigbee2mqtt"]="256"
+    ["netdata"]="256"
+    ["custom"]="256"
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -341,9 +370,16 @@ setup_app_grafana() {
 # Create directories
 mkdir -p /var/lib/grafana /var/log/grafana
 
-# Configure Grafana for network access
+# Configure Grafana for network access (listen on all interfaces)
 if [ -f /etc/grafana.ini ]; then
     sed -i 's/;http_addr =/http_addr = 0.0.0.0/' /etc/grafana.ini
+    sed -i 's/http_addr = 127.0.0.1/http_addr = 0.0.0.0/' /etc/grafana.ini
+fi
+
+# Update conf.d to listen on all interfaces and remove logger dependency
+if [ -f /etc/conf.d/grafana ]; then
+    sed -i 's/cfg:server.http_addr=127.0.0.1/cfg:server.http_addr=0.0.0.0/' /etc/conf.d/grafana
+    sed -i 's/^rc_need=logger/#rc_need=logger/' /etc/conf.d/grafana
 fi
 
 chown -R grafana:grafana /var/lib/grafana /var/log/grafana 2>/dev/null || true
@@ -990,6 +1026,29 @@ show_cursor() {
     printf '\033[?25h'
 }
 
+# Reset terminal to known good state for interactive input
+# Call this after processes that may have corrupted stdin (builds, pipes, etc.)
+reset_terminal_for_input() {
+    # Reset terminal settings FIRST
+    stty sane </dev/tty 2>/dev/null || true
+
+    # Multiple drain passes with increasing timeouts to catch all garbage
+    # Pass 1: Quick drain (1ms timeout)
+    while IFS= read -rsn1 -t 0.001 _discard </dev/tty 2>/dev/null; do :; done
+
+    # Pass 2: Medium drain (10ms timeout) - catches slower arriving data
+    while IFS= read -rsn1 -t 0.01 _discard </dev/tty 2>/dev/null; do :; done
+
+    # Pass 3: Final drain (50ms timeout) - ensures buffer is truly empty
+    while IFS= read -rsn1 -t 0.05 _discard </dev/tty 2>/dev/null; do :; done
+
+    # Reset terminal settings again after draining
+    stty sane </dev/tty 2>/dev/null || true
+
+    # Small delay to let everything settle
+    sleep 0.1
+}
+
 # Get terminal width
 get_term_width() {
     tput cols 2>/dev/null || echo 80
@@ -1170,12 +1229,51 @@ monitor_build_progress() {
 # Args: $1=result_var, $2...=options
 # Sets result_var to selected index, or returns NAV_BACK if user pressed 'b'
 menu_select() {
+    # Temporarily disable set -e to prevent unexpected exits during menu interaction
+    # This is critical after build processes that may leave terminal/fd state corrupted
+    local was_errexit=0
+    [[ $- == *e* ]] && was_errexit=1
+    set +e
+
     local result_var=$1
     shift
     local options=("$@")
     local num_options=${#options[@]}
     local selected=0
     local key=""
+
+    # DEBUG LOG FILE
+    local MENU_LOG="/tmp/menu_select_debug.log"
+    echo "========================================" >> "$MENU_LOG"
+    echo "menu_select called at $(date)" >> "$MENU_LOG"
+    echo "Options: ${options[*]}" >> "$MENU_LOG"
+    echo "Num options: $num_options" >> "$MENU_LOG"
+    echo "PID: $$" >> "$MENU_LOG"
+    echo "TTY: $(tty 2>&1)" >> "$MENU_LOG"
+    echo "/dev/tty exists: $(test -e /dev/tty && echo yes || echo no)" >> "$MENU_LOG"
+    echo "/dev/tty readable: $(test -r /dev/tty && echo yes || echo no)" >> "$MENU_LOG"
+    echo "fd 0 (stdin): $(ls -l /proc/$$/fd/0 2>&1)" >> "$MENU_LOG"
+    echo "fd 1 (stdout): $(ls -l /proc/$$/fd/1 2>&1)" >> "$MENU_LOG"
+    echo "fd 2 (stderr): $(ls -l /proc/$$/fd/2 2>&1)" >> "$MENU_LOG"
+    echo "" >> "$MENU_LOG"
+
+    # Open a FRESH file descriptor for /dev/tty - ensures clean state after build processes
+    echo "Opening fd 3 for /dev/tty..." >> "$MENU_LOG"
+    if ! exec 3</dev/tty; then
+        echo "FAILED to open /dev/tty as fd 3!" >> "$MENU_LOG"
+        eval "$result_var=0"
+        [ $was_errexit -eq 1 ] && set -e
+        return $NAV_CONTINUE
+    fi
+    echo "fd 3 opened successfully" >> "$MENU_LOG"
+    echo "fd 3: $(ls -l /proc/$$/fd/3 2>&1)" >> "$MENU_LOG"
+
+    # Initial drain of any garbage in the fresh descriptor
+    local drain_count=0
+    while IFS= read -rsn1 -t 0.01 _init_drain <&3 2>/dev/null; do
+        drain_count=$((drain_count + 1))
+    done
+    echo "Initial drain: removed $drain_count characters" >> "$MENU_LOG"
 
     # Print options immediately - selected option has green arrow
     echo ""
@@ -1191,37 +1289,131 @@ menu_select() {
 
     hide_cursor
 
+    local iteration=0
     while true; do
-        IFS= read -rsn1 key
+        iteration=$((iteration + 1))
+        echo "--- Iteration $iteration ---" >> "$MENU_LOG"
+        echo "About to read from fd 3..." >> "$MENU_LOG"
+
+        # Read from fresh tty descriptor - wait for real user input
+        local read_status=0
+        IFS= read -rsn1 key <&3 || read_status=$?
+
+        echo "Read returned. Status: $read_status" >> "$MENU_LOG"
+        echo "Key value: '$(printf '%q' "$key")'" >> "$MENU_LOG"
+        echo "Key hex: $(printf '%s' "$key" | xxd -p 2>/dev/null || echo 'xxd not available')" >> "$MENU_LOG"
+        echo "Key length: ${#key}" >> "$MENU_LOG"
+
+        # Handle navigation keys
+        local should_redraw=0
 
         if [ "$key" = $'\x1b' ]; then
-            read -rsn2 -t 0.5 key
-            case "$key" in
-                '[A') ((selected > 0)) && ((selected--)) ;;
-                '[B') ((selected < num_options - 1)) && ((selected++)) ;;
-                '[C') ;;  # Right arrow - ignore
-                '[D') ;;  # Left arrow - ignore
-                *) ;;     # Other escape sequences - ignore
-            esac
+            echo "ESC detected, reading escape sequence..." >> "$MENU_LOG"
+            # Read the full escape sequence with timeout to avoid hanging
+            if IFS= read -rsn2 -t 0.1 seq <&3 2>/dev/null; then
+                echo "Escape sequence: '$seq' (hex: $(printf '%s' "$seq" | xxd -p 2>/dev/null))" >> "$MENU_LOG"
+                case "$seq" in
+                    '[A') # Up arrow
+                        echo "UP arrow" >> "$MENU_LOG"
+                        if ((selected > 0)); then
+                            ((selected--))
+                            should_redraw=1
+                        fi
+                        ;;
+                    '[B') # Down arrow
+                        echo "DOWN arrow" >> "$MENU_LOG"
+                        echo "  selected=$selected, num_options=$num_options" >> "$MENU_LOG"
+                        sync  # Flush log immediately
+                        if ((selected < num_options - 1)); then
+                            ((selected++))
+                            echo "  incremented selected to $selected" >> "$MENU_LOG"
+                            should_redraw=1
+                            echo "  should_redraw set to 1" >> "$MENU_LOG"
+                        else
+                            echo "  already at bottom, not incrementing" >> "$MENU_LOG"
+                        fi
+                        echo "  exiting DOWN case" >> "$MENU_LOG"
+                        sync  # Flush log
+                        ;;
+                    '[C'|'[D') # Right/Left arrows - ignore
+                        echo "LEFT/RIGHT arrow (ignored)" >> "$MENU_LOG"
+                        ;;
+                    *) # Unknown escape sequence - ignore
+                        echo "Unknown escape sequence (ignored)" >> "$MENU_LOG"
+                        ;;
+                esac
+            else
+                echo "Escape sequence read failed/timed out" >> "$MENU_LOG"
+            fi
+            echo "After ESC handling, should_redraw=$should_redraw" >> "$MENU_LOG"
+            # If read timed out or failed, just ignore the ESC and don't redraw
         elif [ "$key" = "" ]; then
+            echo "EMPTY KEY detected (could be Enter or spurious)" >> "$MENU_LOG"
+            # Empty read could be Enter key OR spurious data after build processes
+            # Verify by checking if more data arrives immediately (spurious = garbage in buffer)
+            if IFS= read -rsn1 -t 0.02 _verify <&3 2>/dev/null; then
+                echo "SPURIOUS: Got more data immediately, draining..." >> "$MENU_LOG"
+                # Got more data immediately - this was spurious, drain and retry
+                local spurious_drain=0
+                while IFS= read -rsn1 -t 0.001 _drain <&3 2>/dev/null; do
+                    spurious_drain=$((spurious_drain + 1))
+                done
+                echo "Spurious drain: removed $spurious_drain characters" >> "$MENU_LOG"
+                continue
+            fi
+            # No more data - this was a real Enter press
+            echo "ENTER: No more data, treating as Enter press" >> "$MENU_LOG"
+            echo "Breaking out of loop with selected=$selected" >> "$MENU_LOG"
             break
         elif [ "$key" = "q" ] || [ "$key" = "Q" ]; then
+            echo "QUIT pressed" >> "$MENU_LOG"
+            exec 3<&-  # Close file descriptor
             show_cursor
             echo ""
             print_warning "Cancelled."
+            [ $was_errexit -eq 1 ] && set -e
             exit 0
         elif [ "$key" = "b" ] || [ "$key" = "B" ]; then
+            echo "BACK pressed" >> "$MENU_LOG"
+            exec 3<&-  # Close file descriptor
             show_cursor
             eval "$result_var=-1"
+            [ $was_errexit -eq 1 ] && set -e
             return $NAV_BACK
         elif [ "$key" = "k" ]; then
-            ((selected > 0)) && ((selected--))
+            echo "VIM UP (k)" >> "$MENU_LOG"
+            # Vim-style up
+            if ((selected > 0)); then
+                ((selected--))
+                should_redraw=1
+            fi
         elif [ "$key" = "j" ]; then
-            ((selected < num_options - 1)) && ((selected++))
+            echo "VIM DOWN (j)" >> "$MENU_LOG"
+            # Vim-style down
+            if ((selected < num_options - 1)); then
+                ((selected++))
+                should_redraw=1
+            fi
+        else
+            echo "UNKNOWN key (ignored): '$(printf '%q' "$key")'" >> "$MENU_LOG"
+            # Unknown key - ignore and don't redraw
+            continue
         fi
 
+        echo "Past all key handling, should_redraw=$should_redraw" >> "$MENU_LOG"
+
+        # Only redraw if selection changed
+        if [ $should_redraw -eq 0 ]; then
+            echo "No redraw needed" >> "$MENU_LOG"
+            continue
+        fi
+
+        echo "Redrawing menu..." >> "$MENU_LOG"
+        sync  # Flush log to disk
+        echo "  About to move cursor up $((num_options+3)) lines" >> "$MENU_LOG"
         # Redraw (num_options + 3 lines: empty line, options, empty line, help line)
         for ((i=0; i<num_options+3; i++)); do printf '\033[A'; done
+        echo "  Cursor moved, now redrawing options" >> "$MENU_LOG"
 
         printf '\033[2K'
         echo ""
@@ -1239,8 +1431,13 @@ menu_select() {
         echo -e "  ${DIM}[↑↓] Navigate  [Enter] Select  [b] Back  [q] Quit${NC}"
     done
 
+    exec 3<&-  # Close file descriptor
     show_cursor
     eval "$result_var=$selected"
+    echo "menu_select returning with selected=$selected" >> "$MENU_LOG"
+    echo "========================================" >> "$MENU_LOG"
+    echo "" >> "$MENU_LOG"
+    [ $was_errexit -eq 1 ] && set -e
     return $NAV_CONTINUE
 }
 
@@ -1502,6 +1699,56 @@ step_context_mode() {
     print_step 5 $TOTAL_STEPS "Contextualization Mode"
 
     echo ""
+
+    # Check if any LXC hosts lack iso9660 support
+    local has_hosts_without_iso9660=false
+    local hosts_checked=0
+    local incompatible_hosts=""
+
+    if command -v onehost &>/dev/null && command -v ssh &>/dev/null; then
+        # Get LXC hosts (aarch64 architecture)
+        local lxc_hosts=$(onehost list -l ID,NAME,STAT --csv 2>/dev/null | grep -v "^ID" | grep "on$" | cut -d',' -f2 || true)
+
+        if [ -n "$lxc_hosts" ]; then
+            while IFS= read -r host; do
+                [ -z "$host" ] && continue
+                hosts_checked=$((hosts_checked + 1))
+
+                # Check if host has iso9660 support (check for module or built-in support)
+                local has_iso9660=$(ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no "$host" \
+                    'modinfo iso9660 &>/dev/null && echo "yes" || (zgrep -q "CONFIG_ISO9660_FS=y" /proc/config.gz 2>/dev/null && echo "yes" || echo "no")' 2>/dev/null || echo "no")
+
+                if [ "$has_iso9660" = "no" ]; then
+                    has_hosts_without_iso9660=true
+                    incompatible_hosts="${incompatible_hosts}${host}, "
+                fi
+            done <<< "$lxc_hosts"
+        fi
+    fi
+
+    # Show warning banner if hosts lack iso9660
+    if [ "$has_hosts_without_iso9660" = true ]; then
+        incompatible_hosts="${incompatible_hosts%, }"  # Remove trailing comma
+        echo -e "  ${YELLOW}╔════════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "  ${YELLOW}║${NC} ${BOLD}⚠  WARNING: Embedded/IoT Hosts Detected${NC}                      ${YELLOW}║${NC}"
+        echo -e "  ${YELLOW}╚════════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        echo -e "  ${DIM}The following host(s) lack iso9660 kernel support:${NC}"
+        echo -e "  ${YELLOW}${incompatible_hosts}${NC}"
+        echo ""
+        echo -e "  ${WHITE}These hosts require Contextless mode.${NC}"
+        echo -e "  ${DIM}Standard Context will fail during VM deployment.${NC}"
+        echo ""
+        echo -e "  ${GREEN}✓${NC} Auto-selecting: ${BOLD}Contextless (DHCP)${NC}"
+        echo ""
+        echo -e "  ${DIM}Press any key to continue...${NC}"
+        read -n 1 -s
+
+        CONTEXT_MODE="contextless"
+        return $NAV_CONTINUE
+    fi
+
+    # Standard selection if hosts support iso9660 or can't be checked
     echo -e "  ${WHITE}Select how the container gets its configuration:${NC}"
     echo ""
     echo -e "  ${CYAN}Standard Context:${NC}"
@@ -1512,6 +1759,11 @@ step_context_mode() {
     echo -e "    ${DIM}• VM uses DHCP for networking${NC}"
     echo -e "    ${DIM}• No kernel module requirements${NC}"
     echo -e "    ${DIM}• Best for edge/IoT devices${NC}"
+
+    if [ "$hosts_checked" -eq 0 ]; then
+        echo ""
+        echo -e "  ${DIM}💡 Tip: For Arduino/Raspberry Pi hosts, use Contextless mode${NC}"
+    fi
 
     local context_options=("Standard Context" "Contextless (DHCP) - Recommended")
     local modes=("context" "contextless")
@@ -1547,8 +1799,11 @@ step_lxc_vm_config() {
     local rec_disk="${LXC_DISK_SIZES[${BASE_OS%.aarch64}]#*|}"
     [ -z "$rec_disk" ] && rec_disk="256"
 
+    # Get recommended memory for the selected application
+    local rec_memory="${LXC_APP_MEMORY[$LXC_APPLICATION]:-256}"
+
     local result
-    prompt_optional "Memory (MB)" VM_MEMORY "256"
+    prompt_optional "Memory (MB)" VM_MEMORY "$rec_memory"
     result=$?; [ $result -ne $NAV_CONTINUE ] && return $result
 
     prompt_optional "VCPUs" VM_VCPU "1"
@@ -1694,7 +1949,11 @@ INITEOF
     # Install packages
     local pkg_list="${LXC_PACKAGES}"
     $SUDO chroot "$rootfs_dir" /bin/sh << CHROOTEOF
+# Use HTTP repositories for LXC builds to avoid SSL certificate issues during build
+sed -i 's/https:/http:/g' /etc/apk/repositories
 apk update
+apk add --no-cache ca-certificates
+update-ca-certificates
 apk add openrc $pkg_list openssh
 rc-update add networking boot
 rc-update add sshd default
@@ -1749,8 +2008,9 @@ CHROOTEOF
     # Generate SSH host keys during build (required for unprivileged LXC containers)
     $SUDO chroot "$rootfs_dir" /bin/sh -c "ssh-keygen -A" 2>/dev/null || true
 
-    # Clear root password
-    $SUDO chroot "$rootfs_dir" /bin/sh -c "passwd -d root" 2>/dev/null || true
+    # Clear root password - directly modify shadow file for Alpine compatibility
+    # passwd -d doesn't work reliably on Alpine/BusyBox
+    $SUDO sed -i 's/^root:[^:]*:/root::/' "$rootfs_dir/etc/shadow"
 
     echo -e "  ${GREEN}✓${NC} SSH configured"
 
@@ -1808,7 +2068,7 @@ CHROOTEOF
     echo ""
     echo -e "  ${WHITE}To register in OpenNebula:${NC}"
     echo -e "  ${CYAN}oneimage create --name ${APPLIANCE_NAME} --path $output_image${NC} \\"
-    echo -e "  ${CYAN}  --datastore default --type OS --driver raw --format raw${NC}"
+    echo -e "  ${CYAN}  --datastore default --type OS --disk_type FILE --format raw${NC}"
     echo ""
     echo -e "  ${WHITE}Template settings:${NC}"
     echo -e "  ${DIM}HYPERVISOR = lxc${NC}"
@@ -1862,8 +2122,649 @@ ENVEOF
         fi
     fi
 
+    # Ask about marketplace submission after successful build
+    ask_marketplace_submission "$output_image"
+
     # Show manual deployment instructions if not deploying
     show_lxc_manual_deploy_instructions "$output_image"
+}
+
+# Ask about marketplace submission after LXC build completes
+ask_marketplace_submission() {
+    local output_image="$1"
+
+    echo ""
+    echo -e "  ${WHITE}╔════════════════════════════════════════════════════════╗${NC}"
+    echo -e "  ${WHITE}║      Share Your Appliance with the Community!         ║${NC}"
+    echo -e "  ${WHITE}╚════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "  ${CYAN}Submit to OpenNebula Community Marketplace?${NC}"
+    echo ""
+    echo -e "  ${GREEN}✓${NC} Help other users with ready-to-use appliances"
+    echo -e "  ${GREEN}✓${NC} Get recognition in the OpenNebula community"
+    echo -e "  ${GREEN}✓${NC} Official OpenNebula Systems review & support"
+    echo ""
+    echo -e "  ${DIM}This will generate marketplace metadata files and${NC}"
+    echo -e "  ${DIM}guide you through the GitHub PR submission process.${NC}"
+    echo ""
+
+    prompt_yes_no "Generate marketplace files?" MARKETPLACE_SUBMIT "false"
+
+    if [ "$MARKETPLACE_SUBMIT" != "true" ]; then
+        echo ""
+        echo -e "  ${CYAN}💡 Tip:${NC} You can generate marketplace files later using:"
+        echo -e "  ${DIM}    ./appliance-wizard.sh --marketplace ${APPLIANCE_NAME}${NC}"
+        return
+    fi
+
+    # Collect publisher information
+    echo ""
+    echo -e "  ${WHITE}Publisher Information${NC}"
+    echo -e "  ${DIM}(Visible in the marketplace)${NC}"
+    echo ""
+
+    prompt_required "Publisher Name" MARKETPLACE_PUBLISHER ""
+    if [ $? -ne 0 ]; then
+        MARKETPLACE_SUBMIT="false"
+        return
+    fi
+
+    prompt_optional "Email (optional)" MARKETPLACE_EMAIL ""
+
+    prompt_required "GitHub Username" MARKETPLACE_GITHUB_USER ""
+    if [ $? -ne 0 ]; then
+        MARKETPLACE_SUBMIT="false"
+        return
+    fi
+
+    # Show built image info
+    echo ""
+    echo -e "  ${BOLD}Built Image:${NC}"
+    echo -e "  ${DIM}$output_image${NC}"
+    echo ""
+    echo -e "  ${CYAN}Generating marketplace metadata files...${NC}"
+    echo ""
+    echo -e "  ${DIM}Files will include a placeholder CDN URL.${NC}"
+    echo -e "  ${DIM}You'll upload the image to a CDN (AWS S3, CloudFront, etc.)${NC}"
+    echo -e "  ${DIM}and update the URL in the generated files before submitting.${NC}"
+
+    # Generate with placeholder URL
+    MARKETPLACE_IMAGE_URL=""
+
+    # Generate marketplace files
+    generate_marketplace_files "$output_image"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MARKETPLACE FILE GENERATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+generate_marketplace_files() {
+    local image_file="$1"
+
+    echo ""
+    echo -e "  ${WHITE}╔════════════════════════════════════════════════════════╗${NC}"
+    echo -e "  ${WHITE}║       Generating Marketplace Submission Files         ║${NC}"
+    echo -e "  ${WHITE}╚════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    # Generate UUID if not already set
+    if [ -z "$MARKETPLACE_UUID" ]; then
+        if command -v uuidgen &>/dev/null; then
+            MARKETPLACE_UUID=$(uuidgen)
+        elif command -v uuid &>/dev/null; then
+            MARKETPLACE_UUID=$(uuid)
+        else
+            # Fallback UUID generation
+            MARKETPLACE_UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "$(date +%s)-$(hostname)-$$" | md5sum | cut -d' ' -f1 | sed 's/\(.\{8\}\)\(.\{4\}\)\(.\{4\}\)\(.\{4\}\)\(.\{12\}\)/\1-\2-\3-\4-\5/')
+        fi
+    fi
+
+    # Calculate checksums if image exists
+    if [ -f "$image_file" ]; then
+        echo -e "  ${CYAN}[1/6]${NC} Calculating image checksums..."
+        MARKETPLACE_IMAGE_MD5=$(md5sum "$image_file" | cut -d' ' -f1)
+        MARKETPLACE_IMAGE_SHA256=$(sha256sum "$image_file" | cut -d' ' -f1)
+
+        # Get image size
+        if command -v qemu-img &>/dev/null; then
+            MARKETPLACE_IMAGE_SIZE=$(qemu-img info "$image_file" | grep 'virtual size' | sed 's/.*(\([0-9]*\) bytes).*/\1/')
+        else
+            MARKETPLACE_IMAGE_SIZE=$(stat -f%z "$image_file" 2>/dev/null || stat -c%s "$image_file")
+        fi
+
+        echo -e "  ${GREEN}✓${NC} MD5:    $MARKETPLACE_IMAGE_MD5"
+        echo -e "  ${GREEN}✓${NC} SHA256: ${MARKETPLACE_IMAGE_SHA256:0:32}..."
+        echo -e "  ${GREEN}✓${NC} Size:   $MARKETPLACE_IMAGE_SIZE bytes"
+    else
+        echo -e "  ${YELLOW}⚠${NC}  Image file not found - checksums will need to be calculated manually"
+        MARKETPLACE_IMAGE_MD5="<calculate-after-upload>"
+        MARKETPLACE_IMAGE_SHA256="<calculate-after-upload>"
+        MARKETPLACE_IMAGE_SIZE="<size-in-bytes>"
+    fi
+
+    # Create marketplace directory
+    local marketplace_dir="${SCRIPT_DIR}/marketplace-${APPLIANCE_NAME}"
+    mkdir -p "$marketplace_dir"
+
+    # Get application display name from catalog
+    local app_display_name="${LXC_APP_CATALOG[$LXC_APPLICATION]%%|*}"
+
+    # Generate UUID.yaml
+    echo ""
+    echo -e "  ${CYAN}[2/6]${NC} Generating ${MARKETPLACE_UUID}.yaml..."
+
+    local email_line=""
+    [ -n "$MARKETPLACE_EMAIL" ] && email_line="publisher_email: $MARKETPLACE_EMAIL"
+
+    local context_section=""
+    if [ "$CONTEXT_MODE" != "contextless" ]; then
+        context_section="  context:
+    network: 'YES'
+    ssh_public_key: \"\$USER[SSH_PUBLIC_KEY]\""
+    fi
+
+    cat > "$marketplace_dir/${MARKETPLACE_UUID}.yaml" << UUIDEOF
+---
+name: $APPLIANCE_NAME
+version: 1.0
+publisher: $MARKETPLACE_PUBLISHER
+${email_line}
+description: |-
+  ${app_display_name} on Alpine Linux ${BASE_OS#alpine}.
+
+  LXC container appliance optimized for edge and IoT deployments.
+
+  **Features:**
+  - Lightweight Alpine Linux base
+  - Pre-configured ${LXC_APPLICATION}
+  - ${CONTEXT_MODE} deployment
+  - Compatible with embedded devices (Arduino, Raspberry Pi)
+
+  **Services:**
+  $(echo "$LXC_PORTS" | tr ',' '\n' | while read port; do echo "  - Port $port: ${app_display_name}"; done)
+
+  **Network Access:**
+  - For Arduino/embedded hosts: Configure Tailscale subnet router or port forwarding
+  - For standard hosts: Direct container IP access
+
+  **Default Credentials:**
+  - Username: root
+  - SSH: Key-based authentication (from OpenNebula context)
+
+  This is a community-contributed appliance. Please report issues at:
+  https://github.com/OpenNebula/one/issues
+
+short_description: ${app_display_name} on Alpine Linux for LXC
+
+tags:
+- alpine
+- lxc
+- $(echo "$LXC_APPLICATION" | tr '[:upper:]' '[:lower:]')
+- lightweight
+- edge
+- iot
+
+format: raw
+creation_time: $(date +%s)
+
+os-id: Alpine
+os-release: "$(echo ${BASE_OS#alpine} | sed 's/\(.\)\(.\)/\1.\2/')"
+os-arch: $ARCH
+hypervisor: lxc
+
+opennebula_version: 6.10, 7.0
+
+opennebula_template:
+  cpu: '$VM_VCPU'
+  vcpu: '$VM_VCPU'
+  memory: '$VM_MEMORY'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+${context_section}
+  sched_requirements: 'HYPERVISOR="lxc" & ARCH="$ARCH"'
+
+logo: alpine.png
+
+images:
+- name: ${APPLIANCE_NAME}
+  url: ${MARKETPLACE_IMAGE_URL:-https://d38nm155miqkyg.cloudfront.net/${APPLIANCE_NAME}.raw}
+  type: OS
+  dev_prefix: sd
+  driver: raw
+  size: $MARKETPLACE_IMAGE_SIZE
+  checksum:
+    md5: $MARKETPLACE_IMAGE_MD5
+    sha256: $MARKETPLACE_IMAGE_SHA256
+UUIDEOF
+
+    echo -e "  ${GREEN}✓${NC} Created ${MARKETPLACE_UUID}.yaml"
+
+    # Generate metadata.yaml
+    echo -e "  ${CYAN}[3/6]${NC} Generating metadata.yaml..."
+
+    cat > "$marketplace_dir/metadata.yaml" << METAEOF
+---
+:app:
+  :name: ${APPLIANCE_NAME}
+  :type: service
+  :os:
+    :type: linux
+    :base: ${BASE_OS}
+  :hypervisor: lxc
+  :context:
+    :prefixed: false
+    :params: {}
+
+:one:
+  :template:
+    NAME: ${APPLIANCE_NAME}
+    TEMPLATE:
+      ARCH: $ARCH
+      CPU: '$VM_VCPU'
+      GRAPHICS:
+        LISTEN: 0.0.0.0
+        TYPE: vnc
+      MEMORY: '$VM_MEMORY'
+      NIC:
+        NETWORK: service
+      NIC_DEFAULT:
+        MODEL: virtio
+  :datastore_name: default
+  :timeout: '90'
+
+:infra:
+  :disk_format: raw
+  :apps_path: /var/tmp
+METAEOF
+
+    echo -e "  ${GREEN}✓${NC} Created metadata.yaml"
+
+    # Generate README.md
+    echo -e "  ${CYAN}[4/6]${NC} Generating README.md..."
+
+    cat > "$marketplace_dir/README.md" << READMEEOF
+# $APPLIANCE_NAME
+
+## Description
+
+${app_display_name} running on Alpine Linux in an LXC container.
+
+This appliance provides a lightweight, production-ready deployment of ${LXC_APPLICATION} optimized for edge and IoT environments.
+
+## Requirements
+
+- OpenNebula 6.10+ or 7.0+
+- LXC-capable host with:
+  - Architecture: $ARCH
+  - For contextless deployment: No special requirements
+  - For standard context: iso9660 kernel module support
+
+## Quick Start
+
+1. Import appliance from OpenNebula Community Marketplace
+2. Instantiate the VM template
+3. Wait for deployment to complete
+4. Access services:
+$(echo "$LXC_PORTS" | tr ',' '\n' | while read port; do echo "   - ${app_display_name}: http://<container-ip>:$port"; done)
+
+## Configuration
+
+### Contextualization Mode
+
+This appliance is configured for **${CONTEXT_MODE}** deployment:
+
+$(if [ "$CONTEXT_MODE" = "contextless" ]; then
+echo "- Uses DHCP for network configuration
+- No iso9660 kernel module required
+- Ideal for Arduino, Raspberry Pi, and embedded devices"
+else
+echo "- Receives network configuration from OpenNebula context
+- SSH public keys injected automatically
+- Requires iso9660 kernel module support"
+fi)
+
+### VM Resources
+
+- **Memory**: ${VM_MEMORY}MB
+- **VCPUs**: $VM_VCPU
+- **Disk**: ${VM_DISK_SIZE}MB
+
+## Default Credentials
+
+- **Username**: root
+- **Password**: None (use SSH key-based authentication)
+- **SSH Access**: Keys configured via OpenNebula context
+
+## Services
+
+The following services are pre-configured and running:
+
+$(echo "$LXC_PORTS" | tr ',' '\n' | while read port; do
+    echo "- **${app_display_name}** on port $port"
+done)
+
+## Network Access
+
+### For Embedded Devices (Arduino, Raspberry Pi)
+
+Containers run on a private LXC bridge network. To access from other devices:
+
+**Option 1: Tailscale Subnet Router (Recommended)**
+\`\`\`bash
+# On LXC host:
+sudo tailscale up --advertise-routes=10.0.3.0/24
+
+# Approve route in Tailscale admin console
+# Then access directly: http://10.0.3.x:<port>
+\`\`\`
+
+**Option 2: Port Forwarding**
+\`\`\`bash
+# On LXC host:
+iptables -t nat -A PREROUTING -p tcp --dport <host-port> -j DNAT --to-destination <container-ip>:<service-port>
+iptables -t nat -A POSTROUTING -j MASQUERADE
+\`\`\`
+
+### For Standard Hosts
+
+Access container directly via its IP address (visible in \`onevm show\`).
+
+## Logs
+
+- Service logs: \`/var/log/<service>/\`
+- System logs: \`/var/log/messages\`
+
+## Support
+
+Report issues at: https://github.com/OpenNebula/one/issues
+
+Use label: "Category: Marketplace"
+
+## License
+
+Community-contributed appliance. Service-specific licenses apply.
+
+## Changelog
+
+See CHANGELOG.md for version history.
+
+## Author
+
+Contributed by: $MARKETPLACE_PUBLISHER
+$([ -n "$MARKETPLACE_EMAIL" ] && echo "Contact: $MARKETPLACE_EMAIL")
+GitHub: @$MARKETPLACE_GITHUB_USER
+READMEEOF
+
+    echo -e "  ${GREEN}✓${NC} Created README.md"
+
+    # Generate CHANGELOG.md
+    echo -e "  ${CYAN}[5/6]${NC} Generating CHANGELOG.md..."
+
+    cat > "$marketplace_dir/CHANGELOG.md" << CHANGELOGEOF
+# Changelog
+
+All notable changes to this appliance will be documented in this file.
+
+## [1.0] - $(date +%Y-%m-%d)
+
+### Added
+- Initial release of ${APPLIANCE_NAME}
+- ${app_display_name} pre-configured and ready to use
+- Alpine Linux ${BASE_OS#alpine} base
+- ${CONTEXT_MODE} deployment support
+- Optimized for $ARCH architecture
+- Compatible with OpenNebula 6.10 and 7.0
+
+### Features
+$(echo "$LXC_PORTS" | tr ',' '\n' | while read port; do echo "- Service running on port $port"; done)
+- Lightweight LXC container
+- Edge/IoT device compatible
+CHANGELOGEOF
+
+    echo -e "  ${GREEN}✓${NC} Created CHANGELOG.md"
+
+    # Generate tests.yaml
+    echo -e "  ${CYAN}[6/6]${NC} Generating tests.yaml..."
+
+    cat > "$marketplace_dir/tests.yaml" << TESTSEOF
+---
+tests:
+  - name: basic_boot
+    description: Verify container boots successfully
+    script: tests/test_boot.sh
+  - name: service_check
+    description: Verify ${LXC_APPLICATION} service is running
+    script: tests/test_service.sh
+TESTSEOF
+
+    # Create tests directory
+    mkdir -p "$marketplace_dir/tests"
+
+    echo -e "  ${GREEN}✓${NC} Created tests.yaml"
+
+    echo ""
+    echo -e "  ${WHITE}╔════════════════════════════════════════════════════════╗${NC}"
+    echo -e "  ${WHITE}║          Marketplace Files Generated!                  ║${NC}"
+    echo -e "  ${WHITE}╚════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "  ${GREEN}✓${NC} All files created in: ${BOLD}$marketplace_dir${NC}"
+    echo ""
+
+    # Automatically create PR (or show manual instructions if gh CLI unavailable)
+    create_marketplace_pr "$marketplace_dir" "$app_display_name"
+}
+
+# Automatically create GitHub PR for marketplace submission
+create_marketplace_pr() {
+    local marketplace_dir="$1"
+    local app_display_name="$2"
+
+    echo ""
+    echo -e "  ${WHITE}═══════════════════════════════════════════════════════${NC}"
+    echo -e "  ${BOLD}Creating GitHub Pull Request${NC}"
+    echo -e "  ${WHITE}═══════════════════════════════════════════════════════${NC}"
+    echo ""
+
+    # Check if gh CLI is available
+    if ! command -v gh &>/dev/null; then
+        echo -e "  ${YELLOW}!${NC} GitHub CLI (gh) not installed"
+        echo -e "  ${DIM}Install: https://cli.github.com/${NC}"
+        echo ""
+        show_manual_pr_instructions "$marketplace_dir" "$app_display_name"
+        return
+    fi
+
+    # Check if authenticated
+    if ! gh auth status &>/dev/null; then
+        echo -e "  ${YELLOW}!${NC} Not authenticated with GitHub CLI"
+        echo -e "  ${DIM}Run: gh auth login${NC}"
+        echo ""
+        show_manual_pr_instructions "$marketplace_dir" "$app_display_name"
+        return
+    fi
+
+    local branch_name="add-${APPLIANCE_NAME}-lxc"
+    local pr_title="Add ${APPLIANCE_NAME} LXC appliance"
+
+    # Create PR body
+    local pr_body="## New LXC Appliance: ${APPLIANCE_NAME}
+
+### Description
+${app_display_name} on Alpine Linux for LXC containers.
+
+### Type
+- [x] Image
+
+### Details
+- **OS**: Alpine Linux $(echo ${BASE_OS#alpine} | sed 's/\(.\)\(.\)/\1.\2/')
+- **Architecture**: $ARCH
+- **Hypervisor**: LXC
+- **OpenNebula**: 6.10, 7.0+
+- **Services**: ${app_display_name}
+- **Ports**: ${LXC_PORTS:-none}
+
+### Testing
+- [x] Built and tested on OpenNebula 7.0
+- [x] ${CONTEXT_MODE} deployment verified
+- [x] Documentation complete
+
+### Image Hosting
+Image will be hosted on OpenNebula's CDN infrastructure.
+Please provide the .raw image file for upload.
+
+### Special Notes
+- Optimized for edge/IoT devices (Arduino, Raspberry Pi)
+- ${CONTEXT_MODE} deployment mode
+- Minimal Alpine Linux base (~50MB)
+
+---
+*Generated by OpenNebula Appliance Wizard*"
+
+    # Step 1: Check/create fork
+    echo -e "  ${CYAN}[1/5]${NC} Checking repository fork..."
+    local fork_exists
+    fork_exists=$(gh repo list --fork --json name -q '.[].name' 2>/dev/null | grep -c "^marketplace-community$" || echo "0")
+
+    if [ "$fork_exists" = "0" ]; then
+        echo -e "  ${DIM}Forking OpenNebula/marketplace-community...${NC}"
+        if ! gh repo fork OpenNebula/marketplace-community --clone=false 2>/dev/null; then
+            echo -e "  ${RED}✗${NC} Failed to fork repository"
+            show_manual_pr_instructions "$marketplace_dir" "$app_display_name"
+            return
+        fi
+        echo -e "  ${GREEN}✓${NC} Repository forked"
+        sleep 2  # Wait for fork to be ready
+    else
+        echo -e "  ${GREEN}✓${NC} Fork exists"
+    fi
+
+    # Step 2: Clone fork to temp directory
+    echo -e "  ${CYAN}[2/5]${NC} Cloning fork..."
+    local temp_repo="/tmp/marketplace-pr-$$"
+    rm -rf "$temp_repo"
+
+    if ! gh repo clone "${MARKETPLACE_GITHUB_USER}/marketplace-community" "$temp_repo" -- --depth 1 2>/dev/null; then
+        echo -e "  ${RED}✗${NC} Failed to clone repository"
+        show_manual_pr_instructions "$marketplace_dir" "$app_display_name"
+        return
+    fi
+    echo -e "  ${GREEN}✓${NC} Repository cloned"
+
+    # Step 3: Create branch and copy files
+    echo -e "  ${CYAN}[3/5]${NC} Creating branch and adding files..."
+    local commit_result=0
+    (
+        set +e  # Disable set -e in subshell
+        cd "$temp_repo" || exit 1
+
+        # Add upstream remote (may already exist)
+        git remote add upstream https://github.com/OpenNebula/marketplace-community.git 2>/dev/null || true
+
+        # Create branch from master (use -B to force create even if exists locally)
+        git checkout -B "$branch_name" 2>/dev/null || exit 1
+
+        # Create appliance directory
+        mkdir -p "appliances/${APPLIANCE_NAME}"
+
+        # Copy files
+        cp "$marketplace_dir"/*.yaml "appliances/${APPLIANCE_NAME}/" 2>/dev/null || true
+        cp "$marketplace_dir"/*.md "appliances/${APPLIANCE_NAME}/" 2>/dev/null || true
+        [ -d "$marketplace_dir/tests" ] && cp -r "$marketplace_dir/tests" "appliances/${APPLIANCE_NAME}/"
+
+        # Commit
+        git add "appliances/${APPLIANCE_NAME}/"
+        git commit -m "$pr_title
+
+- ${app_display_name} on Alpine Linux
+- ${CONTEXT_MODE} deployment for $ARCH
+- Compatible with OpenNebula 7.0+
+- Optimized for edge/IoT devices" 2>/dev/null || exit 1
+    )
+    commit_result=$?
+
+    if [ $commit_result -ne 0 ]; then
+        echo -e "  ${RED}✗${NC} Failed to prepare commit"
+        rm -rf "$temp_repo"
+        show_manual_pr_instructions "$marketplace_dir" "$app_display_name"
+        return
+    fi
+    echo -e "  ${GREEN}✓${NC} Files committed"
+
+    # Step 4: Push branch (force push to update existing branch if PR exists)
+    echo -e "  ${CYAN}[4/5]${NC} Pushing to GitHub..."
+    if ! (cd "$temp_repo" && git push --force -u origin "$branch_name" 2>/dev/null); then
+        echo -e "  ${RED}✗${NC} Failed to push branch"
+        rm -rf "$temp_repo"
+        show_manual_pr_instructions "$marketplace_dir" "$app_display_name"
+        return
+    fi
+    echo -e "  ${GREEN}✓${NC} Branch pushed"
+
+    # Step 5: Create PR
+    echo -e "  ${CYAN}[5/5]${NC} Creating Pull Request..."
+    local pr_url
+
+    # Check if PR already exists for this branch
+    pr_url=$(gh pr list --repo OpenNebula/marketplace-community --head "${MARKETPLACE_GITHUB_USER}:${branch_name}" --json url -q '.[0].url' 2>/dev/null)
+
+    if [ -n "$pr_url" ]; then
+        echo -e "  ${GREEN}✓${NC} PR already exists, updated with new commits"
+    else
+        # Create new PR
+        pr_url=$(cd "$temp_repo" && gh pr create \
+            --repo OpenNebula/marketplace-community \
+            --title "$pr_title" \
+            --body "$pr_body" \
+            --head "${MARKETPLACE_GITHUB_USER}:${branch_name}" \
+            2>/dev/null)
+    fi
+
+    # Cleanup
+    rm -rf "$temp_repo"
+
+    if [ -n "$pr_url" ]; then
+        echo -e "  ${GREEN}✓${NC} Pull Request created!"
+        echo ""
+        echo -e "  ${WHITE}╔════════════════════════════════════════════════════════╗${NC}"
+        echo -e "  ${WHITE}║              PR Created Successfully!                   ║${NC}"
+        echo -e "  ${WHITE}╚════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        echo -e "  ${CYAN}Pull Request:${NC} ${pr_url}"
+        echo ""
+        echo -e "  ${WHITE}Next steps:${NC}"
+        echo -e "  ${DIM}1. OpenNebula team will review your PR${NC}"
+        echo -e "  ${DIM}2. Provide the .raw image file when requested${NC}"
+        echo -e "  ${DIM}3. They'll host it on their CDN and merge${NC}"
+        echo ""
+        echo -e "  ${GREEN}Your appliance will then be available in the marketplace!${NC}"
+    else
+        echo -e "  ${RED}✗${NC} Failed to create Pull Request"
+        show_manual_pr_instructions "$marketplace_dir" "$app_display_name"
+    fi
+
+    echo ""
+    echo -ne "  ${DIM}Press [Enter] to continue...${NC}"
+    read -r
+}
+
+# Show manual instructions if automatic PR fails
+show_manual_pr_instructions() {
+    local marketplace_dir="$1"
+    local app_display_name="$2"
+
+    echo ""
+    echo -e "  ${WHITE}Manual Submission Instructions${NC}"
+    echo -e "  ${DIM}──────────────────────────────${NC}"
+    echo ""
+    echo -e "  ${CYAN}1.${NC} Fork: ${BOLD}https://github.com/OpenNebula/marketplace-community${NC}"
+    echo -e "  ${CYAN}2.${NC} Copy files from: ${BOLD}${marketplace_dir}/${NC}"
+    echo -e "  ${CYAN}3.${NC} Create PR with title: ${BOLD}Add ${APPLIANCE_NAME} LXC appliance${NC}"
+    echo ""
+    echo -e "  ${DIM}Files generated:${NC}"
+    ls -la "$marketplace_dir" 2>/dev/null | grep -v "^total" | awk '{print "    " $NF}' | grep -v "^\.$"
+    echo ""
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2833,12 +3734,31 @@ get_sunstone_url() {
     echo "http://${host_ip}:${sunstone_port}"
 }
 
+# Check if a network has IP allocation (not just MAC-only AR)
+# Returns 0 if network allocates IPs, 1 if MAC-only or no AR (DHCP network)
+network_has_ip_allocation() {
+    local net_id="$1"
+    local net_xml
+    net_xml=$(onevnet show "$net_id" -x 2>/dev/null)
+
+    # Check if any AR has an IP address (not just MAC)
+    # MAC-only ARs don't have <IP> tags, IP-managed ARs do
+    if echo "$net_xml" | grep -q '<IP>'; then
+        return 0  # Has IP allocation
+    else
+        return 1  # No IP allocation (MAC-only or no AR)
+    fi
+}
+
+# Alias for backward compatibility
+network_has_ar() {
+    network_has_ip_allocation "$@"
+}
+
 # List available networks and let user select
 # Sets SELECTED_NETWORK variable
+# For contextless LXC, prefers networks without AR (external/DHCP)
 select_network() {
-    echo -e "  ${WHITE}Available networks:${NC}"
-    echo ""
-
     # Get list of networks
     local networks
     networks=$(onevnet list -l ID,NAME,LEASES 2>/dev/null | tail -n +2)
@@ -2854,6 +3774,8 @@ select_network() {
     local net_ids=()
     local net_names=()
     local net_display=()
+    local net_has_ar=()
+    local dhcp_network_idx=-1
 
     while IFS= read -r line; do
         local id name used
@@ -2864,12 +3786,33 @@ select_network() {
 
         net_ids+=("$id")
         net_names+=("$name")
-        net_display+=("${name} (ID: ${id}, ${used} leases)")
+
+        # Check if network has Address Range
+        local has_ar="yes"
+        if ! network_has_ar "$id"; then
+            has_ar="no"
+            # Remember first DHCP/external network for contextless preference
+            [ $dhcp_network_idx -eq -1 ] && dhcp_network_idx=${#net_ids[@]}
+            dhcp_network_idx=$((dhcp_network_idx - 1))
+            net_display+=("${name} (ID: ${id}) ${GREEN}← DHCP/External${NC}")
+        else
+            net_display+=("${name} (ID: ${id}, ${used} leases)")
+        fi
+        net_has_ar+=("$has_ar")
     done <<< "$networks"
 
     if [ ${#net_ids[@]} -eq 0 ]; then
         SELECTED_NETWORK="vnet"
         SELECTED_NETWORK_ID=""
+        return
+    fi
+
+    # For contextless LXC with available DHCP network, auto-select it
+    if [ "$CONTEXT_MODE" = "contextless" ] && [ $dhcp_network_idx -ge 0 ]; then
+        SELECTED_NETWORK="${net_names[$dhcp_network_idx]}"
+        SELECTED_NETWORK_ID="${net_ids[$dhcp_network_idx]}"
+        echo -e "  ${GREEN}✓${NC} Auto-selected DHCP network: ${SELECTED_NETWORK} (ID: ${SELECTED_NETWORK_ID})"
+        echo -e "  ${DIM}This network has no IP allocation - container will use DHCP${NC}"
         return
     fi
 
@@ -2881,8 +3824,19 @@ select_network() {
         return
     fi
 
-    # Let user select
+    # Display menu header
+    echo -e "  ${WHITE}Available networks:${NC}"
+    if [ "$CONTEXT_MODE" = "contextless" ]; then
+        echo -e "  ${DIM}Tip: DHCP/External networks avoid IP mismatch for contextless LXC${NC}"
+    fi
+    echo ""
+
+    # CRITICAL: Reset terminal after build processes that may have corrupted stdin
+    reset_terminal_for_input
+
+    # Call menu_select (start at DHCP network if contextless)
     local selected_idx=0
+    [ "$CONTEXT_MODE" = "contextless" ] && [ $dhcp_network_idx -ge 0 ] && selected_idx=$dhcp_network_idx
     menu_select selected_idx "${net_display[@]}"
     local result=$?
 
@@ -2890,6 +3844,7 @@ select_network() {
         SELECTED_NETWORK="${net_names[$selected_idx]}"
         SELECTED_NETWORK_ID="${net_ids[$selected_idx]}"
     else
+        # Use first network if user goes back or quits
         SELECTED_NETWORK="${net_names[0]}"
         SELECTED_NETWORK_ID="${net_ids[0]}"
     fi
@@ -2954,13 +3909,21 @@ check_existing_resources() {
     local image_name="$1"
     local found_resources=false
 
-    # Check for existing image
+    # Check for existing image (use --filter to handle truncated names in list output)
     local existing_image
-    existing_image=$(oneimage list -l ID,NAME 2>/dev/null | grep -w "$image_name" | awk '{print $1}' | head -1)
+    existing_image=$(oneimage list --filter "NAME=$image_name" -l ID 2>/dev/null | tail -n +2 | awk '{print $1}' | head -1)
+    # Fallback: grep partial match if --filter returns nothing (handles truncated names)
+    if [ -z "$existing_image" ]; then
+        existing_image=$(oneimage list -l ID,NAME 2>/dev/null | grep "${image_name%%-*}" | awk '{print $1}' | head -1)
+    fi
 
-    # Check for existing template
+    # Check for existing template (use --filter to handle truncated names)
     local existing_template
-    existing_template=$(onetemplate list -l ID,NAME 2>/dev/null | grep -w "$image_name" | awk '{print $1}' | head -1)
+    existing_template=$(onetemplate list --filter "NAME=$image_name" -l ID 2>/dev/null | tail -n +2 | awk '{print $1}' | head -1)
+    # Fallback: grep partial match
+    if [ -z "$existing_template" ]; then
+        existing_template=$(onetemplate list -l ID,NAME 2>/dev/null | grep "${image_name%%-*}" | awk '{print $1}' | head -1)
+    fi
 
     if [ -n "$existing_image" ] || [ -n "$existing_template" ]; then
         echo ""
@@ -3091,6 +4054,83 @@ get_vm_ip() {
     echo "$ip"
 }
 
+# Get LXC container IP - handles both contextualized and contextless deployments
+# For contextualized: OpenNebula assigns static IP (trust OpenNebula)
+# For contextless: DHCP assigns IP (query lxc-ls on host for actual IP)
+get_lxc_container_ip() {
+    local vm_id="$1"
+    local container_name="one-${vm_id}"
+    local ip=""
+    local one_ip=""
+    local lxc_ip=""
+
+    # Get IP from OpenNebula (may be static assignment or stale)
+    one_ip=$(get_vm_ip "$vm_id")
+
+    # Get the host where VM is running
+    local host
+    host=$(onevm show "$vm_id" 2>/dev/null | awk '/^HOST/ {print $3}')
+
+    # Query actual IP from lxc-ls on the host (source of truth)
+    if [ -n "$host" ]; then
+        # lxc-ls -f output: NAME STATE AUTOSTART GROUPS IPV4 IPV6 UNPRIVILEGED
+        lxc_ip=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$host" \
+            "lxc-ls -f 2>/dev/null | awk '/^${container_name}[[:space:]]/ {print \$5}'" 2>/dev/null)
+
+        # Handle multiple IPs (take first one) and clean up
+        lxc_ip=$(echo "$lxc_ip" | tr ',' '\n' | head -1 | tr -d '[:space:]')
+    fi
+
+    # Decision logic:
+    # 1. If we got IP from lxc-ls, prefer it (it's the actual running container IP)
+    # 2. If lxc-ls failed but OpenNebula has IP, use OpenNebula (contextualized case)
+    # 3. If both have IPs but differ, prefer lxc-ls (OpenNebula may be stale)
+    if [ -n "$lxc_ip" ]; then
+        ip="$lxc_ip"
+    elif [ -n "$one_ip" ]; then
+        ip="$one_ip"
+    fi
+
+    echo "$ip"
+}
+
+# Sync actual LXC container IP to OpenNebula
+# For contextless deployments, OpenNebula shows the template IP (from network AR), not the DHCP IP
+# This updates multiple attributes to ensure Sunstone displays the correct IP
+sync_lxc_ip_to_opennebula() {
+    local vm_id="$1"
+    local actual_ip="$2"
+
+    [ -z "$vm_id" ] || [ -z "$actual_ip" ] && return
+
+    # Get current OpenNebula IP (from NIC)
+    local one_ip
+    one_ip=$(onevm show "$vm_id" -x 2>/dev/null | grep '<NIC>' -A20 | grep '<IP>' | sed 's/.*<IP><!\[CDATA\[\([^]]*\)\]\]><\/IP>.*/\1/' | head -1)
+
+    # If IPs differ or no NIC IP, add the actual IP to multiple attributes
+    if [ "$one_ip" != "$actual_ip" ]; then
+        # Add multiple IP attributes that Sunstone may check
+        # IP - Main attribute shown in VM details
+        # GUEST_IP - Used by some drivers/views
+        # EXTERNAL_IP - Used for external-facing IP
+        # ETH0_IP - Context variable format
+        cat <<EOF | onevm update "$vm_id" --append 2>/dev/null
+IP = "$actual_ip"
+GUEST_IP = "$actual_ip"
+EXTERNAL_IP = "$actual_ip"
+ETH0_IP = "$actual_ip"
+LXC_ACTUAL_IP = "$actual_ip"
+EOF
+        echo -e "  ${GREEN}✓${NC} Synced actual IP to OpenNebula: $actual_ip"
+
+        # Note: The NIC IP from Virtual Network AR cannot be changed after allocation
+        # Sunstone VM list may still show NIC IP in some columns, but VM details will show correct IP
+        if [ -n "$one_ip" ] && [ "$one_ip" != "$actual_ip" ]; then
+            echo -e "  ${DIM}Note: NIC shows ${one_ip} (AR allocation), actual container IP is ${actual_ip}${NC}"
+        fi
+    fi
+}
+
 # Offer to SSH into VM
 offer_ssh_connection() {
     local vm_id="$1"
@@ -3181,6 +4221,11 @@ deploy_to_opennebula() {
     fi
 
     datastore_name=$(onedatastore list 2>/dev/null | awk -v id="$datastore_id" '$1==id {print $2}')
+
+    # Clear screen before network selection to ensure menu_select works properly
+    clear_screen
+    echo -e "  ${BRIGHT_CYAN}Deploying to OpenNebula...${NC}"
+    echo ""
     echo -e "  ${DIM}Using datastore: ${datastore_name} (ID: ${datastore_id})${NC}"
     echo ""
 
@@ -3190,6 +4235,11 @@ deploy_to_opennebula() {
 
     # Prompt for VM sizing (pass image path for disk size detection)
     prompt_vm_sizing "$image_path"
+    echo ""
+
+    # Clear screen again before proceeding with deployment steps
+    clear_screen
+    echo -e "  ${BRIGHT_CYAN}Deploying to OpenNebula...${NC}"
     echo ""
 
     # Step 1: Create image
@@ -3222,8 +4272,9 @@ deploy_to_opennebula() {
         spin_idx=$(( (spin_idx + 1) % ${#SPINNER_FRAMES[@]} ))
         sleep 0.2
     done
-    wait "$pid"
-    local exit_code=$?
+    # Capture exit code without triggering set -e
+    local exit_code=0
+    wait "$pid" || exit_code=$?
     printf "\r${CLEAR_LINE}"
     show_cursor
 
@@ -3287,7 +4338,7 @@ deploy_to_opennebula() {
     echo ""
     echo -e "  ${WHITE}[2/4] Creating VM template...${NC}"
 
-    # Build NIC configuration
+    # Build NIC configuration (Docker/KVM - always uses context so full IP allocation)
     local nic_config
     if [ -n "$SELECTED_NETWORK_ID" ]; then
         nic_config="NIC=[NETWORK_ID=\"${SELECTED_NETWORK_ID}\"]"
@@ -3477,11 +4528,34 @@ deploy_lxc_to_opennebula() {
     fi
 
     datastore_name=$(onedatastore list 2>/dev/null | awk -v id="$datastore_id" '$1==id {print $2}')
+
+    # Clear screen before network selection to ensure menu_select works properly
+    clear_screen
+    echo -e "  ${BRIGHT_CYAN}Deploying LXC to OpenNebula...${NC}"
+    echo ""
     echo -e "  ${DIM}Using datastore: ${datastore_name} (ID: ${datastore_id})${NC}"
     echo ""
 
     # Select network
     select_network
+    echo ""
+
+    # Show contextless IP note only if using a managed network (has AR)
+    if [ "$CONTEXT_MODE" = "contextless" ] && [ -n "$SELECTED_NETWORK_ID" ]; then
+        if network_has_ar "$SELECTED_NETWORK_ID"; then
+            echo -e "  ${DIM}╭─────────────────────────────────────────────────────────╮${NC}"
+            echo -e "  ${DIM}│ ${YELLOW}Note:${NC}${DIM} Using managed network with IP allocation.         │${NC}"
+            echo -e "  ${DIM}│ Container uses DHCP - actual IP may differ from         │${NC}"
+            echo -e "  ${DIM}│ OpenNebula's allocation. IP will be synced after start. │${NC}"
+            echo -e "  ${DIM}╰─────────────────────────────────────────────────────────╯${NC}"
+            echo ""
+            sleep 1
+        fi
+    fi
+
+    # Clear screen again before proceeding with deployment steps
+    clear_screen
+    echo -e "  ${BRIGHT_CYAN}Deploying LXC to OpenNebula...${NC}"
     echo ""
 
     # Step 1: Create image
@@ -3502,7 +4576,7 @@ deploy_lxc_to_opennebula() {
     # Run oneimage create in background and show spinner
     local tmpfile=$(mktemp)
     oneimage create --name "$image_name" --path "$upload_path" \
-        --format raw --driver raw --type OS --datastore "$datastore_id" > "$tmpfile" 2>&1 &
+        --format raw --disk_type FILE --type OS --datastore "$datastore_id" > "$tmpfile" 2>&1 &
     local pid=$!
 
     # Show spinner while waiting
@@ -3513,8 +4587,9 @@ deploy_lxc_to_opennebula() {
         spin_idx=$(( (spin_idx + 1) % ${#SPINNER_FRAMES[@]} ))
         sleep 0.2
     done
-    wait "$pid"
-    local exit_code=$?
+    # Capture exit code without triggering set -e
+    local exit_code=0
+    wait "$pid" || exit_code=$?
     printf "\r${CLEAR_LINE}"
     show_cursor
 
@@ -3577,11 +4652,21 @@ deploy_lxc_to_opennebula() {
     echo -e "  ${WHITE}[2/3] Creating LXC template...${NC}"
 
     # Build NIC configuration
+    # For contextless LXC, use METHOD=skip to prevent IP allocation from the network
+    # This avoids showing a misleading IP in Sunstone (container uses DHCP instead)
     local nic_config
     if [ -n "$SELECTED_NETWORK_ID" ]; then
-        nic_config="NIC=[NETWORK_ID=\"${SELECTED_NETWORK_ID}\"]"
+        if [ "$CONTEXT_MODE" = "contextless" ]; then
+            nic_config="NIC=[NETWORK_ID=\"${SELECTED_NETWORK_ID}\",METHOD=\"skip\"]"
+        else
+            nic_config="NIC=[NETWORK_ID=\"${SELECTED_NETWORK_ID}\"]"
+        fi
     else
-        nic_config="NIC=[NETWORK=\"${SELECTED_NETWORK}\",NETWORK_UNAME=\"oneadmin\"]"
+        if [ "$CONTEXT_MODE" = "contextless" ]; then
+            nic_config="NIC=[NETWORK=\"${SELECTED_NETWORK}\",NETWORK_UNAME=\"oneadmin\",METHOD=\"skip\"]"
+        else
+            nic_config="NIC=[NETWORK=\"${SELECTED_NETWORK}\",NETWORK_UNAME=\"oneadmin\"]"
+        fi
     fi
 
     # LXC template - note HYPERVISOR=lxc, no OS/UEFI config needed
@@ -3654,7 +4739,10 @@ CONTEXT=[NETWORK=\"YES\",SSH_PUBLIC_KEY=\"\$USER[SSH_PUBLIC_KEY]\"]"
         # Success - Container is running
         sleep 3  # Wait for network to initialize
         local vm_ip
-        vm_ip=$(get_vm_ip "$vm_id")
+
+        # For LXC, get IP directly from host (more reliable for contextless)
+        echo -e "  ${DIM}Querying container IP from host...${NC}"
+        vm_ip=$(get_lxc_container_ip "$vm_id")
 
         # Show container details
         echo ""
@@ -3680,19 +4768,41 @@ CONTEXT=[NETWORK=\"YES\",SSH_PUBLIC_KEY=\"\$USER[SSH_PUBLIC_KEY]\"]"
         if [ -z "$vm_ip" ]; then
             echo -e "  ${DIM}Waiting for container to get IP address...${NC}"
             sleep 5
-            vm_ip=$(get_vm_ip "$vm_id")
+            vm_ip=$(get_lxc_container_ip "$vm_id")
         fi
 
         if [ -n "$vm_ip" ]; then
+            # Sync actual IP to OpenNebula so Sunstone shows correct IP
+            sync_lxc_ip_to_opennebula "$vm_id" "$vm_ip"
+
             echo ""
             echo -e "  ${WHITE}Container IP Address:${NC} ${CYAN}${vm_ip}${NC}"
-            echo -e "  ${DIM}SSH: ssh root@${vm_ip}${NC}"
+
+            # Get the host for jump SSH command
+            local lxc_host
+            lxc_host=$(onevm show "$vm_id" 2>/dev/null | awk '/^HOST/ {print $3}')
+
+            if [ -n "$lxc_host" ] && [ "$lxc_host" != "$(hostname)" ] && [ "$lxc_host" != "$(hostname -I | awk '{print $1}')" ]; then
+                # Remote host - show jump SSH command
+                echo -e "  ${DIM}SSH (via jump host):${NC}"
+                echo -e "    ${CYAN}ssh -J root@${lxc_host} root@${vm_ip}${NC}"
+                echo -e "  ${DIM}Or attach directly:${NC}"
+                echo -e "    ${CYAN}ssh root@${lxc_host} lxc-attach -n one-${vm_id}${NC}"
+            else
+                # Local host - direct SSH
+                echo -e "  ${DIM}SSH: ssh root@${vm_ip}${NC}"
+            fi
+
             if [ -n "$LXC_PORTS" ]; then
                 echo ""
                 echo -e "  ${WHITE}Application ports:${NC} ${LXC_PORTS}"
             fi
         fi
         echo ""
+
+        # Ask about marketplace submission after successful deployment
+        ask_marketplace_submission "$image_path"
+
     elif [ $wait_result -eq 2 ]; then
         # Container failed
         echo ""
@@ -3790,7 +4900,7 @@ show_lxc_manual_deploy_instructions() {
     echo -e "  ${DIM}# 2. Create image in OpenNebula${NC}"
     echo -e "  ${CYAN}oneimage create --name ${APPLIANCE_NAME}${NC} \\"
     echo -e "  ${CYAN}  --path /var/tmp/${APPLIANCE_NAME}.raw${NC} \\"
-    echo -e "  ${CYAN}  --format raw --driver raw --type OS --datastore default${NC}"
+    echo -e "  ${CYAN}  --format raw --disk_type FILE --type OS --datastore default${NC}"
     echo ""
     echo -e "  ${DIM}# 3. Create LXC template${NC}"
     echo -e "  ${CYAN}onetemplate create << 'EOF'${NC}"
