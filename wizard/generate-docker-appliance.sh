@@ -453,6 +453,9 @@ DEFAULT_VOLUMES="$DEFAULT_VOLUMES"
 APP_NAME="$APP_NAME"
 APPLIANCE_NAME="$APPLIANCE_NAME"
 DOCKER_AUTO_UPDATE="${DOCKER_AUTO_UPDATE:-CHECK}"
+AUTOLOGIN_ENABLED="${AUTOLOGIN_ENABLED:-true}"
+LOGIN_USERNAME="${LOGIN_USERNAME:-root}"
+ROOT_PASSWORD="${ROOT_PASSWORD:-opennebula}"
 DOCKER_VERSION_FILE="/opt/one-appliance/.docker_image_digest"
 
 ### Appliance metadata ###############################################
