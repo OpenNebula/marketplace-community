@@ -1,0 +1,72 @@
+---
+name: netdata-alpine-lxc
+version: 1.0
+publisher: Pablo
+
+description: |-
+  Netdata Monitoring on Alpine Linux 320.aarch64.
+
+  LXC container appliance optimized for edge and IoT deployments.
+
+  **Features:**
+  - Lightweight Alpine Linux base
+  - Pre-configured netdata
+  - contextless deployment
+  - Compatible with embedded devices (Arduino, Raspberry Pi)
+
+  **Services:**
+    - Port 19999: Netdata Monitoring
+
+  **Network Access:**
+  - For Arduino/embedded hosts: Configure Tailscale subnet router or port forwarding
+  - For standard hosts: Direct container IP access
+
+  **Default Credentials:**
+  - Username: root
+  - SSH: Key-based authentication (from OpenNebula context)
+
+  This is a community-contributed appliance. Please report issues at:
+  https://github.com/OpenNebula/one/issues
+
+short_description: Netdata Monitoring on Alpine Linux for LXC
+
+tags:
+- alpine
+- lxc
+- netdata
+- lightweight
+- edge
+- iot
+
+format: raw
+creation_time: 1768996368
+
+os-id: Alpine
+os-release: "3.20.aarch64"
+os-arch: aarch64
+hypervisor: lxc
+
+opennebula_version: 6.10, 7.0
+
+opennebula_template:
+  cpu: '1'
+  vcpu: '1'
+  memory: '256'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+
+  sched_requirements: 'HYPERVISOR="lxc" & ARCH="aarch64"'
+
+logo: alpine.png
+
+images:
+- name: netdata-alpine-lxc
+  url: https://your-cdn.cloudfront.net/netdata-alpine-lxc.raw
+  type: OS
+  dev_prefix: sd
+  driver: raw
+  size: 268435456
+  checksum:
+    md5: 7ed55474b8c2da3361b13fcdf650819d
+    sha256: 3599f9c4ae6a82e279e1475b4a8c36ad62c4d6a0697879fa4d43f015d5aaf189
