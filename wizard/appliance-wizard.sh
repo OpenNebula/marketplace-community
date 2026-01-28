@@ -4414,22 +4414,34 @@ SCHED_REQUIREMENTS=\"HYPERVISOR=kvm & ARCH=aarch64\""
 
     # Generate startup script for context
     # - Cleans up NetworkManager netplan conflicts (Issue #2)
-    # - Enables getty on tty1 for VNC console access (ARM64)
+    # - Configures serial console for ARM64 (virtio-gpu doesn't work with UEFI)
     local start_script_b64
     start_script_b64=$(cat << 'CLEANUP_SCRIPT' | base64 -w0
 #!/bin/bash
 # Cleanup conflicting NetworkManager netplan configurations
 rm -f /etc/netplan/90-NM-*.yaml 2>/dev/null
 rm -f /etc/NetworkManager/system-connections/netplan-* 2>/dev/null
-# Regenerate netplan with clean config
 if command -v netplan &>/dev/null; then
     netplan generate 2>/dev/null
     netplan apply 2>/dev/null
 fi
-# Enable getty on tty1 for VNC console access (shows login prompt)
-if ! systemctl is-active --quiet getty@tty1; then
-    systemctl start getty@tty1 2>/dev/null || true
+
+# Configure serial console for ARM64 (virtio-gpu fails with UEFI)
+# Only run once - check if already configured
+if [ "$(uname -m)" = "aarch64" ] && ! grep -q "ttyAMA0" /etc/default/grub 2>/dev/null; then
+    # Configure grub for serial console
+    sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="console=tty1 console=ttyAMA0,115200"/' /etc/default/grub
+    grep -q 'GRUB_TERMINAL=' /etc/default/grub || echo 'GRUB_TERMINAL="serial console"' >> /etc/default/grub
+    grep -q 'GRUB_SERIAL_COMMAND=' /etc/default/grub || echo 'GRUB_SERIAL_COMMAND="serial --unit=0 --speed=115200"' >> /etc/default/grub
+    update-grub 2>/dev/null || true
+
+    # Enable getty on serial console
+    systemctl enable serial-getty@ttyAMA0 2>/dev/null || true
+    systemctl start serial-getty@ttyAMA0 2>/dev/null || true
 fi
+
+# Enable getty on tty1 as fallback
+systemctl start getty@tty1 2>/dev/null || true
 CLEANUP_SCRIPT
 )
 
