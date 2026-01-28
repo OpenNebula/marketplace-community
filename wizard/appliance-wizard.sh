@@ -3755,6 +3755,54 @@ network_has_ar() {
     network_has_ip_allocation "$@"
 }
 
+# Ensure bridge has gateway IP configured (Issue #1 fix)
+# OpenNebula defines gateway in network but doesn't configure it on host bridge
+ensure_bridge_gateway() {
+    local network_id="$1"
+    [ -z "$network_id" ] && return 0
+
+    # Get bridge name and gateway from network
+    local bridge gateway
+    bridge=$(onevnet show "$network_id" -x 2>/dev/null | grep -oP '(?<=<BRIDGE>)[^<]+' | head -1)
+    gateway=$(onevnet show "$network_id" -x 2>/dev/null | grep -oP '(?<=<GATEWAY>)[^<]+' | head -1)
+
+    [ -z "$bridge" ] || [ -z "$gateway" ] && return 0
+
+    # Check if bridge exists
+    if ! ip link show "$bridge" &>/dev/null; then
+        return 0  # Bridge doesn't exist yet, will be created by OpenNebula
+    fi
+
+    # Check if gateway IP is already configured on bridge
+    if ip addr show "$bridge" 2>/dev/null | grep -q "$gateway"; then
+        return 0  # Already configured
+    fi
+
+    # Configure gateway IP on bridge
+    echo -e "  ${CYAN}→${NC} Configuring gateway ${gateway}/24 on ${bridge}..."
+    if ip addr add "${gateway}/24" dev "$bridge" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} Bridge gateway configured"
+    else
+        echo -e "  ${YELLOW}!${NC} Could not configure bridge gateway (may need manual setup)"
+    fi
+}
+
+# Generate START_SCRIPT content for netplan cleanup (Issue #2 fix)
+# This cleans up conflicting NetworkManager netplan configs on first boot
+get_netplan_cleanup_script() {
+    cat << 'CLEANUP_EOF'
+#!/bin/bash
+# Cleanup conflicting NetworkManager netplan configurations
+rm -f /etc/netplan/90-NM-*.yaml 2>/dev/null
+rm -f /etc/NetworkManager/system-connections/netplan-* 2>/dev/null
+# Regenerate netplan with clean config
+if command -v netplan &>/dev/null; then
+    netplan generate 2>/dev/null
+    netplan apply 2>/dev/null
+fi
+CLEANUP_EOF
+}
+
 # List available networks and let user select
 # Sets SELECTED_NETWORK variable
 # For contextless LXC, prefers networks without AR (external/DHCP)
@@ -4233,6 +4281,9 @@ deploy_to_opennebula() {
     select_network
     echo ""
 
+    # Ensure bridge has gateway IP configured (fixes Issue #1: br-edge missing gateway)
+    ensure_bridge_gateway "$SELECTED_NETWORK_ID"
+
     # Prompt for VM sizing (pass image path for disk size detection)
     prompt_vm_sizing "$image_path"
     echo ""
@@ -4360,6 +4411,21 @@ RAW=[TYPE=\"kvm\",DATA=\"<devices><input type='keyboard' bus='virtio'/></devices
 SCHED_REQUIREMENTS=\"HYPERVISOR=kvm & ARCH=aarch64\""
     fi
 
+    # Generate netplan cleanup script (fixes Issue #2: conflicting NetworkManager netplan configs)
+    local start_script_b64
+    start_script_b64=$(cat << 'CLEANUP_SCRIPT' | base64 -w0
+#!/bin/bash
+# Cleanup conflicting NetworkManager netplan configurations
+rm -f /etc/netplan/90-NM-*.yaml 2>/dev/null
+rm -f /etc/NetworkManager/system-connections/netplan-* 2>/dev/null
+# Regenerate netplan with clean config
+if command -v netplan &>/dev/null; then
+    netplan generate 2>/dev/null
+    netplan apply 2>/dev/null
+fi
+CLEANUP_SCRIPT
+)
+
     local template_content
     template_content="NAME=\"${image_name}\"
 CPU=\"${VM_CPU}\"
@@ -4368,7 +4434,7 @@ MEMORY=\"${VM_MEMORY}\"
 DISK=[IMAGE_ID=\"${image_id}\",SIZE=\"${VM_DISK_SIZE}\"]
 ${nic_config}
 GRAPHICS=[LISTEN=\"0.0.0.0\",TYPE=\"VNC\"]
-CONTEXT=[NETWORK=\"YES\",SSH_PUBLIC_KEY=\"\$USER[SSH_PUBLIC_KEY]\"]
+CONTEXT=[NETWORK=\"YES\",SSH_PUBLIC_KEY=\"\$USER[SSH_PUBLIC_KEY]\",START_SCRIPT_BASE64=\"${start_script_b64}\"]
 ${arch_config}"
 
     local template_id
@@ -4539,6 +4605,9 @@ deploy_lxc_to_opennebula() {
     # Select network
     select_network
     echo ""
+
+    # Ensure bridge has gateway IP configured (fixes Issue #1: bridge missing gateway)
+    ensure_bridge_gateway "$SELECTED_NETWORK_ID"
 
     # Show contextless IP note only if using a managed network (has AR)
     if [ "$CONTEXT_MODE" = "contextless" ] && [ -n "$SELECTED_NETWORK_ID" ]; then
