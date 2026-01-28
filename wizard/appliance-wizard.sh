@@ -4404,14 +4404,17 @@ deploy_to_opennebula() {
     if [ "$host_arch" = "aarch64" ]; then
         # ARM64 requires UEFI firmware, virt machine type, and virtio keyboard for VNC
         # Use host-passthrough CPU model to match the board's hardware exactly
+        # Serial console added for ARM64 so terminal is visible in Sunstone VNC
         arch_config="OS=[ARCH=\"aarch64\",FIRMWARE=\"/usr/share/AAVMF/AAVMF_CODE.fd\",FIRMWARE_SECURE=\"no\",MACHINE=\"virt\"]
 CPU_MODEL=[MODEL=\"host-passthrough\"]
 NIC_DEFAULT=[MODEL=\"virtio\"]
-RAW=[TYPE=\"kvm\",DATA=\"<devices><input type='keyboard' bus='virtio'/></devices>\"]
+RAW=[TYPE=\"kvm\",DATA=\"<devices><input type='keyboard' bus='virtio'/><serial type='pty'><target port='0'/></serial><console type='pty'><target type='serial' port='0'/></console></devices>\"]
 SCHED_REQUIREMENTS=\"HYPERVISOR=kvm & ARCH=aarch64\""
     fi
 
-    # Generate netplan cleanup script (fixes Issue #2: conflicting NetworkManager netplan configs)
+    # Generate startup script for context
+    # - Cleans up NetworkManager netplan conflicts (Issue #2)
+    # - Enables getty on tty1 for VNC console access (ARM64)
     local start_script_b64
     start_script_b64=$(cat << 'CLEANUP_SCRIPT' | base64 -w0
 #!/bin/bash
@@ -4422,6 +4425,10 @@ rm -f /etc/NetworkManager/system-connections/netplan-* 2>/dev/null
 if command -v netplan &>/dev/null; then
     netplan generate 2>/dev/null
     netplan apply 2>/dev/null
+fi
+# Enable getty on tty1 for VNC console access (shows login prompt)
+if ! systemctl is-active --quiet getty@tty1; then
+    systemctl start getty@tty1 2>/dev/null || true
 fi
 CLEANUP_SCRIPT
 )
