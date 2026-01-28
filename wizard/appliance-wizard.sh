@@ -4682,7 +4682,10 @@ VCPU=\"${VM_VCPU:-1}\"
 MEMORY=\"${VM_MEMORY:-256}\"
 DISK=[IMAGE_ID=\"${image_id}\"]
 ${nic_config}
-GRAPHICS=[LISTEN=\"0.0.0.0\",TYPE=\"VNC\"]
+RAW=[DATA=\"lxc.apparmor.profile=unconfined
+lxc.net.0.type = veth
+lxc.net.0.link = lxcbr0
+lxc.net.0.flags = up\",TYPE=\"lxc\"]
 SCHED_REQUIREMENTS=\"HYPERVISOR=\\\"lxc\\\" & ARCH=\\\"${sched_arch}\\\"\"
 LXC_UNPRIVILEGED=\"no\""
 
@@ -4910,7 +4913,7 @@ show_lxc_manual_deploy_instructions() {
     echo -e "  ${DIM}VCPU=\"${VM_VCPU:-1}\"${NC}"
     echo -e "  ${DIM}DISK=[IMAGE=\"${APPLIANCE_NAME}\"]${NC}"
     echo -e "  ${DIM}NIC=[NETWORK=\"vnet\"]${NC}"
-    echo -e "  ${DIM}GRAPHICS=[LISTEN=\"0.0.0.0\",TYPE=\"VNC\"]${NC}"
+    echo -e "  ${DIM}RAW=[DATA=\"lxc.net.0.type=veth...\",TYPE=\"lxc\"]${NC}"
     echo -e "  ${CYAN}EOF${NC}"
     echo ""
     echo -e "  ${DIM}# 4. Instantiate the container${NC}"
