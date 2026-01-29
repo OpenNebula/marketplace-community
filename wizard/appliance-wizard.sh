@@ -3768,6 +3768,11 @@ ensure_bridge_gateway() {
 
     [ -z "$bridge" ] || [ -z "$gateway" ] && return 0
 
+    # Skip LXC-managed bridges (lxcbr0 is managed by lxc-net)
+    if [ "$bridge" = "lxcbr0" ]; then
+        return 0
+    fi
+
     # Check if bridge exists
     if ! ip link show "$bridge" &>/dev/null; then
         return 0  # Bridge doesn't exist yet, will be created by OpenNebula
@@ -3785,6 +3790,104 @@ ensure_bridge_gateway() {
     else
         echo -e "  ${YELLOW}!${NC} Could not configure bridge gateway (may need manual setup)"
     fi
+
+    # Setup persistent bridge gateway service (runs once)
+    setup_persistent_bridge_gateway
+}
+
+# Setup systemd service for persistent bridge gateway configuration
+# This ensures bridge gateways survive reboots
+setup_persistent_bridge_gateway() {
+    local service_file="/etc/systemd/system/one-bridge-gateway.service"
+    local script_file="/usr/local/bin/one-bridge-gateway.sh"
+
+    # Only setup once
+    if [ -f "$service_file" ]; then
+        return 0
+    fi
+
+    echo -e "  ${CYAN}→${NC} Setting up persistent bridge gateway service..."
+
+    # Create the gateway configuration script
+    cat > "$script_file" << 'GWSCRIPT'
+#!/bin/bash
+# OpenNebula Bridge Gateway Configuration
+# Configures gateway IPs on OpenNebula-managed bridges at boot
+# Skips LXC-managed bridges (lxcbr0)
+
+MAX_WAIT=120
+
+# Get all networks and configure their bridge gateways
+configure_bridges() {
+    local net_ids
+    net_ids=$(onevnet list -l ID 2>/dev/null | tail -n +2 | awk '{print $1}')
+
+    for net_id in $net_ids; do
+        local bridge gateway
+        bridge=$(onevnet show "$net_id" -x 2>/dev/null | grep -oP '(?<=<BRIDGE>)[^<]+' | head -1)
+        gateway=$(onevnet show "$net_id" -x 2>/dev/null | grep -oP '(?<=<GATEWAY>)[^<]+' | head -1)
+
+        # Skip if no bridge or gateway defined
+        [ -z "$bridge" ] || [ -z "$gateway" ] && continue
+
+        # Skip LXC-managed bridges
+        [ "$bridge" = "lxcbr0" ] && continue
+
+        # Wait for bridge to exist
+        local waited=0
+        while ! ip link show "$bridge" &>/dev/null; do
+            [ $waited -ge $MAX_WAIT ] && continue 2
+            sleep 5
+            waited=$((waited + 5))
+        done
+
+        # Add gateway IP if not present
+        if ! ip addr show "$bridge" 2>/dev/null | grep -q "$gateway"; then
+            ip addr add "${gateway}/24" dev "$bridge" 2>/dev/null && \
+                echo "Configured $gateway on $bridge"
+        fi
+    done
+}
+
+# Enable IP forwarding
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+# Configure bridges
+configure_bridges
+
+echo "Bridge gateway configuration complete"
+GWSCRIPT
+    chmod +x "$script_file" 2>/dev/null || true
+
+    # Create systemd service
+    cat > "$service_file" << 'GWSERVICE'
+[Unit]
+Description=OpenNebula Bridge Gateway Configuration
+After=network-online.target opennebula.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/one-bridge-gateway.sh
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+GWSERVICE
+
+    # Enable the service
+    systemctl daemon-reload 2>/dev/null || true
+    systemctl enable one-bridge-gateway.service 2>/dev/null || true
+
+    # Make IP forwarding persistent
+    grep -q "net.ipv4.ip_forward" /etc/sysctl.conf 2>/dev/null || \
+        echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf 2>/dev/null || true
+
+    echo -e "  ${GREEN}✓${NC} Persistent bridge gateway service installed"
 }
 
 # Generate START_SCRIPT content for netplan cleanup (Issue #2 fix)
