@@ -20,3 +20,8 @@ variable "version" {
   type    = string
   default = ""
 }
+
+variable "distro" {
+  type    = string
+  default = ""
+}

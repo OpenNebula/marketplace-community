@@ -1,14 +1,12 @@
 source "null" "null" { communicator = "none" }
 
-# Generate the context ISO with SSH credentials for Packer provisioning
+# Generate the cloud-init ISO for Packer provisioning
 build {
   sources = ["source.null.null"]
 
   provisioner "shell-local" {
     inline = [
-      "mkdir -p ${var.input_dir}/context",
-      "${var.input_dir}/gen_context > ${var.input_dir}/context/context.sh",
-      "mkisofs -o ${var.input_dir}/${var.appliance_name}-context.iso -V CONTEXT -J -R ${var.input_dir}/context",
+      "cloud-localds ${var.input_dir}/${var.appliance_name}-cloud-init.iso ${var.input_dir}/cloud-init.yml",
     ]
   }
 }
@@ -36,10 +34,9 @@ source "qemu" "flower_superlink" {
 
   qemuargs = [["-serial", "stdio"],
     ["-cpu", "host"],
-    ["-cdrom", "${var.input_dir}/${var.appliance_name}-context.iso"],
-    # MAC addr needs to match ETH0_MAC from context iso
+    ["-cdrom", "${var.input_dir}/${var.appliance_name}-cloud-init.iso"],
     ["-netdev", "user,id=net0,hostfwd=tcp::{{ .SSHHostPort }}-:22"],
-    ["-device", "virtio-net-pci,netdev=net0,mac=00:11:22:33:44:55"]
+    ["-device", "virtio-net-pci,netdev=net0"]
   ]
   ssh_username     = "root"
   ssh_password     = "opennebula"
@@ -52,9 +49,33 @@ source "qemu" "flower_superlink" {
 build {
   sources = ["source.qemu.flower_superlink"]
 
-  # revert insecure ssh options done by context start_script
+  # revert insecure ssh options done by cloud-init start_script
   provisioner "shell" {
     scripts = ["${var.input_dir}/81-configure-ssh.sh"]
+  }
+
+  # Install one-context package (creates /etc/one-context.d/, purges cloud-init)
+  provisioner "shell" { inline = ["mkdir -p /context"] }
+
+  provisioner "file" {
+    source      = "../one-apps/context-linux/out/"
+    destination = "/context"
+  }
+
+  provisioner "shell" {
+    inline_shebang = "/bin/bash -e"
+    inline = [
+      "export DEBIAN_FRONTEND=noninteractive",
+      "apt-get update",
+      "echo 'exit 101' >/usr/sbin/policy-rc.d && chmod a+x /usr/sbin/policy-rc.d",
+      "LATEST=$(find /context/ -type f -name 'one-context*.deb' | sort -V | tail -n1)",
+      "dpkg -i --auto-deconfigure \"$LATEST\" || apt-get install -y -f",
+      "dpkg -i --auto-deconfigure \"$LATEST\"",
+      "apt-get install -y --no-install-recommends --no-install-suggests netplan.io network-manager",
+      "echo 'exit 0' >/usr/sbin/policy-rc.d && chmod a+x /usr/sbin/policy-rc.d",
+      "rm -rf /context",
+      "sync",
+    ]
   }
 
   ##############################################

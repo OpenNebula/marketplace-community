@@ -131,6 +131,9 @@ service_install()
         exit 1
     fi
 
+    msg info "Building framework-specific Docker images"
+    build_framework_images
+
     msg info "Installing NVIDIA Container Toolkit (best-effort)"
     install_nvidia_ctk || msg warning "NVIDIA CTK install skipped -- no GPU detected or repo unavailable"
 
@@ -386,6 +389,52 @@ https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_C
 
     systemctl enable docker
     msg info "Docker CE installed"
+}
+
+# build_framework_images: builds Docker images with ML framework dependencies.
+# The base flwr/supernode image is Alpine (musl) which lacks glibc needed by
+# PyTorch/TensorFlow manylinux wheels. We build from python:3.12-slim instead.
+# NumPy 2.x requires SSE4.1 (x86_v2) which KVM VMs may lack, so pin 1.26.4.
+build_framework_images()
+{
+    local VER="${PREBAKED_VERSION}"
+
+    # PyTorch image
+    msg info "Building flower-supernode-pytorch:${VER}"
+    docker build -t "flower-supernode-pytorch:${VER}" - <<'DOCKERFILE'
+FROM python:3.12-slim
+RUN pip install --no-cache-dir \
+    'numpy==1.26.4' \
+    'flwr[simulation]==1.25.0' \
+    'torch==2.5.1+cpu' 'torchvision==0.20.1+cpu' \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+ENTRYPOINT ["flower-supernode"]
+DOCKERFILE
+
+    # TensorFlow image
+    msg info "Building flower-supernode-tensorflow:${VER}"
+    docker build -t "flower-supernode-tensorflow:${VER}" - <<'DOCKERFILE'
+FROM python:3.12-slim
+RUN pip install --no-cache-dir \
+    'numpy==1.26.4' \
+    'flwr[simulation]==1.25.0' \
+    'tensorflow-cpu==2.18.1'
+ENTRYPOINT ["flower-supernode"]
+DOCKERFILE
+
+    # scikit-learn image
+    msg info "Building flower-supernode-sklearn:${VER}"
+    docker build -t "flower-supernode-sklearn:${VER}" - <<'DOCKERFILE'
+FROM python:3.12-slim
+RUN pip install --no-cache-dir \
+    'numpy==1.26.4' \
+    'flwr[simulation]==1.25.0' \
+    'scikit-learn==1.5.2'
+ENTRYPOINT ["flower-supernode"]
+DOCKERFILE
+
+    msg info "Framework images built successfully"
+    docker images | grep flower-supernode
 }
 
 # install_nvidia_ctk: Best-effort install of the NVIDIA Container Toolkit.
