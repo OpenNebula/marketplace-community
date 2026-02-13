@@ -13,7 +13,7 @@ variable "output_dir" {
 
 variable "headless" {
   type    = bool
-  default = false
+  default = true
 }
 
 variable "version" {
