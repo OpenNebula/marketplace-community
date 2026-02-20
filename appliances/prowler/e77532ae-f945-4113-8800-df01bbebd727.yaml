@@ -1,0 +1,91 @@
+---
+name: Prowler Security Platform
+version: 1.0.0-1
+one-apps_version: 7.0.0-0
+publisher: OpenNebula Community
+publisher_email: community@opennebula.io
+description: |-
+  Prowler is the most widely used open-source cloud security platform that
+  automates security assessments and compliance across any cloud environment.
+
+  **Key Features:**
+  - Multi-cloud support: AWS, Azure, Google Cloud, and Kubernetes
+  - 500+ security checks and compliance controls
+  - Real-time security monitoring and alerting
+  - Compliance frameworks: CIS, NIST, PCI-DSS, HIPAA, GDPR, SOC2, and more
+  - Web-based dashboard for managing scans and findings
+  - REST API for automation and integration
+
+  **This appliance provides:**
+  - Ubuntu 24.04 LTS base operating system
+  - Docker Engine with Compose plugin
+  - Prowler API service (Django REST Framework)
+  - Prowler UI (Next.js web dashboard)
+  - Prowler MCP server (Model Context Protocol)
+  - PostgreSQL 16 database
+  - Neo4j graph database (for Attack Paths analysis)
+  - Valkey cache (Redis-compatible)
+  - Celery workers for background scanning
+  - VNC and SSH access
+
+  **Access Methods:**
+  - VNC: Direct console access
+  - SSH: Key-based and password authentication
+  - Web: Prowler dashboard at http://VM_IP:3000
+  - API: REST API at http://VM_IP:8080/api/v1
+
+  **Documentation:**
+  - [Prowler Documentation](https://docs.prowler.com/)
+  - [Prowler GitHub](https://github.com/prowler-cloud/prowler)
+  - [OpenNebula Appliance Guide](https://github.com/OpenNebula/marketplace-community/blob/master/appliances/prowler/README.md)
+
+short_description: Open-source cloud security platform for AWS, Azure, GCP, and Kubernetes
+tags:
+- prowler
+- security
+- compliance
+- cloud-security
+- aws
+- azure
+- gcp
+- kubernetes
+- docker
+- x86_64
+format: qcow2
+creation_time: 1771455600
+os-id: Ubuntu
+os-release: '24.04'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: '7.0'
+opennebula_template:
+  context:
+    network: 'YES'
+    ssh_public_key: $USER[SSH_PUBLIC_KEY]
+    set_hostname: $USER[SET_HOSTNAME]
+  cpu: '2'
+  vcpu: '2'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  memory: '8192'
+  name: Prowler Security Platform
+  user_inputs:
+    ONEAPP_PROWLER_UI_PORT: 'O|text|Prowler UI port|3000|3000'
+    ONEAPP_PROWLER_API_PORT: 'O|text|Prowler API port|8080|8080'
+    ONEAPP_PROWLER_VERSION: 'O|text|Prowler version (stable/latest)|stable|stable'
+    ONEAPP_PROWLER_DB_PASSWORD: 'O|password|PostgreSQL password (auto-generated if empty)||'
+  inputs_order: ONEAPP_PROWLER_UI_PORT,ONEAPP_PROWLER_API_PORT,ONEAPP_PROWLER_VERSION,ONEAPP_PROWLER_DB_PASSWORD
+logo: logos/prowler.png
+
+images:
+- name: prowler-7.0.0-0.qcow2
+  url: >-
+    https://d38nm155miqkyg.cloudfront.net/prowler-7.0.0-0.qcow2
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 2147483648
+  checksum:
+    md5: pending
+    sha256: pending
