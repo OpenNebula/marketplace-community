@@ -1,0 +1,55 @@
+---
+:app:
+  :name: SLM-Copilot
+  :type: image
+  :version: 2.0.0
+  :publisher: OpenNebula Systems
+  :description: Sovereign AI coding assistant (Devstral Small 2 24B on CPU via llama.cpp)
+  :url: https://github.com/pablodelarco/one-apps-slm-copilot
+  :tags:
+    - ai
+    - llm
+    - coding
+    - copilot
+    - sovereign
+
+:os:
+  :type: linux
+  :base: Ubuntu 24.04 LTS
+
+:context:
+  :prefixed: ONEAPP_COPILOT
+  :params:
+    PASSWORD:
+      :type: password
+      :description: API key / Bearer token (auto-generated if empty)
+    DOMAIN:
+      :type: text
+      :description: FQDN for Let's Encrypt certificate (self-signed if empty)
+    CONTEXT_SIZE:
+      :type: text
+      :default: '32768'
+      :description: Token context window size (512-131072)
+    THREADS:
+      :type: text
+      :default: '0'
+      :description: CPU threads for inference (0 = auto-detect)
+    MODEL:
+      :type: text
+      :default: 'devstral'
+      :description: Model name (default: devstral)
+
+:one:
+  :version: 6.10, 7.0
+  :template:
+    :cpu: 16
+    :memory: 32768
+    :disk: 61440
+    :cpu_model: host-passthrough
+
+:infra:
+  :disk_format: qcow2
+  :apps_path: appliances/slm-copilot
+  :os: Ubuntu 24.04 LTS
+  :arch: x86_64
+  :hypervisor: KVM
