@@ -1,0 +1,115 @@
+# SLM-Copilot Marketplace Metadata
+#
+# After a successful build, update these PLACEHOLDER values:
+#   1. images[0].url          -- Replace PUBLISH_URL with actual hosting URL
+#   2. images[0].checksum.md5 -- From: md5sum build/export/slm-copilot-2.0.0.qcow2
+#   3. images[0].checksum.sha256 -- From: sha256sum build/export/slm-copilot-2.0.0.qcow2
+#   4. images[0].size         -- From: qemu-img info --output=json build/export/slm-copilot-2.0.0.qcow2 | jq '.["virtual-size"]'
+#   5. Rename this file to a UUID for marketplace PR: cp marketplace.yaml $(uuidgen).yaml
+#
+---
+name: SLM-Copilot 2.0.0
+version: 2.0.0
+publisher: OpenNebula Systems
+description: |-
+  One-click sovereign AI coding assistant powered by
+  [Devstral Small 2](https://mistral.ai/news/devstral-2-vibe-cli) (24B, Mistral AI)
+  running on CPU via [llama.cpp](https://github.com/ggerganov/llama.cpp). Not all
+  AI needs GPU -- this 24B parameter model delivers practical coding assistance on
+  any 32 GB VM with 16+ vCPUs. Import, instantiate, code.
+
+  **European Sovereign AI** -- 100% open-source stack built by European
+  companies: Mistral AI (Paris) for the model, OpenNebula (Madrid) for
+  the cloud platform. 100% sovereign: your code stays in your jurisdiction,
+  your data never leaves your infrastructure. All components under
+  Apache 2.0 license.
+
+  Connect from VS Code with the [Cline](https://cline.bot) extension for
+  AI-assisted coding: code analysis, refactoring, test generation, bug fixes.
+  One-click deployment from the OpenNebula marketplace to a running copilot
+  in minutes.
+
+  **Features:**
+  - OpenAI-compatible API (chat completions with streaming)
+  - Native HTTPS with auto-generated TLS certificate (no reverse proxy needed)
+  - Optional Let's Encrypt for production domains
+  - Bearer token authentication with auto-generated API keys
+  - Built-in Prometheus metrics endpoint (/metrics)
+  - CPU-tuned inference (mlock, flash-attn, thread pinning, SIMD auto-detect)
+  - Fully configurable via OpenNebula context variables
+  - Report file with connection details and Cline setup guide
+  - Idempotent reconfiguration on every boot
+short_description: >-
+  Sovereign AI coding copilot (Devstral Small 2 24B on CPU via llama.cpp).
+  No GPU required. European open-source. One-click deployment.
+tags:
+  - ai
+  - llm
+  - coding
+  - copilot
+  - sovereign
+  - cpu
+  - llama-cpp
+  - devstral
+  - cline
+  - ubuntu
+format: qcow2
+creation_time: 1739500800
+os-id: Ubuntu
+os-release: '24.04 LTS'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.10, 7.0
+opennebula_template:
+  CONTEXT:
+    NETWORK: 'YES'
+    SSH_PUBLIC_KEY: "$USER[SSH_PUBLIC_KEY]"
+    ONEAPP_COPILOT_AI_MODEL: 'Devstral Small 24B (built-in)'
+    ONEAPP_COPILOT_CONTEXT_SIZE: '32768'
+    ONEAPP_COPILOT_CPU_THREADS: '0'
+    ONEAPP_COPILOT_API_PASSWORD: ''
+    ONEAPP_COPILOT_TLS_DOMAIN: ''
+    ONEAPP_COPILOT_LB_BACKENDS: ''
+  CPU: '16'
+  CPU_MODEL:
+    MODEL: host-passthrough
+  GRAPHICS:
+    LISTEN: 0.0.0.0
+    TYPE: vnc
+  MEMORY: '32768'
+  NIC:
+    NETWORK: service
+  NIC_DEFAULT:
+    MODEL: virtio
+  inputs_order: >-
+    ONEAPP_COPILOT_AI_MODEL,
+    ONEAPP_COPILOT_CONTEXT_SIZE,
+    ONEAPP_COPILOT_CPU_THREADS,
+    ONEAPP_COPILOT_API_PASSWORD,
+    ONEAPP_COPILOT_TLS_DOMAIN,
+    ONEAPP_COPILOT_LB_BACKENDS
+  user_inputs:
+    oneapp_copilot_ai_model: >-
+      M|list|AI Model|Devstral Small 24B (built-in),Codestral 22B,Mistral Nemo
+      12B,Codestral Mamba 7B,Mistral 7B|Devstral Small 24B (built-in)
+    oneapp_copilot_context_size: >-
+      O|list|Context Window (tokens)|8192,16384,32768|32768
+    oneapp_copilot_cpu_threads: >-
+      O|text|CPU Threads for inference (0 = auto-detect)|0
+    oneapp_copilot_api_password: >-
+      O|password|API Key (empty = auto-generate)||
+    oneapp_copilot_tls_domain: >-
+      O|text|Domain for Let's Encrypt (empty = self-signed)||
+    oneapp_copilot_lb_backends: >-
+      O|text|Load Balancer backends (key@host:port, comma-separated, empty = standalone)||
+logo: slm-copilot.png
+images:
+  - name: slm_copilot_os
+    url: 'https://PUBLISH_URL/slm-copilot-2.0.0.qcow2'
+    type: OS
+    dev_prefix: vd
+    driver: qcow2
+    size: 64424509440
+    checksum:
+      md5: bf6e0be9b3aed527c41ed2cc73c1560c
+      sha256: c6a1b7c93a20116690c0ee838dab76304b1bcff8d9eb984cb328d31f6eada1db
