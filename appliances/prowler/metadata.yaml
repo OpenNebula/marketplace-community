@@ -4,7 +4,7 @@
   :type: service
   :os:
     :type: linux
-    :base: ubuntu2404min
+    :base: ubuntu2404
   :hypervisor: KVM
   :context:
     :prefixed: true

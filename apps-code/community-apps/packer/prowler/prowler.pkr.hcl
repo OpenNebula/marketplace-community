@@ -19,7 +19,7 @@ source "qemu" "prowler" {
   memory      = 8192
   accelerator = "kvm"
 
-  iso_url      = "../one-apps/export/ubuntu2404min.qcow2"
+  iso_url      = "../one-apps/export/ubuntu2404.qcow2"
   iso_checksum = "none"
 
   headless = var.headless
