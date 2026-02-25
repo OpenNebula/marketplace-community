@@ -88,6 +88,12 @@ service_install()
     mkdir -p "${PROWLER_DATA_DIR}/_data/valkey"
     mkdir -p "${PROWLER_DATA_DIR}/_data/neo4j"
 
+    # The API container runs as user prowler (UID 1000). The _data/api
+    # volume is mounted at /home/prowler/.config/prowler-api where the
+    # app writes JWT keys at startup. Without this chown the container
+    # crashes with PermissionError on jwt_private.pem.
+    chown -R 1000:1000 "${PROWLER_DATA_DIR}/_data/api"
+
     # Pull Prowler images during install to speed up first boot
     msg info "Pulling Prowler Docker images (this may take a few minutes)..."
     docker pull prowlercloud/prowler-api:stable || true
@@ -174,6 +180,10 @@ service_bootstrap()
     msg info "Starting Prowler Security Platform..."
 
     cd "${PROWLER_DATA_DIR}"
+
+    # Ensure the API data directory is writable by the prowler container
+    # user (UID 1000). It writes JWT keys here on first start.
+    chown -R 1000:1000 "${PROWLER_DATA_DIR}/_data/api"
 
     # Start all services
     docker compose up -d
