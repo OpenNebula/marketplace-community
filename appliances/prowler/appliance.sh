@@ -688,5 +688,12 @@ postinstall_cleanup()
     apt-get autoremove -y
     apt-get autoclean
     rm -rf /var/lib/apt/lists/*
+
+    # Remove NetworkManager netplan configs created during Packer build.
+    # These use renderer: NetworkManager and conflict with one-context's
+    # 50-one-context.yaml (renderer: networkd), preventing eth0 from
+    # getting an IP address at boot.
+    rm -f /etc/netplan/90-NM-*.yaml
+
     find /var/log -type f -exec truncate -s 0 {} \;
 }

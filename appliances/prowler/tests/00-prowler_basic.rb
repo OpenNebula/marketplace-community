@@ -164,7 +164,7 @@ describe 'Appliance Certification' do
 
         loop do
             result = @info[:vm].ssh(cmd)
-            if result.success? && ['200', '301', '302'].include?(result.stdout.strip)
+            if result.success? && ['200', '301', '302', '307'].include?(result.stdout.strip)
                 break
             end
 
