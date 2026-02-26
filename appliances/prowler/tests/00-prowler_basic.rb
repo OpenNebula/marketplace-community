@@ -140,16 +140,17 @@ describe 'Appliance Certification' do
     it 'prowler API is responding' do
         cmd = 'curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/v1/docs'
         start_time = Time.now
-        timeout = 300
+        timeout = 420  # API needs time for DB migrations + gunicorn startup
 
         loop do
             result = @info[:vm].ssh(cmd)
-            if result.success? && ['200', '301', '302'].include?(result.stdout.strip)
+            code = result.stdout.strip
+            if result.success? && code.match?(/^(200|301|302|307|308)$/)
                 break
             end
 
             if Time.now - start_time > timeout
-                raise "Prowler API did not respond within #{timeout} seconds"
+                raise "Prowler API did not respond within #{timeout} seconds (last HTTP code: #{code})"
             end
 
             sleep 10

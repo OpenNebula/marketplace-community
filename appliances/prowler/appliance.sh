@@ -492,6 +492,12 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:${DJANGO_PORT:-8080}/api/v1/docs || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
     entrypoint:
       - "/home/prowler/docker-entrypoint.sh"
       - "prod"
