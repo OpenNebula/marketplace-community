@@ -525,7 +525,8 @@ services:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8000/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
 
   worker:
