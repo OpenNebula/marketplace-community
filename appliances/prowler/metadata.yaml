@@ -1,0 +1,42 @@
+---
+:app:
+  :name: prowler
+  :type: service
+  :os:
+    :type: linux
+    :base: ubuntu2404
+  :hypervisor: KVM
+  :context:
+    :prefixed: true
+    :params:
+      :ONEAPP_PROWLER_UI_PORT: '3000'
+      :ONEAPP_PROWLER_API_PORT: '8080'
+      :ONEAPP_PROWLER_VERSION: 'stable'
+      :ONEAPP_PROWLER_DB_PASSWORD: ''
+
+:one:
+  :template:
+    NAME: base
+    TEMPLATE:
+      ARCH: x86_64
+      CONTEXT:
+        NETWORK: 'YES'
+        SET_HOSTNAME: "$NAME"
+        SSH_PUBLIC_KEY: "$USER[SSH_PUBLIC_KEY]"
+      CPU: '2'
+      CPU_MODEL:
+        MODEL: host-passthrough
+      GRAPHICS:
+        LISTEN: 0.0.0.0
+        TYPE: vnc
+      MEMORY: '8192'
+      NIC:
+        NETWORK: service
+      NIC_DEFAULT:
+        MODEL: virtio
+  :datastore_name: default
+  :timeout: '600'
+
+:infra:
+  :disk_format: qcow2
+  :apps_path: /var/tmp
