@@ -233,6 +233,8 @@ exec docker run -d --name openhands \
     -e AGENT_SERVER_IMAGE_TAG="1.11.4-python" \
     -e SANDBOX_USER_ID=1000 \
     -e WORKSPACE_BASE=/opt/openhands/workspace \
+    -e OH_SANDBOX_USE_HOST_NETWORK=true \
+    -e SANDBOX_VSCODE_PORT=41234 \
     ${SSL_VERIFY:+-e SSL_VERIFY="${SSL_VERIFY}"} \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /var/lib/openhands/.openhands:/.openhands \
@@ -382,6 +384,24 @@ ${ONEAPP_OH_TLS_DOMAIN} {
         admin ${_hash}
     }
 
+    # Web app preview (sandbox worker ports)
+    handle_path /proxy/8011/* {
+        reverse_proxy 127.0.0.1:8011 {
+            flush_interval -1
+        }
+    }
+    handle_path /proxy/8012/* {
+        reverse_proxy 127.0.0.1:8012 {
+            flush_interval -1
+        }
+    }
+    # Code editor (VSCode server in sandbox)
+    handle_path /vscode/* {
+        reverse_proxy 127.0.0.1:41234 {
+            flush_interval -1
+        }
+    }
+
     reverse_proxy ${_bridge_ip}:3000 {
         flush_interval -1
         stream_timeout 0
@@ -400,6 +420,24 @@ CADDY_EOF
 
     basicauth /* {
         admin ${_hash}
+    }
+
+    # Web app preview (sandbox worker ports)
+    handle_path /proxy/8011/* {
+        reverse_proxy 127.0.0.1:8011 {
+            flush_interval -1
+        }
+    }
+    handle_path /proxy/8012/* {
+        reverse_proxy 127.0.0.1:8012 {
+            flush_interval -1
+        }
+    }
+    # Code editor (VSCode server in sandbox)
+    handle_path /vscode/* {
+        reverse_proxy 127.0.0.1:41234 {
+            flush_interval -1
+        }
     }
 
     reverse_proxy ${_bridge_ip}:3000 {
@@ -473,7 +511,7 @@ generate_openhands_settings() {
             max_budget_per_task: null,
             condenser_max_size: null,
             secrets_store: { provider_tokens: {} },
-            v1_enabled: true
+            v1_enabled: false
         }' > "${_settings_file}"
         log_oh info "OpenHands settings.json written (no LLM pre-configured)"
     else
@@ -506,7 +544,7 @@ generate_openhands_settings() {
                 max_budget_per_task: null,
                 condenser_max_size: null,
                 secrets_store: { provider_tokens: {} },
-                v1_enabled: true
+                v1_enabled: false
             }' > "${_settings_file}"
         log_oh info "OpenHands settings.json written (model=${ONEAPP_OH_LLM_MODEL:-not set})"
     fi
@@ -740,6 +778,17 @@ service_bootstrap() {
     systemctl enable openhands.service
     systemctl start openhands.service
     wait_for_openhands
+
+    # Patch: disable V1 mode hardcoded override in OpenHands 1.4 source
+    # V1 agent-server containers lack Docker socket access in self-hosted mode,
+    # causing conversations to get stuck. V0 mode works correctly.
+    docker exec openhands sed -i \
+        's/settings.v1_enabled = True/settings.v1_enabled = False/' \
+        /app/openhands/storage/settings/file_settings_store.py 2>/dev/null \
+        && docker restart openhands \
+        && wait_for_openhands \
+        && log_oh info "V1 mode disabled (agent-server Docker socket fix)" \
+        || log_oh warn "V1 patch skipped (may not be needed in future versions)"
 
     # Start Caddy reverse proxy
     systemctl enable caddy.service
