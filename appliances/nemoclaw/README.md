@@ -13,7 +13,7 @@ NemoClaw is NVIDIA's open-source AI agent security stack built on OpenClaw. It p
 
 ## Quick Start
 
-1. Deploy the appliance from the OpenNebula Marketplace
+1. Deploy the appliance from the OpenNebula Community Marketplace
 2. SSH into the VM: `ssh root@VM_IP` (password: `opennebula`)
 3. Get your API key at https://build.nvidia.com
 4. Run: `nemoclaw onboard`
@@ -70,7 +70,7 @@ GPU passthrough is optional. When no GPU is detected, NemoClaw uses cloud infere
 3. **OpenNebula PCI device assignment** configured with vendor `10de` (NVIDIA)
 4. **Blacklist nouveau driver** on the host to avoid conflicts
 
-Refer to the [OpenNebula GPU Passthrough documentation](https://docs.opennebula.io/stable/open_cluster_deployment/networking_setup/pci_passthrough.html) for detailed setup instructions.
+Refer to the [OpenNebula GPU Passthrough documentation](https://docs.opennebula.io/7.0/product/cluster_configuration/hosts_and_clusters/nvidia_gpu_passthrough/) for detailed setup instructions.
 
 ## VM Resources
 
@@ -124,8 +124,8 @@ docker logs $(docker ps -aq --filter name=openshell) 2>/dev/null
 
 - [NVIDIA NemoClaw Documentation](https://docs.nvidia.com/nemoclaw/latest/)
 - [NVIDIA NemoClaw GitHub](https://github.com/NVIDIA/NemoClaw)
-- [OpenClaw Documentation](https://github.com/NVIDIA/OpenClaw)
-- [OpenNebula GPU Passthrough](https://docs.opennebula.io/stable/open_cluster_deployment/networking_setup/pci_passthrough.html)
+- [OpenClaw Documentation](https://openclawapi.org)
+- [OpenNebula GPU Passthrough](https://docs.opennebula.io/7.0/product/cluster_configuration/hosts_and_clusters/nvidia_gpu_passthrough/)
 
 ## Important Notes
 
