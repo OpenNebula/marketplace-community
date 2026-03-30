@@ -40,7 +40,7 @@ sudo apt install -y git qemu-kvm qemu-utils
 ```bash
 git clone https://github.com/OpenNebula/marketplace-community.git
 cd marketplace-community
-git checkout dcos/add-appliance-automation-script
+git checkout docs/add-appliance-creation-tutorial-clean
 ```
 
 ### Step 2: Create Configuration File
