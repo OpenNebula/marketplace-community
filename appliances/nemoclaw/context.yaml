@@ -1,0 +1,7 @@
+---
+:tests:
+  :image_name: nemoclaw
+  :type: service
+  :microenvs:
+  - :name: base
+    :variables: {}

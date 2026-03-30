@@ -1,0 +1,94 @@
+---
+name: NemoClaw
+version: 0.1.0-1-20260325
+publisher: Pablo del Arco
+publisher_email: pdelarco@opennebula.io
+description: |-
+  Appliance with preinstalled [NemoClaw](https://www.nvidia.com/en-us/ai/nemoclaw/),
+  NVIDIA's open-source AI agent security stack built on OpenClaw.
+
+  NemoClaw provides secure, sandboxed execution of AI agents with:
+  - **Landlock + seccomp isolation** for filesystem and process hardening
+  - **Network egress policies** controlling what AI agents can access
+  - **NVIDIA Nemotron inference** via NVIDIA Endpoints API
+  - **GPU passthrough support** for local inference (optional)
+
+  **This appliance provides:**
+  - Ubuntu 24.04 LTS base operating system
+  - Docker Engine CE with NVIDIA Container Toolkit
+  - NVIDIA driver 550-server for GPU passthrough
+  - NemoClaw CLI and OpenShell runtime pre-installed
+  - Node.js 22 LTS
+  - SSH key authentication from OpenNebula context
+  - VNC console access via Sunstone
+
+  **Quick Start:**
+  1. Deploy this appliance from the OpenNebula Marketplace
+  2. SSH into the VM: `ssh root@<VM_IP>` (password: `opennebula`)
+  3. Run: `nemoclaw onboard`
+  4. Follow the interactive setup wizard (requires NVIDIA API key from [build.nvidia.com](https://build.nvidia.com))
+  5. Connect to your sandbox: `nemoclaw <name> connect`
+
+  **GPU Support:**
+  For GPU passthrough, configure PCI device assignment on the OpenNebula host
+  with IOMMU enabled. The appliance auto-detects NVIDIA GPUs and configures
+  the container runtime accordingly.
+
+  **Documentation:**
+  - [NemoClaw Developer Guide](https://docs.nvidia.com/nemoclaw/latest/)
+  - [Appliance Guide](https://github.com/OpenNebula/marketplace-community/blob/master/appliances/nemoclaw/README.md)
+  - [NemoClaw GitHub](https://github.com/NVIDIA/NemoClaw)
+
+  > **Note:** NemoClaw is alpha software. APIs may change between releases.
+
+short_description: NVIDIA NemoClaw AI agent security stack with GPU passthrough support
+tags:
+- nvidia
+- nemoclaw
+- ai
+- gpu
+- security
+- sandbox
+- docker
+- openshell
+- openclaw
+format: qcow2
+creation_time: 1774457272
+os-id: Ubuntu
+os-release: '24.04'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.8, 6.10, 7.0
+opennebula_template:
+  context:
+    network: 'YES'
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    set_hostname: "$NAME"
+    report_ready: 'YES'
+  cpu: '2'
+  vcpu: '2'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  memory: '8192'
+  os:
+    arch: x86_64
+  cpu_model:
+    model: host-passthrough
+  pci:
+    class: '0300'
+    device: ''
+    vendor: '10de'
+logo: nemoclaw.png
+
+images:
+- name: nemoclaw-0.1.0-1-20260325
+  url: >-
+    https://d38nm155miqkyg.cloudfront.net/nemoclaw-0.1.0-1-20260325.qcow2
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 42949672960
+  checksum:
+    md5: 68e9d1da05d108f4fd5e7eea50b851fa
+    sha256: 548bc929846b381bc699e0d059bd9d708ab51ff1217256dab0167c1dbf41eb9d
