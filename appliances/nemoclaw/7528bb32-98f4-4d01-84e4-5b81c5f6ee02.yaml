@@ -75,10 +75,6 @@ opennebula_template:
     arch: x86_64
   cpu_model:
     model: host-passthrough
-  pci:
-    class: '0300'
-    device: ''
-    vendor: '10de'
 logo: nemoclaw.png
 
 images:
