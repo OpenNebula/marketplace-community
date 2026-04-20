@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+
+# Download and install the latest one-context package.
+# Modified to fix NetworkManager/netplan conflict
+
+: "${CTXEXT:=deb}"
+
+policy_rc_d_disable() (echo "exit 101" >/usr/sbin/policy-rc.d && chmod a+x /usr/sbin/policy-rc.d)
+policy_rc_d_enable()  (echo "exit 0"   >/usr/sbin/policy-rc.d && chmod a+x /usr/sbin/policy-rc.d)
+
+exec 1>&2
+set -eux -o pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+ls -lha /context/
+
+LATEST=$(find /context/ -type f -name "one-context*.$CTXEXT" | sort -V | tail -n1)
+
+policy_rc_d_disable
+
+dpkg -i --auto-deconfigure "$LATEST" || apt-get install -y -f
+dpkg -i --auto-deconfigure "$LATEST"
+
+apt-get install -y haveged
+
+systemctl enable haveged
+
+# >>> Apply only on one-context >= 6.1 >>>
+if ! dpkg-query -W --showformat '${Version}' one-context | grep -E '^([1-5]\.|6\.0\.)'; then
+    apt-get install -y --no-install-recommends --no-install-suggests netplan.io network-manager
+
+    # ============================================================
+    # FIX: NetworkManager/netplan conflict prevention
+    # Problem: NM creates 90-NM-*.yaml that override one-context's
+    #          50-one-context.yaml, causing network failures
+    # ============================================================
+
+    # 1. Force netplan to use networkd renderer (not NetworkManager)
+    mkdir -p /etc/netplan
+    cat > /etc/netplan/00-one-defaults.yaml << 'NETPLAN_DEFAULTS'
+# OpenNebula default netplan configuration
+# Forces networkd as renderer to prevent NetworkManager conflicts
+network:
+  version: 2
+  renderer: networkd
+NETPLAN_DEFAULTS
+    chmod 644 /etc/netplan/00-one-defaults.yaml
+
+    # 2. Configure NetworkManager to not manage ethernet interfaces
+    mkdir -p /etc/NetworkManager/conf.d
+    cat > /etc/NetworkManager/conf.d/99-one-unmanaged.conf << 'NM_UNMANAGED'
+# OpenNebula: Prevent NetworkManager from managing ethernet interfaces
+[keyfile]
+unmanaged-devices=interface-name:eth*;interface-name:ens*;interface-name:enp*
+NM_UNMANAGED
+    chmod 644 /etc/NetworkManager/conf.d/99-one-unmanaged.conf
+
+    # 3. Create early-boot cleanup script (runs before loc-10-network)
+    cat > /etc/one-context.d/loc-05-cleanup-nm-netplan << 'CLEANUP_SCRIPT'
+#!/bin/bash
+# Cleanup conflicting NetworkManager netplan configurations
+rm -f /etc/netplan/90-NM-*.yaml 2>/dev/null
+rm -f /etc/NetworkManager/system-connections/netplan-* 2>/dev/null
+exit 0
+CLEANUP_SCRIPT
+    chmod 755 /etc/one-context.d/loc-05-cleanup-nm-netplan
+
+    # 4. Ensure systemd-networkd is enabled
+    systemctl enable systemd-networkd 2>/dev/null || true
+
+    # ============================================================
+    # END FIX
+    # ============================================================
+fi
+# <<< Apply only on one-context >= 6.1 <<<
+
+policy_rc_d_enable
+
+sync
