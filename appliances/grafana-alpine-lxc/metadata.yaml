@@ -1,0 +1,32 @@
+---
+:app:
+  :name: grafana-alpine-lxc
+  :type: service
+  :os:
+    :type: linux
+    :base: alpine320.aarch64
+  :hypervisor: lxc
+  :context:
+    :prefixed: false
+    :params: {}
+
+:one:
+  :template:
+    NAME: grafana-alpine-lxc
+    TEMPLATE:
+      ARCH: aarch64
+      CPU: '1'
+      GRAPHICS:
+        LISTEN: 0.0.0.0
+        TYPE: vnc
+      MEMORY: '256'
+      NIC:
+        NETWORK: service
+      NIC_DEFAULT:
+        MODEL: virtio
+  :datastore_name: default
+  :timeout: '90'
+
+:infra:
+  :disk_format: raw
+  :apps_path: /var/tmp
