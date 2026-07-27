@@ -1,35 +1,59 @@
 # Creating OpenNebula Appliances - Automatic Method
 
-**Quick appliance creation using the generator script (5 minutes)**
+**Quick appliance creation using the generator script**
 
 ---
 
 ## 📖 Introduction
 
-This guide shows you how to quickly create OpenNebula appliances from Docker containers using an automated generator script. The generator creates all necessary files following the proven Phoenix RTOS/Node-RED structure.
+This guide shows you how to quickly create OpenNebula appliances from Docker containers using an automated generator script. The generator creates all necessary files following the structure used by the appliances already in this repository.
 
 **What you'll create:**
-- A VM image (QCOW2 format) with Ubuntu 22.04 + Docker
+- A VM image (QCOW2 format) with Docker on the base OS you select (`BASE_OS`, default Ubuntu 22.04 minimal)
 - Automatic Docker container startup on VM boot
-- SSH access with password and key authentication
+- SSH access using the public key injected by OpenNebula context (`SSH_PUBLIC_KEY`) — password login is disabled and the root password is locked in the shipped image
 - Console and serial console auto-login
 - OpenNebula context integration for runtime configuration
 
-**Time required:** ~5 minutes for generation + 15-20 minutes for building
+**Time required:** ~1 minute for generation + ~2 minutes for building (plus a one-time ~2-3 minute base OS build)
 
 ---
 
 ## ✅ Prerequisites
 
-- Linux system (Ubuntu 22.04+ recommended)
-- Git
-- Packer (for building the image)
-- QEMU/KVM (for building the image)
+- **Linux host** (Ubuntu 22.04+ recommended). The generator uses GNU `sed -i`; it does **not** run on macOS/BSD.
+- **Root access** — the image build uses `chroot` and `/dev/kvm`, so `make` must be run as root (`sudo`).
+- **Hardware**: KVM enabled (`/dev/kvm` present), 8 GB+ RAM, 40 GB+ free disk.
+
+Install the build dependencies (official list:
+<https://github.com/OpenNebula/one-apps/wiki/tool_reqs>):
 
 ```bash
 sudo apt update
-sudo apt install -y git qemu-kvm qemu-utils
+sudo apt install -y \
+  bash cloud-utils cloud-image-utils genisoimage git gnupg lsb-release \
+  libguestfs0 libguestfs-tools make qemu-utils qemu-system-x86 \
+  rpm rsync ruby wget
+
+# Ruby gems required to build the one-context packages
+sudo gem install --no-document backports fpm
 ```
+
+Install Packer (>= 1.9.4) from HashiCorp — it is **not** in the Ubuntu archive:
+
+```bash
+wget -O- https://apt.releases.hashicorp.com/gpg \
+  | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
+  | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt update && sudo apt install -y packer
+packer version
+```
+
+> `fpm`, `rpm` and `cloud-image-utils` (which provides `cloud-localds`) are the
+> three that are almost never already installed and whose absence fails the
+> build with a confusing error.
 
 ---
 
@@ -40,10 +64,32 @@ sudo apt install -y git qemu-kvm qemu-utils
 ```bash
 git clone https://github.com/OpenNebula/marketplace-community.git
 cd marketplace-community
-git checkout dcos/add-appliance-automation-script
+
+# REQUIRED: everything the build needs lives behind the one-apps submodule.
+# Without this, apps-code/one-apps is empty and
+# apps-code/community-apps/packer/build.sh is a dangling symlink, so
+# `make <name>` fails immediately.
+git submodule update --init --recursive
 ```
 
-### Step 2: Create Configuration File
+### Step 2: Build the Base OS Image (once per host)
+
+`make <name>` in `community-apps` **never** builds the base image for you: the
+generated Packer template consumes `apps-code/one-apps/export/<BASE_OS>.qcow2`
+and fails if it is missing. Build it once (the default `BASE_OS` is
+`ubuntu2204min`):
+
+```bash
+cd apps-code/one-apps
+sudo make ubuntu2204min      # ~2-3 min -> export/ubuntu2204min.qcow2
+cd ../..
+```
+
+This also builds the one-context packages, which is why `fpm` and `rpm` are
+required. Docker is **not** needed on the build host. The base image is reused
+by every appliance you generate afterwards.
+
+### Step 3: Create Configuration File
 
 Create a `.env` file with your Docker container details:
 
@@ -52,7 +98,7 @@ cd docs/automatic-appliance-tutorial
 
 cat > myapp.env << 'ENVEOF'
 # Required variables
-DOCKER_IMAGE="your-docker-image:tag"
+DOCKER_IMAGE="your-docker-image:1.2.3"   # must be a pinned tag, not :latest
 APPLIANCE_NAME="myapp"
 APP_NAME="MyApp"
 PUBLISHER_NAME="Your Name"
@@ -67,51 +113,94 @@ DEFAULT_ENV_VARS=""
 DEFAULT_VOLUMES="/data:/data"
 APP_PORT="8080"
 WEB_INTERFACE="true"
+BASE_OS="ubuntu2204min"
 ENVEOF
 ```
 
-### Step 3: Run Generator
+### Step 4: Run Generator
 
 ```bash
-./generate-docker-appliance.sh myapp.env
+./generate-docker-appliance.sh myapp.env --no-build
 ```
 
 The generator will:
 1. Create all appliance files
-2. Generate Packer configuration
-3. Prompt you to build the image immediately
+2. Generate the Packer build definition
+3. Register the appliance in `apps-code/community-apps/Makefile.config`
+   (`SERVICES` list) so that `make <name>` works
+4. Prompt you to build the image immediately — **only when stdin is a TTY**, and
+   only if you did not pass `--no-build`. Piped / CI / `ssh host bash -s` runs
+   skip the prompt and exit 0.
+
+**Flags:**
+
+| Flag | Effect |
+|------|--------|
+| `--no-build` | Generate only; never prompt, never build. Use this for CI and non-interactive runs. |
+| `--force` | Regenerate over an existing appliance. Without it the generator refuses to overwrite `appliances/<name>/` or `packer/<name>/` and exits 1. `--force` wipes both directories first (a new appliance UUID is generated). |
+| `-h`, `--help` | Show usage and exit. |
+
+```bash
+# non-interactive / CI
+./generate-docker-appliance.sh myapp.env --no-build
+
+# regenerate an appliance you already created
+./generate-docker-appliance.sh myapp.env --force
+```
 
 **Output:**
 ```
-🚀 Loading configuration from myapp.env
-🎯 Generating complete appliance: myapp (MyApp)
-📁 Creating directory structure...
-✅ Directory structure created
-📝 Generating metadata.yaml...
-✅ Metadata files generated
-📝 Generating README.md...
-✅ README.md generated
-📝 Generating appliance.sh installation script...
-✅ appliance.sh generated
-📝 Generating Packer configuration files...
-✅ Packer configuration files generated
-🎉 Appliance 'myapp' generated successfully!
-
-Do you want to build the image now? (y/n):
+[INFO] 🚀 Loading configuration from myapp.env
+[INFO] 🎯 Generating complete appliance: myapp (MyApp)
+[INFO] 📁 Creating directory structure...
+[SUCCESS] Directory structure created
+[INFO] 📝 Generating metadata.yaml...
+[INFO] 📝 Generating <uuid>.yaml...
+[SUCCESS] Metadata files generated
+[INFO] 📝 Generating README.md...
+[SUCCESS] README.md generated
+[INFO] 📝 Generating appliance.sh installation script...
+[SUCCESS] appliance.sh generated
+[INFO] 📝 Generating Packer configuration files...
+[INFO] 📝 Generating additional required files...
+[SUCCESS] Additional files generated
+[SUCCESS] Packer configuration files generated
+[INFO] 📝 Adding 'myapp' to Makefile.config SERVICES list...
+[SUCCESS]   ✅ Added 'myapp' to SERVICES list
+[INFO] 🎉 Appliance 'myapp' generated successfully!
 ```
 
-### Step 4: Build the Image
+### About the image size
 
-If you answered 'y' to the prompt, the build starts automatically. Otherwise:
+The generated `service_install()` installs `linux-image-generic` plus the
+matching `linux-modules-extra` and makes it the default GRUB entry. The minimal
+base images ship a `-kvm` kernel with no Virtual Terminal support, which makes
+the Sunstone VNC console come up as a black screen; the generic kernel fixes
+that. It also roughly doubles the exported qcow2: a generated NGINX appliance
+measures ~1.4 GB, against ~0.6 GB for an equivalent appliance built without the
+kernel swap.
+
+If your appliance is headless and you do not care about the VNC console, delete
+that block from `appliances/<name>/appliance.sh` before building and the image
+shrinks accordingly.
+
+### Step 5: Build the Appliance Image
+
+Step 4 above passes `--no-build`, so the image has not been built yet. (If you
+run the generator *without* `--no-build` on a TTY and answer 'y' to its build
+prompt, it does this for you — that path initialises the submodule and builds
+the base image first.) To build it yourself:
 
 ```bash
 cd ../../apps-code/community-apps
-make myapp
+sudo make myapp
 ```
 
-**Build time:** 15-20 minutes (downloads Ubuntu, installs Docker, pulls your container image)
+**Build time:** ~2 minutes. The build boots the base qcow2, installs Docker CE,
+and **pulls your Docker image into the qcow2 at build time**. No Ubuntu ISO is
+downloaded.
 
-**Output file:** `export/myapp.qcow2`
+**Output file:** `apps-code/community-apps/export/myapp.qcow2`
 
 ---
 
@@ -119,7 +208,7 @@ make myapp
 
 | Variable | Required | Description | Example |
 |----------|----------|-------------|---------|
-| `DOCKER_IMAGE` | Yes | Docker image name | `nginx:alpine` |
+| `DOCKER_IMAGE` | Yes | Docker image name, pinned tag or digest | `nginx:alpine` |
 | `APPLIANCE_NAME` | Yes | Lowercase name (no spaces) | `nginx` |
 | `APP_NAME` | Yes | Display name | `NGINX Web Server` |
 | `PUBLISHER_NAME` | Yes | Your name | `John Doe` |
@@ -132,6 +221,38 @@ make myapp
 | `DEFAULT_VOLUMES` | No | Volume mappings | `/data:/data,/config:/config` |
 | `APP_PORT` | No | Main application port | `80` |
 | `WEB_INTERFACE` | No | Has web UI? | `true` or `false` |
+| `BASE_OS` | No | Base OS image to build on (default `ubuntu2204min`) | `ubuntu2404min` |
+| `DISK_SIZE` | No | Appliance virtual disk size in MiB (default `20480`) | `20480` |
+
+**`BASE_OS`** is set inside the `.env` file, not on the command line. Supported
+values (anything else is rejected with exit 1):
+
+`ubuntu2204min` `ubuntu2204` `ubuntu2404min` `ubuntu2404` `debian12` `debian11`
+`alma8` `alma9` `rocky8` `rocky9` `opensuse15`
+
+Whichever value you pick, `apps-code/one-apps/export/<BASE_OS>.qcow2` must be
+built before `make <name>` (see Step 2).
+
+**`DISK_SIZE`** is the appliance's virtual disk in MiB. Packer can only *grow*
+the base image, so it must be at least as large as the base you selected — the
+bases differ widely (`ubuntu2204min` is 2.2 GiB, `alma9` is 10 GiB). Asking for
+less aborts the build with:
+
+```
+Error creating hard drive: QemuImg error: qemu-img:
+Use the --shrink option to perform a shrink operation.
+```
+
+The default of `20480` clears every supported base. qcow2 is sparse, so a
+generous virtual size does not make the exported file bigger.
+
+**`DOCKER_IMAGE` must be pinned.** An untagged image or an explicit `:latest`
+tag is rejected — use a released tag (`nginx:1.27-alpine`) or a digest
+(`nginx@sha256:...`).
+
+**`DEFAULT_ENV_VARS` is baked into the image.** Never put a real secret there.
+Secrets (database passwords, API keys) belong in the `ONEAPP_CONTAINER_ENV`
+context variable, supplied at instantiation time.
 
 ---
 
@@ -142,16 +263,25 @@ The generator creates:
 ```
 marketplace-community/
 ├── appliances/myapp/
-│   ├── appliance.sh          # Installation script
-│   ├── metadata.yaml         # Build configuration
-│   ├── <uuid>.yaml          # Marketplace metadata
-│   ├── README.md            # Documentation
-│   ├── CHANGELOG.md         # Version history
+│   ├── appliance.sh              # install / configure / bootstrap logic
+│   ├── metadata.yaml             # appliance descriptor (:app: / :one: / :infra:)
+│   ├── <uuid>.yaml               # marketplace appliance definition
+│   ├── context.yaml              # default context values used by the tests
+│   ├── README.md                 # documentation
+│   ├── CHANGELOG.md              # version history
+│   ├── tests.yaml                # list of test files
 │   └── tests/
-│       └── tests.yaml       # Test configuration
-└── apps-code/community-apps/packer/myapp/
-    ├── myapp.pkr.hcl        # Packer build file
-    └── myapp.auto.pkrvars.hcl  # Packer variables
+│       └── 00-myapp_basic.rb     # RSpec certification test
+├── apps-code/community-apps/packer/myapp/
+│   ├── myapp.pkr.hcl             # Packer build definition
+│   ├── variables.pkr.hcl         # Packer variables
+│   ├── common.pkr.hcl            # symlink to one-apps/packer/common.pkr.hcl
+│   ├── 81-configure-ssh.sh       # re-hardens sshd (key-only) during the build
+│   ├── 82-configure-context.sh   # installs the one-context hooks
+│   ├── gen_context               # build-time context ISO generator
+│   ├── postprocess.sh            # post-build hook
+│   └── .gitignore                # ignores transient build artifacts only
+└── apps-code/community-apps/Makefile.config   # MODIFIED: myapp appended to SERVICES
 ```
 
 ---
@@ -192,17 +322,27 @@ service_install()
 
 ### Rebuild After Changes
 
+`make` treats `export/myapp.qcow2` as an up-to-date target, so a plain
+`make myapp` is a no-op once the image exists. Delete just your own image and
+rebuild:
+
 ```bash
 cd apps-code/community-apps
-make clean
-make myapp
+sudo rm -f export/myapp.qcow2
+sudo make myapp
 ```
+
+Do not use `make clean` for this: it is `rm -rf export/*` and wipes every
+appliance image you have built, not only `myapp`.
 
 ---
 
 ## 📦 Examples
 
-See `docs/automatic-appliance-tutorial/examples/` for complete working examples:
+The four `.env` files in `docs/automatic-appliance-tutorial/examples/` have each
+been generated, built and booted. The blocks below are trimmed versions of them
+(`APP_DESCRIPTION` and `APP_FEATURES` are optional and get sensible defaults);
+use the shipped files verbatim if you want the exact tested configuration.
 
 ### NGINX Web Server
 
@@ -210,24 +350,28 @@ See `docs/automatic-appliance-tutorial/examples/` for complete working examples:
 cat > nginx.env << 'EOF'
 DOCKER_IMAGE="nginx:alpine"
 APPLIANCE_NAME="nginx"
-APP_NAME="NGINX"
+APP_NAME="NGINX Web Server"
 PUBLISHER_NAME="Your Name"
 PUBLISHER_EMAIL="your@email.com"
 DEFAULT_PORTS="80:80,443:443"
+# No default volumes: mounting empty host directories over the image's own
+# /etc/nginx/conf.d (default.conf) or /usr/share/nginx/html hides the image's
+# built-in config and default page, leaving nginx with nothing to serve.
+DEFAULT_VOLUMES=""
 APP_PORT="80"
 WEB_INTERFACE="true"
 EOF
 
-./generate-docker-appliance.sh nginx.env
+./generate-docker-appliance.sh nginx.env --no-build
 ```
 
 ### Node-RED
 
 ```bash
 cat > nodered.env << 'EOF'
-DOCKER_IMAGE="nodered/node-red:latest"
+DOCKER_IMAGE="nodered/node-red:5.0.1"
 APPLIANCE_NAME="nodered"
-APP_NAME="Node-RED"
+APP_NAME="Node-Red"
 PUBLISHER_NAME="Your Name"
 PUBLISHER_EMAIL="your@email.com"
 DEFAULT_PORTS="1880:1880"
@@ -236,47 +380,68 @@ APP_PORT="1880"
 WEB_INTERFACE="true"
 EOF
 
-./generate-docker-appliance.sh nodered.env
+./generate-docker-appliance.sh nodered.env --no-build
 ```
+
+The tag is pinned to match `docs/automatic-appliance-tutorial/examples/nodered.env`:
+`nodered/node-red:latest` is rejected by the generator.
 
 ### PostgreSQL Database
 
 ```bash
 cat > postgres.env << 'EOF'
-DOCKER_IMAGE="postgres:16-alpine"
+DOCKER_IMAGE="postgres:15"
 APPLIANCE_NAME="postgres"
-APP_NAME="PostgreSQL"
+APP_NAME="PostgreSQL Database"
 PUBLISHER_NAME="Your Name"
 PUBLISHER_EMAIL="your@email.com"
 DEFAULT_PORTS="5432:5432"
-DEFAULT_ENV_VARS="POSTGRES_PASSWORD=changeme"
+DEFAULT_ENV_VARS="POSTGRES_DB=appdb,POSTGRES_USER=postgres"
 DEFAULT_VOLUMES="/var/lib/postgresql/data:/var/lib/postgresql/data"
 APP_PORT="5432"
 WEB_INTERFACE="false"
 EOF
 
-./generate-docker-appliance.sh postgres.env
+./generate-docker-appliance.sh postgres.env --no-build
 ```
 
-### Nextcloud All-in-One
+**Note:** `POSTGRES_PASSWORD` is deliberately absent from `DEFAULT_ENV_VARS` —
+anything you put there is baked into the published image. PostgreSQL refuses to
+initialise without it, so it **must** be supplied at instantiation through the
+context variable, e.g.
+`ONEAPP_CONTAINER_ENV = "POSTGRES_PASSWORD=<your-password>"` in the VM
+template's `CONTEXT` section.
+
+### Redis Cache
 
 ```bash
-cat > nextcloud.env << 'EOF'
-DOCKER_IMAGE="nextcloud/all-in-one:latest"
-APPLIANCE_NAME="nextcloud"
-APP_NAME="Nextcloud"
+cat > redis.env << 'EOF'
+DOCKER_IMAGE="redis:alpine"
+APPLIANCE_NAME="redis"
+APP_NAME="Redis Cache"
 PUBLISHER_NAME="Your Name"
 PUBLISHER_EMAIL="your@email.com"
-DEFAULT_PORTS="80:80,8080:8080,8443:8443"
-DEFAULT_VOLUMES="/var/run/docker.sock:/var/run/docker.sock:ro,nextcloud_aio_mastercontainer:/mnt/docker-aio-config"
-APP_PORT="8080"
-WEB_INTERFACE="true"
+DEFAULT_PORTS="6379:6379"
+DEFAULT_VOLUMES="/data:/data"
+APP_PORT="6379"
+WEB_INTERFACE="false"
 EOF
 
-./generate-docker-appliance.sh nextcloud.env
+./generate-docker-appliance.sh redis.env --no-build
 ```
 
-**Note**: Nextcloud All-in-One requires access to the Docker socket for managing additional containers. Access the web interface at `http://VM_IP:8080` to complete the setup.
+**Note:** the generator refuses two classes of configuration outright, so they
+can never appear in a working example:
+
+- `DOCKER_IMAGE` with an explicit `:latest` tag, or with no tag at all (both
+  resolve to a mutable tag). Pin a released tag (`nginx:1.27-alpine`) or a
+  digest (`nginx@sha256:...`).
+- `DEFAULT_VOLUMES` mapping a sensitive host path — `/var/run/docker.sock`,
+  `/run/docker.sock`, `/`, `/root`, `/proc`, `/sys`, `/dev`, `/boot`,
+  `/var/run`, `/run`, `/usr`, `/bin`, `/sbin`, `/lib`, `/lib64`,
+  `/var/lib/docker`. These are container-escape vectors. Docker-in-Docker
+  style appliances (e.g. Nextcloud All-in-One, which needs the Docker socket)
+  cannot be produced by this generator.
 
 ---
 
@@ -340,7 +505,11 @@ NIC = [
 CONTEXT = [
   NETWORK = "YES",
   SSH_PUBLIC_KEY = "$USER[SSH_PUBLIC_KEY]",
-  SET_HOSTNAME = "$NAME"
+  SET_HOSTNAME = "$NAME",
+  ONEAPP_CONTAINER_NAME = "myapp-container",
+  ONEAPP_CONTAINER_PORTS = "8080:8080",
+  ONEAPP_CONTAINER_ENV = "",
+  ONEAPP_CONTAINER_VOLUMES = ""
 ]
 GRAPHICS = [
   TYPE = "VNC",
@@ -351,6 +520,31 @@ EOF
 # Create the template
 onetemplate create myapp-template.txt
 ```
+
+**Note:** the `ONEAPP_CONTAINER_*` variables are how the appliance is configured
+at instantiation; omit them and the container falls back to the defaults baked
+in at generation time. Container environment variables may carry secrets (DB
+passwords, API keys), so always supply them here via `ONEAPP_CONTAINER_ENV`
+rather than committing them into the appliance files.
+
+**List separators.** `ONEAPP_CONTAINER_PORTS`, `ONEAPP_CONTAINER_ENV` and
+`ONEAPP_CONTAINER_VOLUMES` hold lists. The appliance accepts **either `,` or `;`**
+between items, so all of these are equivalent:
+
+```
+ONEAPP_CONTAINER_PORTS = "80:80,443:443"
+ONEAPP_CONTAINER_PORTS = "80:80;443:443"
+```
+
+Use whichever reads better in Sunstone. One place where it matters: the
+certification harness (`lib/community/app_handler.rb`) joins the
+`metadata.yaml` `:params:` entries with commas and hands the result to
+`onetemplate instantiate --context`, and the CLI splits that string on commas
+regardless of quoting. A comma *inside* a value is therefore truncated there
+(`"80:80,443:443"` arrives as `"80:80,"`). For that reason the generator writes
+the `:params:` defaults in `metadata.yaml` with `;`, and you should keep it that
+way. The same caution applies whenever you pass a list through
+`--context` on the command line — prefer `;` there.
 
 **Note:** The command will output a TEMPLATE_ID (e.g., `ID: 5`). Save this ID for the next step.
 
@@ -380,6 +574,11 @@ Once the VM is running, you can access it via SSH and the web interface (if appl
 
 **SSH Access:**
 
+The deployed appliance accepts **only** the public key delivered through the
+`SSH_PUBLIC_KEY` context variable. Password authentication is disabled and the
+root password is locked, so make sure your key is in the template's CONTEXT
+before instantiating.
+
 ```bash
 # If OpenNebula is on a remote host, use SSH port forwarding
 # Replace:
@@ -401,7 +600,7 @@ http://localhost:8080
 **Direct SSH to VM:**
 
 ```bash
-# From the OpenNebula host
+# From the OpenNebula host, using the private key matching SSH_PUBLIC_KEY
 ssh root@172.16.100.X
 
 # Verify the container is running
@@ -418,8 +617,54 @@ docker logs <container-name>
 - ✅ Docker service is running (`systemctl status docker`)
 - ✅ Container is running (`docker ps`)
 - ✅ Application is accessible via web interface (if applicable)
-- ✅ SSH access works with password and key authentication
+- ✅ SSH access works with the context-injected key (`ssh root@<VM_IP>`); password login is correctly refused
 - ✅ Console auto-login works (check via VNC)
+
+### 3. Run the Certification Tests
+
+The generator writes an rspec test at
+`appliances/myapp/tests/00-myapp_basic.rb` and lists it in
+`appliances/myapp/tests.yaml`. The community harness
+(`lib/community/app_readiness.rb`) creates the image, instantiates a VM from
+your `metadata.yaml` `:params:` and runs the test against it. On the frontend:
+
+```bash
+# rspec is not part of the OpenNebula gem set; install it once
+sudo gem install --no-document rspec
+
+# the image must be readable by oneadmin (oned runs as oneadmin)
+sudo cp apps-code/community-apps/export/myapp.qcow2 /var/tmp/
+sudo chmod 644 /var/tmp/myapp.qcow2
+
+sudo -u oneadmin env IMAGES_URL=/var/tmp/ \
+  bash -c 'cd lib/community && mkdir -p results && ./app_readiness.rb myapp'
+```
+
+Expected output:
+
+```
+Appliance Certification
+  docker engine is active
+  MyApp image (myimage:1.2.3) is present
+  MyApp container (myapp-container) is running
+
+3 examples, 0 failures
+```
+
+Requirements that are easy to miss:
+
+- **Run as `oneadmin`.** The harness reaches the VM with `ssh root@<vm-ip>` and
+  the VM only trusts the key contextualization injected from
+  `$USER[SSH_PUBLIC_KEY]`, which is oneadmin's. Running as root gives
+  `Permission denied (publickey)` and every example fails with
+  `reached timeout ... reachable?`.
+- **`IMAGES_URL` must be readable by oneadmin.** A path under `/root` fails with
+  `Cannot parse image SIZE: ... (Permission denied)`.
+- **A VM template named `base` must exist** (`defaults.yaml` sets
+  `:template: base`); the harness instantiates it with `--disk <image>` plus the
+  context built from `metadata.yaml`.
+
+Results are written to `lib/community/results/myapp/`.
 
 ---
 
@@ -431,10 +676,10 @@ Create a 256x256 PNG logo for your appliance to display in the OpenNebula Sunsto
 
 #### Step 1: Create or Download the Logo
 
-**Option A: Download from official source**
+**Option A: Download from the project's official source**
 ```bash
-# Example: Download Nextcloud logo
-wget -O /tmp/app-logo.png "https://raw.githubusercontent.com/nextcloud/promo/master/nextcloud-logo-inverted.png"
+# Replace the URL with the official logo of the application you are packaging
+wget -O /tmp/app-logo.png "https://example.com/path/to/official-logo.png"
 ```
 
 **Option B: Create your own logo**
@@ -504,24 +749,6 @@ onetemplate show TEMPLATE_ID | grep LOGO
 3. You should see your logo displayed next to the appliance
 4. If not visible, do a hard refresh (Ctrl+Shift+R or Cmd+Shift+R)
 
-**Example for Nextcloud:**
-```bash
-# Download and prepare logo
-wget -O /tmp/nextcloud-logo.png "https://raw.githubusercontent.com/nextcloud/promo/master/nextcloud-logo-inverted.png"
-convert /tmp/nextcloud-logo.png -resize 256x256 -background none -gravity center -extent 256x256 logos/nextcloud.png
-
-# Deploy to OpenNebula
-sudo cp logos/nextcloud.png /usr/lib/one/fireedge/dist/client/assets/images/logos/
-sudo systemctl restart opennebula-fireedge
-
-# Update image and template
-cat > /tmp/logo-update.txt << 'EOF'
-LOGO = "images/logos/nextcloud.png"
-EOF
-oneimage update 4 /tmp/logo-update.txt
-onetemplate update 3 /tmp/logo-update.txt
-```
-
 ### 2. Submit to Marketplace
 
 Once your appliance is tested and working, submit it to the OpenNebula Marketplace:
@@ -533,6 +760,7 @@ Once your appliance is tested and working, submit it to the OpenNebula Marketpla
 # Then clone your fork
 git clone https://github.com/YOUR_USERNAME/marketplace-community.git
 cd marketplace-community
+git submodule update --init --recursive
 
 # Create feature branch
 git checkout -b feature/add-myapp-appliance
@@ -543,13 +771,17 @@ git checkout -b feature/add-myapp-appliance
 ```bash
 git add appliances/myapp/
 git add apps-code/community-apps/packer/myapp/
+# REQUIRED: the generator appended your appliance to the SERVICES list.
+# Without this file `make myapp` fails with "No rule to make target",
+# and the PR cannot be built.
+git add apps-code/community-apps/Makefile.config
 git add logos/myapp.png
 
 git commit -m "Add MyApp appliance
 
 - Docker container with automatic startup
 - OpenNebula context integration
-- SSH and console access
+- SSH (key-only) and console access
 - Web interface on port 8080"
 ```
 
@@ -574,17 +806,17 @@ This PR adds a new appliance for MyApp, a [brief description].
 - Docker container with automatic startup
 - OpenNebula context integration
 - Configurable via context variables:
-  - Container name
-  - Port mappings
-  - Environment variables
-  - Volume mappings
+  - ONEAPP_CONTAINER_NAME
+  - ONEAPP_CONTAINER_PORTS
+  - ONEAPP_CONTAINER_ENV
+  - ONEAPP_CONTAINER_VOLUMES
 
 ## Testing
 
 - ✅ Built successfully with Packer
 - ✅ Deployed to OpenNebula
 - ✅ Container starts automatically
-- ✅ SSH access works (password + keys)
+- ✅ SSH access works with the OpenNebula context-injected key (password login disabled)
 - ✅ Console auto-login works
 - ✅ Application accessible on configured ports
 
@@ -592,6 +824,7 @@ This PR adds a new appliance for MyApp, a [brief description].
 
 - `appliances/myapp/` - Appliance definition files
 - `apps-code/community-apps/packer/myapp/` - Packer build configuration
+- `apps-code/community-apps/Makefile.config` - appliance added to SERVICES
 - `logos/myapp.png` - Appliance logo
 
 ## Checklist
@@ -601,6 +834,7 @@ This PR adds a new appliance for MyApp, a [brief description].
 - [x] Documentation included (README.md)
 - [x] Logo added (256x256 PNG)
 - [x] Follows community appliance structure
+- [x] Docker image pinned to an immutable tag or digest
 - [x] No sensitive information in files
 ```
 
@@ -618,6 +852,14 @@ This PR adds a new appliance for MyApp, a [brief description].
 grep -E "DOCKER_IMAGE|APPLIANCE_NAME|APP_NAME|PUBLISHER" myapp.env
 ```
 
+**Problem:** `Refusing to overwrite. Re-run with --force to replace it.`  
+**Solution:** The appliance already exists. Re-run with `--force` (it wipes
+`appliances/<name>/` and `packer/<name>/` first and assigns a new UUID).
+
+**Problem:** The generator aborts with a `sed` error  
+**Solution:** You are not on Linux. The generator requires GNU `sed -i`; run it
+on a Linux host.
+
 ### Build Fails
 
 **Problem:** Packer build fails  
@@ -625,13 +867,16 @@ grep -E "DOCKER_IMAGE|APPLIANCE_NAME|APP_NAME|PUBLISHER" myapp.env
 
 ```bash
 cd apps-code/community-apps
-make myapp 2>&1 | tee build.log
+sudo make myapp 2>&1 | tee build.log
 ```
 
 Common issues:
-- Network connectivity (can't download Ubuntu ISO)
-- Insufficient disk space
-- Docker image doesn't exist or is private
+- Base image missing — build it first: `cd apps-code/one-apps && sudo make ubuntu2204min`
+- Not running as root, or `/dev/kvm` is unavailable
+- Missing build dependencies: `fpm` (ruby gem), `rpm`, `cloud-image-utils` (provides `cloud-localds`)
+- Submodule not initialised — `apps-code/community-apps/packer/build.sh` is a dangling symlink until you run `git submodule update --init --recursive`
+- Insufficient disk space (40 GB+ free needed)
+- Docker image doesn't exist, is private, or was rejected for using a mutable `:latest` tag
 
 ### Container Doesn't Start
 
@@ -646,13 +891,25 @@ grep "DOCKER_IMAGE=" appliances/myapp/appliance.sh
 ### Permission Issues
 
 **Problem:** Container can't write to volumes  
-**Solution:** The generator automatically sets ownership to `1000:1000`. If your container uses a different UID, edit `appliance.sh`:
+**Solution:** When the appliance has to **create** a host directory for a volume
+mount, it chowns that newly created directory to the UID/GID the container image
+runs as (resolved from the image itself), which is what makes volumes work for
+images that run unprivileged. It deliberately never touches a **pre-existing**
+host directory — no recursive chown of an existing tree.
+
+So if the mount point already exists on the host with the wrong ownership, fix
+it yourself in the `service_install()` function of
+`appliances/myapp/appliance.sh`:
 
 ```bash
 # In service_install() function
 mkdir -p /data
-chown 1001:1001 /data  # Change to your container's UID:GID
+chown 1000:1000 /data  # use your container's UID:GID
 ```
+
+Then rebuild the image for the change to take effect (see
+"Rebuild After Changes" — deleting `export/myapp.qcow2` first is required,
+otherwise `make` considers the target up to date and does nothing).
 
 ---
 
@@ -660,10 +917,12 @@ chown 1001:1001 /data  # Change to your container's UID:GID
 
 - **Start simple** - Begin with minimal configuration, add features incrementally
 - **Use official images** - Prefer official Docker images from Docker Hub
+- **Pin the tag** - `:latest` and untagged images are rejected; a pinned tag or digest keeps rebuilds reproducible
 - **Test the Docker image first** - Run `docker run` locally before generating appliance
 - **Check examples** - Study the example .env files for reference
-- **Volume permissions** - If container runs as non-root, ensure volume directories have correct ownership
-- **Environment variables** - Use DEFAULT_ENV_VARS for container configuration
+- **Volume permissions** - A host directory that already exists is never re-owned by the appliance; make sure its ownership matches the container's UID
+- **Don't shadow image content** - Mounting an empty host directory over a path the image populates (e.g. nginx's `/etc/nginx/conf.d`) hides the image's own files
+- **Secrets** - Pass them at instantiation via `ONEAPP_CONTAINER_ENV`, never in `DEFAULT_ENV_VARS`
 - **Port conflicts** - Ensure ports don't conflict with system services
 
 ---
@@ -671,8 +930,8 @@ chown 1001:1001 /data  # Change to your container's UID:GID
 ## 📖 Additional Resources
 
 - [Manual Appliance Guide](MANUAL_APPLIANCE_GUIDE.md) - For advanced customization
+- [one-apps build requirements](https://github.com/OpenNebula/one-apps/wiki/tool_reqs)
 - [OpenNebula Documentation](https://docs.opennebula.io/)
 - [Docker Hub](https://hub.docker.com/)
 - [Packer Documentation](https://www.packer.io/docs)
 - [OpenNebula Marketplace](https://marketplace.opennebula.io/)
-

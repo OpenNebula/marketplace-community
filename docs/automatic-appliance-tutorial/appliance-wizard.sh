@@ -132,7 +132,11 @@ WIZARD_ENV_FILE=""
 
 # Trap to ensure cursor is shown on exit AND the temp spec is removed on the
 # normal (successful) exit path, not only on interrupt.
-trap 'rm -f "$WIZARD_ENV_FILE"; show_cursor; stty echo 2>/dev/null' EXIT INT TERM
+# The trailing `|| true` matters: `stty` fails whenever stdin is not a terminal,
+# and under `set -e` a failing last command in the EXIT trap REPLACES the
+# script's exit status with 1 -- which would make a successful run report
+# failure and hide the deliberate non-zero exits below.
+trap 'rm -f "$WIZARD_ENV_FILE"; show_cursor; stty echo 2>/dev/null || true' EXIT INT TERM
 
 # Navigation result constants
 NAV_CONTINUE=0
@@ -202,6 +206,40 @@ print_warning() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# END-OF-INPUT GUARD
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Every prompt in this wizard reads stdin inside a loop. On a non-interactive
+# stdin (a pipe, `</dev/null`, CI, `ssh host bash -s`) `read` returns non-zero
+# immediately with an empty value. Left unguarded the surrounding loops either
+# spin forever ("Required field" / "Invalid choice." in an unbounded loop) or
+# silently accept a default the user never chose.
+#
+# `set -e` cannot save us here: every step runs as `if ${steps[$current]}; then`,
+# a condition context, which disables errexit for the whole call tree. So each
+# read tests for end of input explicitly and aborts through this helper with
+# actionable guidance.
+#
+# Rule used at every call site: a final line with no trailing newline also makes
+# `read` return non-zero but DOES set a value, so only "non-zero AND empty"
+# counts as end of input.
+abort_on_eof() {
+    show_cursor
+    stty echo 2>/dev/null || true
+    echo ""
+    print_error "End of input: the wizard requires an interactive terminal."
+    local hint
+    for hint in "$@"; do
+        print_info "$hint"
+    done
+    exit 1
+}
+
+# Standard hint for the prompts that collect the appliance spec.
+NONINTERACTIVE_HINT_1="For non-interactive/CI use, write a spec file and run:"
+NONINTERACTIVE_HINT_2="  ./generate-docker-appliance.sh <spec>.env --no-build"
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # MENU SELECTOR (Arrow-key navigation)
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -237,11 +275,23 @@ menu_select() {
     echo ""
     echo -e "  ${DIM}[↑↓] Navigate  [Enter] Select  [q] Quit${NC}"
 
+    local _ms_rc
     while true; do
-        IFS= read -rsn1 key
+        # EOF GUARD: at end of input `read` returns non-zero and leaves $key
+        # empty, which the `[ "$key" = "" ]` branch below treats exactly like
+        # pressing Enter -- the wizard would silently commit to option 0
+        # (ubuntu2204min) as if the user had picked it. Distinguish real EOF.
+        _ms_rc=0
+        IFS= read -rsn1 key || _ms_rc=$?
+        if [ $_ms_rc -ne 0 ] && [ -z "$key" ]; then
+            abort_on_eof \
+                "For non-interactive/CI use, set BASE_OS in a spec file and run:" \
+                "$NONINTERACTIVE_HINT_2"
+        fi
 
         if [ "$key" = $'\x1b' ]; then
-            read -rsn2 -t 0.1 key
+            # A bare Esc times out here; that is expected, not an error.
+            read -rsn2 -t 0.1 key || true
             case "$key" in
                 '[A') ((selected > 0)) && ((selected--)) ;;
                 '[B') ((selected < num_options - 1)) && ((selected++)) ;;
@@ -305,7 +355,14 @@ prompt_with_nav() {
             echo -ne "  ${prompt} ${DIM}(optional)${NC}: "
         fi
 
-        read -r value
+        # EOF GUARD (see abort_on_eof): without this, a required field with no
+        # default never gets a value, so the `required` branch below prints
+        # "Required field" and re-prompts in an unbounded loop.
+        local _rc=0
+        read -r value || _rc=$?
+        if [ $_rc -ne 0 ] && [ -z "$value" ]; then
+            abort_on_eof "$NONINTERACTIVE_HINT_1" "$NONINTERACTIVE_HINT_2"
+        fi
 
         case "${value,,}" in
             ':b'|':back'|'<') return $NAV_BACK ;;
@@ -349,7 +406,16 @@ prompt_yes_no() {
     [ -n "$current_val" ] && default="$current_val"
 
     echo -en "${CYAN}${prompt}${NC} ${DIM}[${default_hint}]${NC}: "
-    read -r value
+    # EOF GUARD (see abort_on_eof): on end of input `read` returns non-zero with
+    # an empty value, which would otherwise fall through to `*)` and silently
+    # answer the question with the default. `value` is deliberately local so one
+    # prompt cannot leak an answer into the next.
+    local value=""
+    local _rc=0
+    read -r value || _rc=$?
+    if [ $_rc -ne 0 ] && [ -z "$value" ]; then
+        abort_on_eof "$NONINTERACTIVE_HINT_1" "$NONINTERACTIVE_HINT_2"
+    fi
 
     case "${value,,}" in
         ':b'|':back'|'<') return $NAV_BACK ;;
@@ -416,15 +482,28 @@ step_welcome() {
     echo -e "  • Packer configuration for building the VM image"
     echo -e "  • Documentation and metadata for the marketplace\n"
     echo -e "${DIM}Prerequisites:${NC}"
-    echo -e "  • A Docker image available on Docker Hub (or other registry)"
-    echo -e "  • Basic information about your application\n"
+    echo -e "  • A Docker image on Docker Hub (or another registry), pinned to a"
+    echo -e "    fixed :tag or an @sha256 digest"
+    echo -e "  • Basic information about your application"
+    echo -e "  • To BUILD an image: a Linux host with /dev/kvm, run as root, and the"
+    echo -e "    one-apps build tooling — packer >= 1.9.4, qemu-utils, qemu-system-x86,"
+    echo -e "    libguestfs-tools, make, ruby, rpm, rsync, genisoimage, cloud-utils,"
+    echo -e "    cloud-image-utils, plus the 'backports' and 'fpm' gems"
+    echo -e "    ${DIM}Full list: https://github.com/OpenNebula/one-apps/wiki/tool_reqs${NC}"
+    echo -e "  • Initialised git submodules ${DIM}(the wizard runs this for you)${NC}\n"
     echo -e "${DIM}Navigation:${NC}"
     echo -e "  • Type ${CYAN}:b${NC} or ${CYAN}:back${NC} to go back to previous step"
     echo -e "  • Type ${CYAN}:q${NC} or ${CYAN}:quit${NC} to exit the wizard"
     echo -e "  • Use ${CYAN}↑/↓${NC} arrow keys for menu selections\n"
 
     echo -en "${YELLOW}Press Enter to continue or Ctrl+C to exit...${NC}"
-    read -r
+    # EOF GUARD (see abort_on_eof): fail here with a clear message rather than
+    # racing through every step on a non-interactive stdin.
+    local _rc=0
+    read -r || _rc=$?
+    if [ $_rc -ne 0 ] && [ -z "$REPLY" ]; then
+        abort_on_eof "$NONINTERACTIVE_HINT_1" "$NONINTERACTIVE_HINT_2"
+    fi
     return $NAV_CONTINUE
 }
 
@@ -439,9 +518,15 @@ step_docker_image() {
     print_info "':latest' and untagged names are rejected for reproducible builds."
     print_info "Examples:"
     print_info "  • nginx:1.25.3"
-    print_info "  • nodered/node-red:4.0.9"
-    print_info "  • nextcloud/all-in-one:20240813"
+    print_info "  • nodered/node-red:5.0.1"
+    print_info "  • redis:7.4.1-alpine"
     print_info "  • postgres:16-alpine"
+    print_info "  • nginx@sha256:<64-hex-digest>   (digest pin, strongest)"
+    echo ""
+    print_warning "Images that manage OTHER containers (nextcloud/all-in-one, portainer,"
+    print_warning "watchtower, traefik, ...) need /var/run/docker.sock bind-mounted, which"
+    print_warning "the generator rejects as a container-escape vector. Pinning the tag does"
+    print_warning "not help: they cannot be turned into an appliance with this tool."
     echo ""
 
     while true; do
@@ -516,7 +601,7 @@ step_appliance_info() {
 
     # Appliance name (lowercase, no spaces)
     print_info "Appliance name must be lowercase letters, numbers, and hyphens only."
-    print_info "Examples: nginx, node-red, nextcloud, postgres"
+    print_info "Examples: nginx, node-red, redis, postgres"
     echo ""
 
     while true; do
@@ -535,7 +620,7 @@ step_appliance_info() {
 
     echo ""
     print_info "Display name is what users will see in the marketplace."
-    print_info "Examples: NGINX, Node-RED, Nextcloud, PostgreSQL"
+    print_info "Examples: NGINX, Node-RED, Redis, PostgreSQL"
     echo ""
 
     prompt_required "Display name" APP_NAME
@@ -636,10 +721,57 @@ step_container_config() {
     echo ""
 
     print_info "Volume mappings in format: /host:/container,/host2:/container2"
-    print_info "Example: /data:/data or /config:/app/config"
-    prompt_optional "Volume mappings" DEFAULT_VOLUMES "/data:/data"
-    result=$?
-    [ $result -ne $NAV_CONTINUE ] && return $result
+    print_info "Example: /opt/${APPLIANCE_NAME:-app}/data:/var/lib/${APPLIANCE_NAME:-app}"
+    print_warning "Leave EMPTY unless the app needs persistence. Mounting an empty host"
+    print_warning "directory over a path the image ships (e.g. /etc/nginx/conf.d) HIDES"
+    print_warning "that content and the container starts with no configuration."
+    echo ""
+
+    # The generator hard-fails (exit 1) on any volume whose host path resolves
+    # under a protected system location. Mirror that list here so the user is
+    # told at THIS step instead of after all 7 steps and a temp spec have been
+    # written. Keep in sync with SENSITIVE_MOUNT_ROOTS in
+    # generate-docker-appliance.sh (bare /etc is intentionally NOT listed, so
+    # config-dir mounts like /etc/nginx/conf.d stay allowed).
+    local _sensitive_roots=(
+        /var/run/docker.sock /run/docker.sock
+        / /root /proc /sys /dev /boot
+        /var/run /run /usr /bin /sbin /lib /lib64 /var/lib/docker
+    )
+    local _bad _vol _host _root
+    local _vols=()
+    while true; do
+        # Default is EMPTY, matching the generator's own default and the fixed
+        # examples/nginx.env. The old "/data:/data" default silently mounted an
+        # empty host directory over whatever the image ships at /data.
+        prompt_optional "Volume mappings" DEFAULT_VOLUMES ""
+        result=$?
+        [ $result -ne $NAV_CONTINUE ] && return $result
+
+        _bad=""
+        if [ -n "$DEFAULT_VOLUMES" ]; then
+            _vols=()
+            IFS=',' read -ra _vols <<< "$DEFAULT_VOLUMES"
+            for _vol in "${_vols[@]}"; do
+                [ -z "$_vol" ] && continue
+                _host="${_vol%%:*}"
+                for _root in "${_sensitive_roots[@]}"; do
+                    if [ "$_host" = "$_root" ] || [[ "$_host" == "$_root"/* ]]; then
+                        _bad="$_host"
+                        break 2
+                    fi
+                done
+            done
+        fi
+
+        [ -z "$_bad" ] && break
+
+        print_error "Host path '$_bad' is a protected system location; the generator rejects it."
+        print_info "Mounting the Docker socket or a system directory is a container-escape vector."
+        print_info "Use an app-data path instead, e.g. /opt/${APPLIANCE_NAME:-app} or /srv/${APPLIANCE_NAME:-app}."
+        # Clear it so pressing Enter does not re-submit the rejected value.
+        DEFAULT_VOLUMES=""
+    done
 
     sleep 0.5
     return $NAV_CONTINUE
@@ -684,6 +816,11 @@ step_summary() {
     echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
     echo -e "${DIM}Type :b to go back and edit, or confirm to generate${NC}\n"
 
+    # CONFIRM is a global and prompt_yes_no reuses its current value as the next
+    # default. After one "n" it would stay "false", so pressing Enter at the
+    # summary bounces back to step 6 forever and the documented "[Enter] Next"
+    # could never generate. Reset it before every prompt.
+    CONFIRM=""
     prompt_yes_no "Generate appliance with this configuration?" CONFIRM "true"
     local result=$?
     [ $result -ne $NAV_CONTINUE ] && return $result
@@ -700,6 +837,23 @@ step_summary() {
 # ═══════════════════════════════════════════════════════════════════════════════
 # GENERATION & COMPLETION
 # ═══════════════════════════════════════════════════════════════════════════════
+
+# On a failure path, keep the temporary spec instead of letting the EXIT trap
+# delete it, and print where it is. The old handler claimed "Your inputs were
+# not lost" while `trap 'rm -f "$WIZARD_ENV_FILE"' EXIT` destroyed all 7 steps of
+# input and never showed the path.
+#
+# The spec deliberately stays in $TMPDIR (mode 600) instead of being copied into
+# the repository: DEFAULT_ENV_VARS may hold secrets and `*.env` is NOT gitignored
+# here (examples/*.env are committed), so a copy inside the tree could be picked
+# up by `git add -A`. See SECR-4 above.
+preserve_spec() {
+    local spec="$1"
+    WIZARD_ENV_FILE=""   # disarm the EXIT trap's `rm -f` for this file
+    print_info "Your answers were saved to: ${spec}"
+    print_info "It is mode 600 and outside the git tree because it may contain the"
+    print_info "environment variables you entered. Delete it once you are done."
+}
 
 generate_appliance() {
     clear_screen
@@ -743,16 +897,55 @@ WEB_INTERFACE="${WEB_INTERFACE}"
 ENVEOF
 
     if [ -f "${SCRIPT_DIR}/generate-docker-appliance.sh" ]; then
+        # The generator refuses to overwrite an existing appliance without
+        # --force. The wizard had no way to pass it, so a second run for the
+        # same name (common after a failed build, and unavoidable after a
+        # partially completed generation) was a permanent dead end. Detect the
+        # collision here and ask for the overwrite explicitly.
+        local gen_args=("$env_file" --no-build)
+        if [ -e "${REPO_ROOT}/appliances/${APPLIANCE_NAME}" ] || \
+           [ -e "${REPO_ROOT}/apps-code/community-apps/packer/${APPLIANCE_NAME}" ]; then
+            print_warning "Appliance '${APPLIANCE_NAME}' already exists and would be replaced."
+            if [ -t 0 ]; then
+                OVERWRITE=""
+                # generate_appliance is called as a plain command, so `set -e` is
+                # ACTIVE here. prompt_yes_no returns NAV_BACK(1)/NAV_QUIT(2) when
+                # the user types the documented `:b`/`:q`, and errexit would turn
+                # that into a silent exit with no message at all. Swallow the nav
+                # code and treat it as "do not overwrite".
+                prompt_yes_no "Overwrite the existing appliance?" OVERWRITE "false" || OVERWRITE="false"
+                if [ "$OVERWRITE" != "true" ]; then
+                    echo ""
+                    print_error "Aborted. Choose a different appliance name and re-run."
+                    preserve_spec "$env_file"
+                    return 1
+                fi
+            else
+                echo ""
+                print_error "Aborted: '${APPLIANCE_NAME}' exists and stdin is not a terminal."
+                print_info "Re-run non-interactively with:"
+                print_info "  ./generate-docker-appliance.sh <spec>.env --force --no-build"
+                preserve_spec "$env_file"
+                return 1
+            fi
+            gen_args+=(--force)
+        fi
+
         # REG-2: guard the generator call. The wizard runs under `set -e`, so an
         # unguarded non-zero exit would abort mid-flow (skipping the success
         # message and firing the EXIT trap) with only a raw generator [ERROR].
         # Surface the failure gracefully and keep the collected spec available.
-        if ! "${SCRIPT_DIR}/generate-docker-appliance.sh" "$env_file" --no-build; then
+        if ! "${SCRIPT_DIR}/generate-docker-appliance.sh" "${gen_args[@]}"; then
             echo ""
             print_error "Appliance generation failed (see the [ERROR] above)."
-            print_info "Your inputs were not lost. Fix the reported issue (commonly an"
-            print_info "unpinned Docker image or a sensitive default volume) and re-run."
-            return $NAV_CONTINUE
+            preserve_spec "$env_file"
+            print_info "Fix the reported issue (commonly an unpinned Docker image, a"
+            print_info "sensitive default volume, or an appliance name already in use),"
+            print_info "then re-run:"
+            print_info "  ./generate-docker-appliance.sh '${env_file}' --no-build"
+            # NOT $NAV_CONTINUE (0): returning 0 made the wizard exit 0 after a
+            # hard generator failure, so callers and CI saw a false success.
+            return 1
         fi
 
         echo ""
@@ -761,25 +954,50 @@ ENVEOF
         echo -e "  ${WHITE}Files:${NC}"
         echo -e "    appliances/${APPLIANCE_NAME}/"
         echo -e "    apps-code/community-apps/packer/${APPLIANCE_NAME}/"
+        echo -e "    apps-code/community-apps/Makefile.config ${DIM}(modified: ${APPLIANCE_NAME} added to SERVICES)${NC}"
         echo ""
         echo -e "  ${WHITE}Next:${NC}"
         echo -e "    1. Review generated files"
-        echo -e "    2. Build: ${CYAN}cd apps-code/community-apps && make ${APPLIANCE_NAME}${NC}"
+        echo -e "    2. Build: ${CYAN}cd apps-code/community-apps && sudo make ${APPLIANCE_NAME}${NC}"
+        echo -e "       ${DIM}(needs root: the build chroots. The base OS image is never built"
+        echo -e "        for you — if you skipped it: cd apps-code/one-apps && sudo make ${BASE_OS:-<base-os>})${NC}"
         echo -e "    3. Add logo: ${CYAN}logos/${APPLIANCE_NAME}.png${NC}"
-        echo -e "    4. Submit PR"
+        echo -e "    4. Submit PR — ${WHITE}commit Makefile.config too${NC}, otherwise"
+        echo -e "       ${DIM}'make ${APPLIANCE_NAME}' is not a valid target for reviewers${NC}"
         echo ""
 
-        prompt_yes_no "Build now?" BUILD_NOW "false"
+        # TTY GUARD: generate_appliance() is called as a plain command, so
+        # `set -e` is ACTIVE here. On a non-interactive stdin `read` returns
+        # non-zero and errexit would kill the wizard with exit 1 even though
+        # generation SUCCEEDED. Mirror the guard the generator already uses
+        # (`if [ -t 0 ]; then read ...; else REPLY="n"; fi`).
+        BUILD_NOW="false"
+        if [ -t 0 ]; then
+            # `|| BUILD_NOW="false"` for the same errexit reason as the overwrite
+            # prompt above: typing `:b`/`:q` here makes prompt_yes_no return a nav
+            # code, which under the ACTIVE errexit would kill the wizard with a
+            # bare exit 1 immediately after generation SUCCEEDED. Treat it as "no".
+            prompt_yes_no "Build now?" BUILD_NOW "false" || BUILD_NOW="false"
+        else
+            print_info "Non-interactive session: skipping the build prompt."
+            print_info "  Build later with: cd ${REPO_ROOT}/apps-code/community-apps && sudo make ${APPLIANCE_NAME}"
+        fi
 
         if [ "$BUILD_NOW" = "true" ]; then
             echo ""
-            echo -e "  Building... ${DIM}(~15-20 min)${NC}"
+            echo -e "  Building... ${DIM}(~2 min)${NC}"
             cd "${REPO_ROOT}/apps-code/community-apps"
-            make "$APPLIANCE_NAME"
+            if ! make "$APPLIANCE_NAME"; then
+                echo ""
+                print_error "Build failed. See the make output above."
+                print_info "Retry with: cd ${REPO_ROOT}/apps-code/community-apps && sudo make ${APPLIANCE_NAME}"
+                return 1
+            fi
+            print_success "Image built: ${REPO_ROOT}/apps-code/community-apps/export/${APPLIANCE_NAME}.qcow2"
         fi
     else
         print_error "Generator not found"
-        echo "  Config saved: ${env_file}"
+        preserve_spec "$env_file"
         exit 1
     fi
 }
@@ -822,20 +1040,31 @@ check_base_image() {
     echo -e "  ─────────────────────────────────────────────────────"
     echo ""
     echo -e "  ${WHITE}Options:${NC}"
-    echo -e "    ${CYAN}1.${NC} Build it now ${DIM}(~10-15 min, recommended)${NC}"
+    echo -e "    ${CYAN}1.${NC} Build it now ${DIM}(~3 min, recommended)${NC}"
     echo -e "    ${CYAN}2.${NC} Continue anyway ${DIM}(build manually later)${NC}"
     echo -e "    ${CYAN}3.${NC} Go back and choose a different base OS"
     echo ""
 
     local choice
+    local _bi_rc
     while true; do
         echo -ne "  ${WHITE}›${NC} Choose [1-3]: "
-        read -r choice
+        # EOF GUARD (see abort_on_eof): with a non-interactive stdin `read`
+        # returns non-zero and leaves $choice empty, which falls through to the
+        # `*)` branch below and re-prompts forever ("Invalid choice." in an
+        # unbounded loop).
+        _bi_rc=0
+        read -r choice || _bi_rc=$?
+        if [ $_bi_rc -ne 0 ] && [ -z "$choice" ]; then
+            abort_on_eof \
+                "Build the base image first, then re-run the wizard:" \
+                "  cd ${REPO_ROOT}/apps-code/one-apps && sudo make ${BASE_OS}"
+        fi
         case "$choice" in
             1)
                 echo ""
                 echo -e "  ${BRIGHT_CYAN}Building ${base_os_display} base image...${NC}"
-                echo -e "  ${DIM}This may take 10-15 minutes${NC}"
+                echo -e "  ${DIM}This usually takes about 3 minutes${NC}"
                 echo ""
 
                 # Build the base image
@@ -848,8 +1077,8 @@ check_base_image() {
                 else
                     echo ""
                     print_error "Base image build failed."
-                    echo -e "  ${DIM}You can try building it manually:${NC}"
-                    echo -e "  ${CYAN}cd ${REPO_ROOT}/apps-code/one-apps && make ${BASE_OS}${NC}"
+                    echo -e "  ${DIM}You can try building it manually (needs root — the build chroots):${NC}"
+                    echo -e "  ${CYAN}cd ${REPO_ROOT}/apps-code/one-apps && sudo make ${BASE_OS}${NC}"
                     echo ""
                     prompt_yes_no "Continue with appliance generation anyway?" CONTINUE_ANYWAY "false"
                     if [ "$CONTINUE_ANYWAY" = "true" ]; then
@@ -862,8 +1091,9 @@ check_base_image() {
             2)
                 echo ""
                 print_warning "Continuing without base image..."
-                echo -e "  ${DIM}Remember to build it before building the appliance:${NC}"
-                echo -e "  ${CYAN}cd ${REPO_ROOT}/apps-code/one-apps && make ${BASE_OS}${NC}"
+                echo -e "  ${DIM}Remember to build it before building the appliance"
+                echo -e "  ('make ${APPLIANCE_NAME}' never builds the base image for you):${NC}"
+                echo -e "  ${CYAN}cd ${REPO_ROOT}/apps-code/one-apps && sudo make ${BASE_OS}${NC}"
                 sleep 1
                 return 0
                 ;;
@@ -877,14 +1107,63 @@ check_base_image() {
     done
 }
 
-# Main wizard flow with navigation support
-main() {
+# Preflight: everything the wizard needs before it offers to run `make`.
+preflight_checks() {
+    local warned=false
+
     # Check if we're in the right directory
     if [ ! -f "${SCRIPT_DIR}/generate-docker-appliance.sh" ]; then
         echo -e "${RED}Error: This script must be run from the automatic-appliance-tutorial directory.${NC}"
         echo -e "Please cd to: ${SCRIPT_DIR}"
         exit 1
     fi
+
+    # PREFLIGHT 1 - host OS. The generator registers the appliance in
+    # apps-code/community-apps/Makefile.config with GNU `sed -i`; BSD/macOS sed
+    # fails there ("extra characters at the end of p command") AFTER every file
+    # has been written, leaving a half-created tree that then needs --force.
+    if [ "$(uname -s)" != "Linux" ]; then
+        print_error "This wizard must run on Linux: the generator needs GNU sed and the"
+        print_error "image build needs KVM. Detected: $(uname -s)."
+        exit 1
+    fi
+
+    # PREFLIGHT 2 - submodules. Without them apps-code/one-apps is empty and
+    # apps-code/community-apps/packer/build.sh is a dangling symlink, so every
+    # `make <target>` fails immediately.
+    if [ ! -f "${REPO_ROOT}/apps-code/one-apps/packer/build.sh" ]; then
+        print_warning "Git submodules are not initialized (apps-code/one-apps is empty)."
+        print_info "Initializing: git submodule update --init --recursive"
+        if ! git -C "${REPO_ROOT}" submodule update --init --recursive; then
+            print_error "Submodule init failed. Run it manually from ${REPO_ROOT}:"
+            print_error "  git submodule update --init --recursive"
+            exit 1
+        fi
+        print_success "Submodules initialized."
+        warned=true
+    fi
+
+    # PREFLIGHT 3 - build capability. Generation works without these; only the
+    # optional `make` steps need them, so warn rather than abort.
+    if [ "$(id -u)" -ne 0 ]; then
+        print_warning "Not running as root: image builds (which chroot) will fail."
+        print_info "Generation still works. To build, re-run the wizard with sudo."
+        warned=true
+    fi
+    if [ ! -e /dev/kvm ]; then
+        print_warning "/dev/kvm is missing: Packer cannot build VM images on this host."
+        print_info "Generation still works; build on a KVM-capable host."
+        warned=true
+    fi
+
+    # The first step clears the screen, so give the reader a moment.
+    [ "$warned" = "true" ] && sleep 3
+    return 0
+}
+
+# Main wizard flow with navigation support
+main() {
+    preflight_checks
 
     # Array of step functions
     local steps=(
