@@ -1,0 +1,85 @@
+---
+name: Nextcloud All-in-One (aarch64)
+version: 1.0.0-1
+one-apps_version: 7.0.0-0
+publisher: Pablo del Arco
+publisher_email: pdelarco@opennebula.io
+description: |-
+  This appliance provides Nextcloud All-in-One running in a Docker container on Ubuntu 24.04 (aarch64/arm64) with VNC access and SSH key authentication.
+
+  This is the aarch64/arm64 sibling of the x86_64 "Nextcloud All-in-One" appliance. The Nextcloud AIO container images are multi-arch and run natively on arm64, so no container is disabled for architecture reasons.
+
+  **Nextcloud All-in-One features:**
+  - Containerized application
+  - Easy deployment
+  - Configurable parameters
+
+  **This appliance provides:**
+  - Ubuntu 24.04 LTS (aarch64) base operating system
+  - Docker Engine CE pre-installed and configured
+  - Nextcloud All-in-One container (nextcloud/all-in-one:latest) ready to run
+  - VNC access for desktop environment
+  - SSH key authentication from OpenNebula context
+  - Web interface on port 8080
+  - Configurable container parameters (ports, volumes, environment variables)
+
+  **Access Methods:**
+  - VNC: Direct access to desktop environment
+  - SSH: Key-based authentication from OpenNebula
+  - Web: Nextcloud All-in-One interface at http://VM_IP:8080
+
+  **Documentation:**
+  - [OpenNebula Appliance Guide](https://github.com/OpenNebula/marketplace-community/blob/master/appliances/nextcloud-aio-aarch64/README.md)
+  - [Nextcloud All-in-One Website](https://nextcloud.com/all-in-one/)
+
+short_description: Nextcloud All-in-One on Ubuntu 24.04 aarch64 with VNC and SSH key auth
+tags:
+- nextcloud-aio
+- docker
+- ubuntu
+- container
+- vnc
+- ssh-key
+- aarch64
+- arm64
+format: qcow2
+creation_time: 1781827200
+os-id: Ubuntu
+os-release: '24.04'
+os-arch: aarch64
+hypervisor: KVM
+opennebula_version: 7.0
+opennebula_template:
+  context:
+    network: 'YES'
+    ssh_public_key: $USER[SSH_PUBLIC_KEY]
+    set_hostname: $USER[SET_HOSTNAME]
+  cpu: '2'
+  cpu_model:
+    model: host-passthrough
+  os:
+    arch: aarch64
+    firmware: UEFI
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  memory: '2048'
+  name: Nextcloud All-in-One (aarch64)
+  user_inputs:
+    CONTAINER_NAME: 'M|text|Container name|nextcloud-aio-mastercontainer|nextcloud-aio-mastercontainer'
+    CONTAINER_PORTS: 'M|text|Container ports (format: host:container)|80:80,8080:8080,8443:8443|80:80,8080:8080,8443:8443'
+    CONTAINER_ENV: 'O|text|Environment variables (format: VAR1=value1,VAR2=value2)|SKIP_DOMAIN_VALIDATION=true|SKIP_DOMAIN_VALIDATION=true'
+    CONTAINER_VOLUMES: 'O|text|Volume mounts (format: /host/path:/container/path)|/var/run/docker.sock:/var/run/docker.sock:ro,nextcloud_aio_mastercontainer:/mnt/docker-aio-config|/var/run/docker.sock:/var/run/docker.sock:ro,nextcloud_aio_mastercontainer:/mnt/docker-aio-config'
+  inputs_order: CONTAINER_NAME,CONTAINER_PORTS,CONTAINER_ENV,CONTAINER_VOLUMES
+logo: logos/nextcloud-aio.png
+
+images:
+- name: nextcloud-aio-aarch64-1.0.0-1-20260619.qcow2
+  url: PUBLISH_URL
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 8388608000
+  checksum:
+    md5: c041899fc623ce013f40290dac90e6c7
+    sha256: 65705dc344a9d90f92775c264ba260226bba2e79f205307b0ebac15350edf7b2
