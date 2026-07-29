@@ -1,0 +1,7 @@
+---
+:tests:
+  :image_name: opennebula_frontend
+  :type: service
+  :microenvs:
+  - :name: base
+    :variables: {}

@@ -1,0 +1,101 @@
+---
+name: OpenNebula Front-end
+version: '1.0'
+one-apps_version: 7.0.0-0
+publisher: OpenNebula Community
+publisher_email: community@opennebula.io
+description: |-
+  Deploy a complete [OpenNebula](https://opennebula.io) lab inside your own
+  OpenNebula cloud ("OpenNebula over OpenNebula"). This appliance turns a single
+  Ubuntu 24.04 LTS VM into a self-contained OpenNebula front-end using the
+  upstream [miniONE](https://github.com/OpenNebula/minione) installer, which
+  pulls the latest OpenNebula release.
+
+  On first boot it deploys the OpenNebula front-end (oned, the FireEdge web UI,
+  OneGate and OneFlow) plus a co-located local KVM/QEMU node and a default lab
+  virtual network, so you can log in to FireEdge and launch VMs straight away.
+  Hardware virtualization is detected automatically: KVM is used when the host
+  exposes nested virtualization, and QEMU software emulation is used otherwise,
+  so the lab boots everywhere (just slower without nested virt).
+
+  The oneadmin password is injected at instantiation through OpenNebula
+  contextualization (or auto-generated and reported, never baked into the
+  image). Choose what to deploy: "Front-end + KVM node" (a complete single-VM
+  lab that launches VMs) or "Front-end only" (just the control plane, to manage
+  external KVM hosts). This is an evaluation, training and demo lab, not a
+  production deployment.
+short_description: >-
+  Self-contained OpenNebula lab (front-end plus a local KVM/QEMU node), latest
+  release, built with miniONE and ready to deploy inside another OpenNebula cloud.
+tags:
+- opennebula
+- minione
+- lab
+- frontend
+- fireedge
+- kvm
+- iaas
+- cloud
+- ubuntu
+- service
+format: qcow2
+creation_time: 1781827200
+os-id: Ubuntu
+os-release: '24.04 LTS'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: '7.2'
+opennebula_template:
+  context:
+    network: 'YES'
+    token: 'YES'
+    report_ready: 'YES'
+    username_password_reset: 'YES'
+    set_hostname: "$NAME"
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    oneapp_oneadmin_password: "$ONEAPP_ONEADMIN_PASSWORD"
+    oneapp_one_mode: "$ONEAPP_ONE_MODE"
+    oneapp_one_version: "$ONEAPP_ONE_VERSION"
+    oneapp_one_form: "$ONEAPP_ONE_FORM"
+    oneapp_one_vnet_address: "$ONEAPP_ONE_VNET_ADDRESS"
+    oneapp_one_sshkey: "$ONEAPP_ONE_SSHKEY"
+  cpu: '4'
+  vcpu: '4'
+  cpu_model:
+    model: host-passthrough
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  memory: '8192'
+  os:
+    arch: x86_64
+  user_inputs:
+    oneapp_oneadmin_password: "O|password|oneadmin and FireEdge password (leave empty to auto-generate)"
+    oneapp_one_mode: "O|list|What to deploy|Front-end + KVM node,Front-end only|Front-end + KVM node"
+    oneapp_one_version: "O|text|OpenNebula version (leave empty to install the latest)||"
+    oneapp_one_form: "O|boolean|Install OneForm to provision more nodes/clusters (oneprovision)||YES"
+    oneapp_one_vnet_address: "O|text|Lab virtual network base address (Front-end + KVM node)||172.16.100.0"
+    oneapp_one_sshkey: "O|text64|Extra SSH public key authorized for root"
+  inputs_order: >-
+    ONEAPP_ONEADMIN_PASSWORD,ONEAPP_ONE_MODE,ONEAPP_ONE_VERSION,ONEAPP_ONE_FORM,ONEAPP_ONE_VNET_ADDRESS,ONEAPP_ONE_SSHKEY
+  user_inputs_metadata:
+  - name: ONE
+    type: APP
+    title: OpenNebula Front-end
+  - name: LAB
+    type: GROUP
+    title: Lab settings
+    description: Front-end credentials and deployment options.
+logo: logos/opennebula_frontend.png
+
+images:
+- name: opennebula_frontend
+  url: >-
+    PUBLISH_URL
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 16106127360
+  checksum:
+    md5: PUBLISH_MD5
+    sha256: PUBLISH_SHA256

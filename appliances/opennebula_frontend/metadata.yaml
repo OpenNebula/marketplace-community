@@ -1,0 +1,46 @@
+---
+:app:
+  :name: opennebula_frontend
+  :type: service
+  :os:
+    :type: linux
+    :base: ubuntu2404
+  :hypervisor: KVM
+  :context:
+    :prefixed: true
+    :params:
+      :USERNAME_PASSWORD_RESET: 'YES'
+      :ONEAPP_ONEADMIN_PASSWORD: ''
+      :ONEAPP_ONE_MODE: 'Front-end + KVM node'
+      :ONEAPP_ONE_VERSION: ''
+      :ONEAPP_ONE_FORM: 'YES'
+      :ONEAPP_ONE_VNET_ADDRESS: '172.16.100.0'
+      :ONEAPP_ONE_SSHKEY: ''
+
+:one:
+  :template:
+    NAME: base
+    TEMPLATE:
+      ARCH: x86_64
+      CONTEXT:
+        NETWORK: 'YES'
+        SET_HOSTNAME: "$NAME"
+        SSH_PUBLIC_KEY: "$USER[SSH_PUBLIC_KEY]"
+      CPU: '4'
+      VCPU: '4'
+      CPU_MODEL:
+        MODEL: host-passthrough
+      GRAPHICS:
+        LISTEN: 0.0.0.0
+        TYPE: vnc
+      MEMORY: '8192'
+      NIC:
+        NETWORK: service
+      NIC_DEFAULT:
+        MODEL: virtio
+  :datastore_name: default
+  :timeout: '1800'
+
+:infra:
+  :disk_format: qcow2
+  :apps_path: /var/tmp
