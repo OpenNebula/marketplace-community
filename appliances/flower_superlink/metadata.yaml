@@ -1,0 +1,46 @@
+---
+# Flower SuperLink - build/test metadata.
+# Drives the do-tests/readiness pipeline: ":name" is built as the DISTRO and
+# booted by lib/community/app_handler.rb as a single image. The SuperLink is
+# the federated-learning coordinator and boots standalone (no dependencies).
+
+:app:
+  :name: flower_superlink
+  :type: service
+  :os:
+    :type: linux
+    :base: ubuntu2404
+  :hypervisor: KVM
+  :context:
+    :prefixed: true
+    :params:
+      :ONEAPP_FLOWER_VERSION: '1.31.0'
+      :ONEAPP_FL_TLS_ENABLED: 'YES'
+      :ONEAPP_FL_LOG_LEVEL: 'INFO'
+
+:one:
+  :template:
+    NAME: base
+    TEMPLATE:
+      ARCH: x86_64
+      CONTEXT:
+        NETWORK: 'YES'
+        SET_HOSTNAME: "$NAME"
+        SSH_PUBLIC_KEY: "$USER[SSH_PUBLIC_KEY]"
+      CPU: '2'
+      CPU_MODEL:
+        MODEL: host-passthrough
+      GRAPHICS:
+        LISTEN: 0.0.0.0
+        TYPE: vnc
+      MEMORY: '4096'
+      NIC:
+        NETWORK: service
+      NIC_DEFAULT:
+        MODEL: virtio
+  :datastore_name: default
+  :timeout: '600'
+
+:infra:
+  :disk_format: qcow2
+  :apps_path: /var/tmp
