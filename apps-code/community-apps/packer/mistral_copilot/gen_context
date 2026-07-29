@@ -37,7 +37,7 @@ MAINEND
 cat<<CTXEOF
 ETH0_METHOD='dhcp'
 NETWORK='YES'
-SET_HOSTNAME='eurocopilot'
+SET_HOSTNAME='mistral_copilot'
 PASSWORD='opennebula'
 ETH0_MAC='00:11:22:33:44:55'
 NETCFG_TYPE='nm'

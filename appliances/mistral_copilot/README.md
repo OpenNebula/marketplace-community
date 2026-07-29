@@ -1,4 +1,4 @@
-# EuroCopilot
+# Mistral Copilot
 
 Sovereign AI coding assistant. Runs [Mistral 7B Instruct](https://mistral.ai/news/announcing-mistral-7b) on CPU via [llama.cpp](https://github.com/ggerganov/llama.cpp). No GPU required.
 
@@ -16,7 +16,7 @@ Larger Mistral-family models — [Devstral Small 2](https://mistral.ai/news/devs
 
 **Standalone** (default): Single VM serving inference on port 8443 with TLS and API key auth.
 
-**Load Balancer**: Enable `ONEAPP_COPILOT_LB_ENABLED=YES` to run a [LiteLLM](https://litellm.ai) proxy that distributes requests across multiple EuroCopilot VMs with least-busy routing.
+**Load Balancer**: Enable `ONEAPP_COPILOT_LB_ENABLED=YES` to run a [LiteLLM](https://litellm.ai) proxy that distributes requests across multiple Mistral Copilot VMs with least-busy routing.
 
 **Auto-registration**: Standalone VMs can register themselves with a remote LB on boot via `ONEAPP_COPILOT_REGISTER_URL`.
 
@@ -29,10 +29,13 @@ Larger Mistral-family models — [Devstral Small 2](https://mistral.ai/news/devs
 | `ONEAPP_COPILOT_CPU_THREADS` | 0 (auto) | CPU threads for inference |
 | `ONEAPP_COPILOT_API_PASSWORD` | (auto-generated) | API key / Bearer token |
 | `ONEAPP_COPILOT_TLS_DOMAIN` | (self-signed) | FQDN for Let's Encrypt |
+| `ONEAPP_COPILOT_TLS_EMAIL` | (empty) | Email for Let's Encrypt registration (recommended) |
+| `ONEAPP_COPILOT_TLS_CA` | (empty) | Internal CA PEM (path or inline) to verify LB/backends |
 | `ONEAPP_COPILOT_LB_ENABLED` | NO | Enable LiteLLM load balancer |
 | `ONEAPP_COPILOT_LB_BACKENDS` | (empty) | Static backends (key@host:port) |
-| `ONEAPP_COPILOT_REGISTER_URL` | (empty) | Remote LB URL for auto-registration |
+| `ONEAPP_COPILOT_REGISTER_URL` | (empty) | Remote LB URL for auto-registration (https only) |
 | `ONEAPP_COPILOT_REGISTER_KEY` | (empty) | Remote LB master key |
+| `ONEAPP_COPILOT_REGISTER_INSECURE` | NO | Allow registering to an unverified self-signed LB |
 | `ONEAPP_COPILOT_REGISTER_MODEL_NAME` | (auto) | Model name for LB registration |
 | `ONEAPP_COPILOT_REGISTER_SITE_NAME` | (empty) | Site name for backend ID |
 
@@ -43,7 +46,7 @@ Larger Mistral-family models — [Devstral Small 2](https://mistral.ai/news/devs
 | API | `https://<vm-ip>:8443/v1` | Bearer token |
 | Health | `https://<vm-ip>:8443/health` | None |
 | Metrics | `https://<vm-ip>:8443/metrics` | None |
-| LB Web UI | `https://<vm-ip>:8443/ui` | admin / API key |
+| LB Web UI | `https://<vm-ip>:8443/ui` | admin / UI password (in report) |
 
 ## License
 

@@ -1,6 +1,6 @@
 ---
 :tests:
-  :image_name: eurocopilot
+  :image_name: mistral_copilot
   :type: service
   :microenvs:
   - :name: base

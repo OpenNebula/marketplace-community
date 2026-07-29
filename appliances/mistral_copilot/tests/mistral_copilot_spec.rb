@@ -1,6 +1,6 @@
 require_relative '../../../lib/community/app_handler'
 
-# Basic tests for EuroCopilot sovereign AI coding assistant appliance
+# Basic tests for Mistral Copilot sovereign AI coding assistant appliance
 describe 'Appliance Certification' do
     include_context('vm_handler')
 
@@ -66,7 +66,7 @@ describe 'Appliance Certification' do
     # the cat to the VM so the real key is read on the appliance, and \" keeps the
     # Authorization header a single argument.
     it 'lists the mistral-7b model' do
-        cmd = %q(curl -sk -H \"Authorization: Bearer \$(cat /var/lib/eurocopilot/password)\" https://localhost:8443/v1/models)
+        cmd = %q(curl -sk -H \"Authorization: Bearer \$(cat /var/lib/mistral_copilot/password)\" https://localhost:8443/v1/models)
         result = @info[:vm].ssh(cmd)
         expect(result.exitstatus).to eq(0)
         expect(result.stdout).to include('mistral-7b')
@@ -76,7 +76,7 @@ describe 'Appliance Certification' do
     # above: \$ defers $(cat .../password) to the VM (proven byte-identical to the
     # server's --api-key) and \" keeps the single -H value and JSON body intact.
     it 'completes a chat request' do
-        cmd = %q(curl -sk -H \"Authorization: Bearer \$(cat /var/lib/eurocopilot/password)\" -H \"Content-Type: application/json\" -d '{\"model\":\"mistral-7b\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hello\"}],\"max_tokens\":5}' https://localhost:8443/v1/chat/completions)
+        cmd = %q(curl -sk -H \"Authorization: Bearer \$(cat /var/lib/mistral_copilot/password)\" -H \"Content-Type: application/json\" -d '{\"model\":\"mistral-7b\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hello\"}],\"max_tokens\":5}' https://localhost:8443/v1/chat/completions)
         result = @info[:vm].ssh(cmd)
         expect(result.exitstatus).to eq(0)
         expect(result.stdout).to include('"choices"')

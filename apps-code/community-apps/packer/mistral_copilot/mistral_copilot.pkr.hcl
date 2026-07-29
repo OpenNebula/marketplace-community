@@ -19,9 +19,9 @@ build {
 # Jenkins community-distro build host. The install step is bound by disk + I/O
 # (compile llama.cpp, download ~14 GiB Devstral GGUF), not RAM — the model is
 # never loaded during build. The recommended *runtime* allocation (16 vCPU /
-# 32 GiB) is declared in appliances/eurocopilot/metadata.yaml :one: :template:
+# 32 GiB) is declared in appliances/mistral_copilot/metadata.yaml :one: :template:
 # and the marketplace UUID YAML; that's what users get when they instantiate.
-source "qemu" "eurocopilot" {
+source "qemu" "mistral_copilot" {
   cpus        = 2
   memory      = 8192
   accelerator = "kvm"
@@ -58,7 +58,7 @@ source "qemu" "eurocopilot" {
 }
 
 build {
-  sources = ["source.qemu.eurocopilot"]
+  sources = ["source.qemu.mistral_copilot"]
 
   # Revert insecure SSH options done by context start_script
   provisioner "shell" {
@@ -98,9 +98,9 @@ build {
     destination = "/etc/one-appliance/service"
   }
 
-  # Copy EuroCopilot appliance script
+  # Copy Mistral Copilot appliance script
   provisioner "file" {
-    sources     = ["../../appliances/eurocopilot/appliance.sh"]
+    sources     = ["../../appliances/mistral_copilot/appliance.sh"]
     destination = "/etc/one-appliance/service.d/"
   }
 

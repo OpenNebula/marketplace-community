@@ -1,6 +1,6 @@
 variable "appliance_name" {
   type    = string
-  default = "eurocopilot"
+  default = "mistral_copilot"
 }
 
 variable "version" {
@@ -10,7 +10,7 @@ variable "version" {
 
 variable "input_dir" {
   type    = string
-  default = "packer/eurocopilot"
+  default = "packer/mistral_copilot"
 }
 
 variable "output_dir" {

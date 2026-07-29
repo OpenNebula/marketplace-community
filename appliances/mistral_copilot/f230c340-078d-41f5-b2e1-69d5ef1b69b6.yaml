@@ -1,18 +1,18 @@
-# EuroCopilot Marketplace Metadata
+# Mistral Copilot Marketplace Metadata
 #
 # After a successful build, update these PLACEHOLDER values:
 #   1. images[0].url          -- Replace PUBLISH_URL with actual hosting URL
-#   2. images[0].checksum.md5 -- From: md5sum build/export/eurocopilot-2.8.0.qcow2
-#   3. images[0].checksum.sha256 -- From: sha256sum build/export/eurocopilot-2.8.0.qcow2
-#   4. images[0].size         -- From: qemu-img info --output=json build/export/eurocopilot-2.8.0.qcow2 | jq '.["virtual-size"]'
+#   2. images[0].checksum.md5 -- From: md5sum build/export/mistral_copilot-2.8.0.qcow2
+#   3. images[0].checksum.sha256 -- From: sha256sum build/export/mistral_copilot-2.8.0.qcow2
+#   4. images[0].size         -- From: qemu-img info --output=json build/export/mistral_copilot-2.8.0.qcow2 | jq '.["virtual-size"]'
 #   5. Rename this file to a UUID for marketplace PR: cp marketplace.yaml $(uuidgen).yaml
 #
 ---
-name: EuroCopilot
-version: '1.0'
+name: Mistral Copilot
+version: '1.1'
 publisher: OpenNebula Systems
 description: |-
-  [EuroCopilot](https://github.com/pablodelarco/one-apps-eurocopilot) is an
+  Mistral Copilot is an
   AI coding assistant that serves an open-source LLM over an
   OpenAI-compatible HTTPS API. It runs
   [Mistral 7B Instruct](https://mistral.ai/news/announcing-mistral-7b) on CPU via
@@ -43,7 +43,7 @@ tags:
   - aider
   - ubuntu
 format: qcow2
-creation_time: 1780012800
+creation_time: 1781604539
 os-id: Ubuntu
 os-release: '24.04 LTS'
 os-arch: x86_64
@@ -52,6 +52,7 @@ opennebula_version: 6.10, 7.0
 opennebula_template:
   CONTEXT:
     NETWORK: 'YES'
+    USERNAME_PASSWORD_RESET: 'YES'
     SSH_PUBLIC_KEY: "$USER[SSH_PUBLIC_KEY]"
     ONEAPP_COPILOT_AI_MODEL: '$ONEAPP_COPILOT_AI_MODEL'
     ONEAPP_COPILOT_CONTEXT_SIZE: '$ONEAPP_COPILOT_CONTEXT_SIZE'
@@ -64,6 +65,9 @@ opennebula_template:
     ONEAPP_COPILOT_REGISTER_KEY: '$ONEAPP_COPILOT_REGISTER_KEY'
     ONEAPP_COPILOT_REGISTER_MODEL_NAME: '$ONEAPP_COPILOT_REGISTER_MODEL_NAME'
     ONEAPP_COPILOT_REGISTER_SITE_NAME: '$ONEAPP_COPILOT_REGISTER_SITE_NAME'
+    ONEAPP_COPILOT_TLS_EMAIL: '$ONEAPP_COPILOT_TLS_EMAIL'
+    ONEAPP_COPILOT_TLS_CA: '$ONEAPP_COPILOT_TLS_CA'
+    ONEAPP_COPILOT_REGISTER_INSECURE: '$ONEAPP_COPILOT_REGISTER_INSECURE'
   CPU: '16'
   VCPU: '16'
   CPU_MODEL:
@@ -82,8 +86,11 @@ opennebula_template:
     ONEAPP_COPILOT_CPU_THREADS,
     ONEAPP_COPILOT_API_PASSWORD,
     ONEAPP_COPILOT_TLS_DOMAIN,
+    ONEAPP_COPILOT_TLS_EMAIL,
+    ONEAPP_COPILOT_TLS_CA,
     ONEAPP_COPILOT_REGISTER_URL,
     ONEAPP_COPILOT_REGISTER_KEY,
+    ONEAPP_COPILOT_REGISTER_INSECURE,
     ONEAPP_COPILOT_REGISTER_MODEL_NAME,
     ONEAPP_COPILOT_REGISTER_SITE_NAME,
     ONEAPP_COPILOT_LB_ENABLED,
@@ -99,6 +106,12 @@ opennebula_template:
       O|password|API Key (empty = auto-generate)||
     oneapp_copilot_tls_domain: >-
       O|text|Domain for Let's Encrypt (empty = self-signed)||
+    oneapp_copilot_tls_email: >-
+      O|text|Email for Let's Encrypt registration (optional)||
+    oneapp_copilot_tls_ca: >-
+      O|text|Internal CA PEM to verify LB/backends (optional)||
+    oneapp_copilot_register_insecure: >-
+      O|boolean|Allow auto-registration to an unverified self-signed LB||NO
     oneapp_copilot_lb_enabled: >-
       O|boolean|Enable Load Balancer mode (LiteLLM proxy)||NO
     oneapp_copilot_lb_backends: >-
@@ -111,10 +124,10 @@ opennebula_template:
       O|text|Model name for LB registration (empty = auto)||
     oneapp_copilot_register_site_name: >-
       O|text|Site name for LB backend ID (e.g. poland0)||
-logo: eurocopilot.png
+logo: mistral.png
 images:
-  - name: eurocopilot_os
-    url: 'https://d38nm155miqkyg.cloudfront.net/eurocopilot-2.8.0.qcow2'
+  - name: mistral_copilot_os
+    url: 'https://d38nm155miqkyg.cloudfront.net/mistral_copilot-2.8.0.qcow2'
     type: OS
     dev_prefix: vd
     driver: qcow2

@@ -1,8 +1,41 @@
 # Changelog
 
-All notable changes to the EuroCopilot appliance will be documented in this file.
+All notable changes to the Mistral Copilot appliance will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [2.9.0] - 2026-06-16
+
+### Security
+
+- **SSH hardened in the shipped image.** `PasswordAuthentication no` and
+  `PermitRootLogin without-password` (key-only via the contextualized
+  `SSH_PUBLIC_KEY`), and `USERNAME_PASSWORD_RESET: 'YES'` in the deploy context,
+  so the build-time password can never reach a deployed VM.
+- **Per-role secrets.** The inference API key, LB master key, Web UI password,
+  and PostgreSQL password are now distinct random secrets (0600). A leak of one
+  (e.g. an inference key harvested from a backend) no longer yields the others.
+- **Auto-registration no longer trusts the network blindly.** The register URL
+  must be `https://`, TLS is verified by default (system CAs, or a supplied
+  internal CA via `ONEAPP_COPILOT_TLS_CA`), and only an explicit
+  `ONEAPP_COPILOT_REGISTER_INSECURE=YES` permits an unverified self-signed LB.
+  Credentials are never sent over an unverified channel by default.
+- **LiteLLM management routes locked down.** `admin_only_routes` restricts
+  `/model/*` and `/key/*` to the master key, and `ssl_verify` pins to the
+  internal CA bundle when one is provided.
+- **Supply-chain pinning.** llama.cpp is pinned to a verified commit (the build
+  fails if the tag moves), every model GGUF is SHA256-verified after download
+  (fail-closed), and the LiteLLM/prisma/nodeenv versions are pinned.
+- **Host firewall.** Default-deny inbound except SSH (22), the API/UI port
+  (8443), and ACME http-01 (80); outbound SMTP is blocked so a compromised
+  workload cannot send unsolicited mail (limits blast radius).
+- **Injection hardening.** LB registration/deregistration/health-check request
+  bodies are built with `jq`; context secrets and register identifiers are
+  charset-validated; generated helper scripts are `chmod 700` and read their
+  keys at runtime instead of having them templated in.
+- Added `ONEAPP_COPILOT_TLS_EMAIL` for Let's Encrypt account registration, and
+  the endpoint IP is now derived from OneGate/the local NIC rather than
+  third-party IP-echo services.
 
 ## [2.8.0] - 2026-05-29
 
@@ -103,7 +136,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - SSH welcome banner now shows the local IP address instead of the public IP.
 - Removed aider reference from banner; API key shown in Web UI login instructions.
-- System users (eurocopilot, litellm, postgres) are created during packer build
+- System users (mistral_copilot, litellm, postgres) are created during packer build
   to prevent UID/GID conflicts at runtime.
 
 ### Added
@@ -156,9 +189,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Optional LiteLLM load balancing across multiple EuroCopilot VMs via ONEAPP_COPILOT_LB_BACKENDS
+- Optional LiteLLM load balancing across multiple Mistral Copilot VMs via ONEAPP_COPILOT_LB_BACKENDS
 - Least-busy routing, automatic failover (2 fails = 30s cooldown), and cross-site distribution
-- LiteLLM proxy systemd unit (eurocopilot-proxy.service) with TLS and master_key auth
+- LiteLLM proxy systemd unit (mistral_copilot-proxy.service) with TLS and master_key auth
 - LiteLLM Web UI (${endpoint}/ui) for monitoring traffic, managing backends, creating API keys, and setting budgets
 - PostgreSQL database for LiteLLM Web UI persistence (auto-provisioned in LB mode)
 - Mode-switch cleanup: switching between standalone and LB mode across reboots is safe
@@ -177,7 +210,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - CPU tuning: mlock, flash-attn, thread pinning, process priority
 - Model GGUF baked directly into image from Hugging Face (no Ollama registry dependency)
 - certbot standalone mode for Let's Encrypt (port 80 is free without nginx)
-- Systemd unit name changed from ollama/nginx to eurocopilot
+- Systemd unit name changed from ollama/nginx to mistral_copilot
 
 ### Added
 
@@ -214,7 +247,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Initial release of EuroCopilot appliance
+- Initial release of Mistral Copilot appliance
 - Devstral Small 2 24B (Q4_K_M) served by LocalAI v3.11.0 on CPU
 - OpenAI-compatible API (chat completions with streaming)
 - HTTPS reverse proxy with nginx and self-signed TLS

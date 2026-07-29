@@ -4,9 +4,11 @@ set -o errexit -o pipefail
 # SSH hardening for NemoClaw appliance image
 # Runs during Packer build, not at boot time
 
-# Disable password authentication (key-only after deployment)
-sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
-sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+# Disable password authentication (key-only after deployment). Root may log in
+# with the contextualized SSH_PUBLIC_KEY but never with a password, so the
+# build-time password cannot be used to reach the deployed VM.
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin without-password/' /etc/ssh/sshd_config
 
 # Remove cloudimg SSH overrides that can block password auth
 rm -f /etc/ssh/sshd_config.d/*-cloudimg-settings.conf 2>/dev/null || true
