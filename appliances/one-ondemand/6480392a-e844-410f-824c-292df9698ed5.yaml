@@ -1,0 +1,154 @@
+---
+name: Open OnDemand Service
+version: 1.0.0-20260909
+publisher: OpenNebula Systems
+publisher_email: contact@opennebula.io
+description: |-
+  A complete [Open OnDemand](https://openondemand.org/) deployment on OpenNebula,
+  orchestrated by
+  [OneFlow](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/overview.html).
+
+  Three roles start in order:
+
+  1. **storage** exports the shared home over NFS and runs the site cache that serves the
+     [EESSI](https://www.eessi.io/) software catalogue over CernVM-FS.
+  2. **portal** runs Open OnDemand with its own LDAP directory, so adding a user is one
+     directory entry and their home appears on first login.
+  3. **worker** runs the user sessions. Each session opens over SSH inside an Apptainer
+     container, with the scientific software loaded from EESSI.
+
+  The worker role is elastic. Every worker reports its open session count to OneGate, and
+  OneFlow adds a VM when the average passes the threshold and removes one after a quiet
+  period. The portal sends each new session to the least loaded worker, so a VM added by
+  the autoscaler receives work immediately instead of sitting idle.
+
+  Requires
+  [OneFlow](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/overview.html)
+  and
+  [OneGate](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/onegate_usage.html),
+  and OneGate must be reachable from the service network.
+
+  Based on the VM template
+  - [Open OnDemand](https://community-marketplace.opennebula.io/appliance/b65a3b9d-1463-4e3d-87d6-6df37fa23361)
+short_description: Open OnDemand with an elastic pool of compute VMs, orchestrated by OneFlow
+tags:
+- open-ondemand
+- hpc
+- jupyter
+- eessi
+- ubuntu
+- service
+creation_time: 1788950621
+os-id: Ubuntu
+os-release: '24.04 LTS'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.10, 7.0, 7.2, 7.4
+type: 'SERVICE_TEMPLATE'
+roles:
+  storage: 'Open OnDemand'
+  portal: 'Open OnDemand'
+  worker: 'Open OnDemand'
+opennebula_template:
+  name: Open OnDemand
+  deployment: straight
+  description: 'Open OnDemand portal with shared storage and an elastic pool of compute VMs'
+  ready_status_gate: true
+  roles:
+  - name: storage
+    cardinality: 1
+    min_vms: 1
+    vm_template_contents: |
+      NIC = [
+        NAME = "NIC0",
+        NETWORK_ID = "$Management"
+      ]
+      NIC = [
+        NAME = "NIC1",
+        NETWORK_ID = "$Compute"
+      ]
+      ONEAPP_ROLE = "storage"
+      ONEAPP_NFS_ADMIN_IPS = "$ONEAPP_PORTAL_IP"
+      ONEAPP_NFS_NET = "$ONEAPP_COMPUTE_NET"
+      ONEAPP_SQUID_NETS = "$ONEAPP_COMPUTE_NET"
+    cooldown: 120
+    elasticity_policies: []
+    scheduled_policies: []
+  - name: portal
+    parents:
+    - storage
+    cardinality: 1
+    min_vms: 1
+    vm_template_contents: |
+      NIC = [
+        NAME = "NIC0",
+        NETWORK_ID = "$Management"
+      ]
+      NIC = [
+        NAME = "NIC1",
+        NETWORK_ID = "$Compute",
+        IP = "$ONEAPP_PORTAL_IP"
+      ]
+      MEMORY = "8192"
+      ONEAPP_ROLE = "portal"
+      ONEAPP_NFS_HOST = "${storage.TEMPLATE.CONTEXT.ETH1_IP}"
+      ONEAPP_CVMFS_PROXY = "http://${storage.TEMPLATE.CONTEXT.ETH1_IP}:3128"
+      ONEAPP_POOL_RANGE = "$ONEAPP_POOL_RANGE"
+      ONEAPP_OOD_SERVERNAME = "$ONEAPP_OOD_SERVERNAME"
+      ONEAPP_OOD_SSL_MODE = "$ONEAPP_OOD_SSL_MODE"
+      ONEAPP_LDAP_USERS = "$ONEAPP_LDAP_USERS"
+    cooldown: 120
+    elasticity_policies: []
+    scheduled_policies: []
+  - name: worker
+    parents:
+    - storage
+    - portal
+    cardinality: 1
+    min_vms: 1
+    max_vms: 6
+    vm_template_contents: |
+      NIC = [
+        NAME = "NIC0",
+        NETWORK_ID = "$Management"
+      ]
+      NIC = [
+        NAME = "NIC1",
+        NETWORK_ID = "$Compute"
+      ]
+      ONEAPP_ROLE = "worker"
+      ONEAPP_NFS_HOST = "${storage.TEMPLATE.CONTEXT.ETH1_IP}"
+      ONEAPP_LDAP_HOST = "${portal.TEMPLATE.CONTEXT.ETH1_IP}"
+      ONEAPP_CVMFS_PROXY = "http://${storage.TEMPLATE.CONTEXT.ETH1_IP}:3128"
+    cooldown: 120
+    elasticity_policies:
+    - type: CHANGE
+      adjust: 1
+      expression: 'ACTIVE_SESSIONS > 1'
+      period_number: 1
+      period: 30
+      cooldown: 120
+    # Scale down only when ALL the workers are empty. OneFlow evaluates the average of the
+    # attribute across the VMs of the role and when reducing it terminates the oldest one
+    # without draining it, so a condition on the number of sessions would power off the busy
+    # worker as soon as another one was free. IDLE is 1 per empty worker, so its average is
+    # the fraction of idle workers and "> 0.99" means no session is left in the role.
+    - type: CHANGE
+      adjust: -1
+      expression: 'IDLE > 0.99'
+      period_number: 6
+      period: 30
+      cooldown: 300
+    scheduled_policies: []
+  networks:
+    Management: 'M|network|Management network, reaches OneGate and the internet| |id::'
+    Compute: 'M|network|Compute network, reserved for the service| |id::'
+  custom_attrs:
+    ONEAPP_PORTAL_IP: 'M|text|Fixed address of the portal on the compute network||172.20.0.60'
+    ONEAPP_COMPUTE_NET: 'M|text|Compute network in CIDR notation||172.20.0.0/24'
+    ONEAPP_POOL_RANGE: 'M|text|Address range reserved for the compute pool, first-last||172.20.0.230-172.20.0.249'
+    ONEAPP_OOD_SERVERNAME: 'M|text|Public hostname of the portal||'
+    ONEAPP_OOD_SSL_MODE: 'O|list|TLS certificate|letsencrypt,selfsigned|selfsigned'
+    ONEAPP_LDAP_USERS: 'O|text|Initial users, user:password:uid separated by spaces||demo1:demo1pass:10001'
+logo: logos/openondemand.png
+images: []

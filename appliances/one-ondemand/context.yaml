@@ -1,0 +1,11 @@
+---
+:tests:
+  'one-ondemand':
+    :image_name: one-ondemand.qcow2
+    :type: linux
+    :microenvs: ['context-kvm']
+    # The image carries the packages for the three roles, Apptainer and the session SIF
+    # image, so it boots and is checked more slowly than a single service appliance.
+    :slow: true
+    :enable_netcfg_common: true
+    :enable_netcfg_ip_methods: true
