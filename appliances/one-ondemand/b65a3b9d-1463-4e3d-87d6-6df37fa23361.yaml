@@ -1,0 +1,66 @@
+---
+name: Open OnDemand
+version: 1.0.0-20260909
+publisher: OpenNebula Systems
+publisher_email: contact@opennebula.io
+description: |-
+  [Open OnDemand](https://openondemand.org/) is the web portal that gives HPC users a
+  browser interface to a cluster: a file browser, a shell, job submission and interactive
+  applications such as JupyterLab, RStudio, Octave and VS Code.
+
+  This appliance puts the three roles of the Open OnDemand service in a single image,
+  selected at boot with the `ONEAPP_ROLE` context variable:
+
+  - **portal**, the Open OnDemand web portal with its own LDAP directory and Dex
+    authentication.
+  - **storage**, the shared home over NFS and the site cache for the software catalogue.
+  - **worker**, a compute VM that runs user sessions inside Apptainer containers.
+
+  Scientific software comes from [EESSI](https://www.eessi.io/) over CernVM-FS, so a
+  notebook here loads the same modules a user would find at a EuroHPC centre.
+
+  Deploy it with the Open OnDemand Service appliance, which connects the three roles with
+  OneFlow and grows the pool of compute VMs with the number of open sessions.
+short_description: Open OnDemand portal, shared storage and elastic compute pool in one image
+tags:
+- open-ondemand
+- hpc
+- jupyter
+- eessi
+- ubuntu
+- service
+format: qcow2
+creation_time: 1788950621
+os-id: Ubuntu
+os-release: '24.04 LTS'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.10, 7.0, 7.2, 7.4
+opennebula_template:
+  context:
+    network: 'YES'
+    report_ready: 'YES'
+    token: 'YES'
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    oneapp_role: '$ONEAPP_ROLE'
+  cpu: '1'
+  vcpu: '2'
+  memory: '4096'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  os:
+    arch: x86_64
+  user_inputs:
+    oneapp_role: 'M|list|Role this VM plays in the service|portal,storage,worker|worker'
+logo: logos/openondemand.png
+images:
+- name: one-ondemand
+  url: 'https://d38nm155miqkyg.cloudfront.net/service_one-ondemand-1.0.0-20260909.qcow2'
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 1433665536
+  checksum:
+    md5: e3f7bc124dd3e343b27434c36c0c2ff6
+    sha256: ebd264fc5f4d286dd574e57bdebe789a2c59ecde0b1635591138a5b0ed40a154
