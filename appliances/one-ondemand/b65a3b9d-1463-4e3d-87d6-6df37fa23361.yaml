@@ -62,6 +62,11 @@ opennebula_template:
     oneapp_ood_ssl_key: '$ONEAPP_OOD_SSL_KEY'
     oneapp_worker_idle_seconds: '$ONEAPP_WORKER_IDLE_SECONDS'
     oneapp_slurm_controller: '$ONEAPP_SLURM_CONTROLLER'
+    oneapp_worker_max_sessions: '$ONEAPP_WORKER_MAX_SESSIONS'
+    oneapp_oidc_issuer: '$ONEAPP_OIDC_ISSUER'
+    oneapp_oidc_client_id: '$ONEAPP_OIDC_CLIENT_ID'
+    oneapp_oidc_client_secret: '$ONEAPP_OIDC_CLIENT_SECRET'
+    oneapp_oidc_name: '$ONEAPP_OIDC_NAME'
   cpu: '1'
   vcpu: '2'
   memory: '4096'
@@ -71,7 +76,7 @@ opennebula_template:
   os:
     arch: x86_64
   inputs_order: >-
-    ONEAPP_ROLE,ONEAPP_NFS_HOST,ONEAPP_NFS_SERVER,ONEAPP_NFS_EXPORT,ONEAPP_NFS_ADMIN_IPS,ONEAPP_NFS_NET,ONEAPP_SQUID_NETS,ONEAPP_CVMFS_PROXY,ONEAPP_LDAP_HOST,ONEAPP_LDAP_USERS,ONEAPP_POOL_RANGE,ONEAPP_OOD_SERVERNAME,ONEAPP_OOD_SSL_MODE,ONEAPP_OOD_SSL_CERT,ONEAPP_OOD_SSL_KEY,ONEAPP_WORKER_IDLE_SECONDS,ONEAPP_SLURM_CONTROLLER
+    ONEAPP_ROLE,ONEAPP_NFS_HOST,ONEAPP_NFS_SERVER,ONEAPP_NFS_EXPORT,ONEAPP_NFS_ADMIN_IPS,ONEAPP_NFS_NET,ONEAPP_SQUID_NETS,ONEAPP_CVMFS_PROXY,ONEAPP_LDAP_HOST,ONEAPP_LDAP_USERS,ONEAPP_POOL_RANGE,ONEAPP_OOD_SERVERNAME,ONEAPP_OOD_SSL_MODE,ONEAPP_OOD_SSL_CERT,ONEAPP_OOD_SSL_KEY,ONEAPP_WORKER_IDLE_SECONDS,ONEAPP_WORKER_MAX_SESSIONS,ONEAPP_SLURM_CONTROLLER,ONEAPP_OIDC_ISSUER,ONEAPP_OIDC_CLIENT_ID,ONEAPP_OIDC_CLIENT_SECRET,ONEAPP_OIDC_NAME
   user_inputs:
     oneapp_role: 'M|list|Role this VM plays in the service|portal,storage,worker|worker'
     oneapp_nfs_host: 'O|text|Storage VM address on the compute network, for portal and worker||'
@@ -90,6 +95,11 @@ opennebula_template:
     oneapp_ood_ssl_key: 'O|text64|PEM private key, for the custom mode||'
     oneapp_worker_idle_seconds: 'O|number|Seconds a worker stays empty before the pool shrinks||600'
     oneapp_slurm_controller: 'O|text|Slurm controller sharing the users and the home, for portal||'
+    oneapp_worker_max_sessions: 'O|number|Sessions a worker takes before the pool grows||4'
+    oneapp_oidc_issuer: 'O|text|Issuer URL of an OpenID Connect provider, for portal||'
+    oneapp_oidc_client_id: 'O|text|Client id registered at that provider, for portal||'
+    oneapp_oidc_client_secret: 'O|password|Client secret registered at that provider, for portal||'
+    oneapp_oidc_name: 'O|text|Name of the provider on the login page, for portal||Institutional login'
 logo: logos/openondemand.png
 images:
 - name: one-ondemand
@@ -97,7 +107,7 @@ images:
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 1391263744
+  size: 1391853568
   checksum:
-    md5: 5cebbcd95390987006a42fd1e1bff4fd
-    sha256: 47f19632636e19716fbf8fcfa2260ba19527b18176f903e2a942cfc610591339
+    md5: 532d6fd75aa9a8143a4b9b5701aceca6
+    sha256: 65f6daefc526e13842e0c7ba79f861c81db4e302b69cc03ddfd598499849dd80

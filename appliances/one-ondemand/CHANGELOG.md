@@ -25,6 +25,15 @@ First release.
 - The pool shrinks one worker at a time, when the oldest worker has been empty for
   `ONEAPP_WORKER_IDLE_SECONDS`. New sessions go to the youngest of the least loaded workers,
   so the oldest one drains.
+- `ONEAPP_WORKER_MAX_SESSIONS` caps the sessions a worker takes, the pool grows when every
+  worker is at the cap, and each worker publishes `SESSION_USERS`, who has a session and
+  since when.
+- An OpenID Connect provider on the login page, through Dex, with `ONEAPP_OIDC_*`. Written
+  without a provider to test against.
+- GPU workers prepared: a wrapper adds `--nv` to the session container on a VM with an
+  NVIDIA device, and the README shows the role with PCI passthrough. Untested, no GPU at hand.
+- Worker sizes. Any `worker_<size>` role in the service template is a second pool, and the
+  application forms offer the sizes that exist.
 - A Slurm cluster as a second target. `ONEAPP_SLURM_CONTROLLER`, as a service input or
   added later with `onevm updateconf`, declares the controller of a OneSlurm service that
   shares the users and the home, and the Job Composer and Active Jobs offer it beside the

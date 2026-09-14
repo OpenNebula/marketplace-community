@@ -124,6 +124,13 @@ opennebula_template:
       period_number: 1
       period: 30
       cooldown: 120
+    # Every worker at its session cap, ONEAPP_WORKER_MAX_SESSIONS, grows the pool too.
+    - type: CHANGE
+      adjust: 1
+      expression: 'AT_CAPACITY > 0.99'
+      period_number: 1
+      period: 30
+      cooldown: 120
     # Scale down one worker at a time. OneFlow evaluates the average of the attribute across
     # the VMs of the role and when reducing it terminates the oldest one without draining it,
     # so a condition on the number of sessions would power off a busy worker as soon as
@@ -149,7 +156,12 @@ opennebula_template:
     ONEAPP_OOD_SSL_KEY: 'O|text64|PEM private key, for the custom mode||'
     ONEAPP_LDAP_USERS: 'O|text|Initial users, user:password:uid separated by spaces||demo1:demo1pass:10001'
     ONEAPP_WORKER_IDLE_SECONDS: 'O|number|Seconds a worker stays empty before the pool shrinks||600'
+    ONEAPP_WORKER_MAX_SESSIONS: 'O|number|Sessions a worker takes before the pool grows||4'
     ONEAPP_SLURM_CONTROLLER: 'O|text|Slurm controller sharing the users and the home, empty for none||'
+    ONEAPP_OIDC_ISSUER: 'O|text|Issuer URL of an OpenID Connect provider, empty for the local directory only||'
+    ONEAPP_OIDC_CLIENT_ID: 'O|text|Client id registered at that provider||'
+    ONEAPP_OIDC_CLIENT_SECRET: 'O|password|Client secret registered at that provider||'
+    ONEAPP_OIDC_NAME: 'O|text|Name of the provider on the login page||Institutional login'
     ONEAPP_NFS_SERVER: 'O|text|NFS server of your own for the home, empty to use the storage role||'
     ONEAPP_NFS_EXPORT: 'O|text|Path of the home export||/export/home'
 logo: logos/openondemand.png
