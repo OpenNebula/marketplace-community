@@ -41,6 +41,7 @@ If a firewall sits between the networks, these are the flows the service needs:
 | portal and workers | storage | 2049 | the shared home over NFSv4 |
 | portal and workers | storage | 3128 | the software catalogue through the site cache |
 | every role | OneGate endpoint | 5030 by default | reporting readiness and session counts |
+| Prometheus | portal, management network | 9101 | the service metrics, only if you scrape them |
 | storage | internet | 80 and 8000 | the EESSI CernVM-FS servers, plain HTTP |
 
 The compute network carries the directory lookups in the clear, so it has to stay reserved
@@ -110,6 +111,7 @@ describe for Sunstone and for the CLI.
 | `ONEAPP_OOD_SSL_KEY` | empty | PEM private key for the `custom` mode. The service template passes it to the portal VM only. |
 | `ONEAPP_LDAP_USERS` | `demo1:demo1pass:10001` | Initial users, as `user:password:uid` separated by spaces. |
 | `ONEAPP_WORKER_IDLE_SECONDS` | `600` | How long the oldest worker stays empty before the pool loses a VM. |
+| `ONEAPP_SLURM_CONTROLLER` | empty | Compute address of a Slurm controller that shares the users and the home. See [Batch jobs with Slurm](#batch-jobs-with-slurm). |
 | `ONEAPP_POOL_RANGE` | `172.20.0.50-172.20.0.249` | The address range the compute network assigns to VMs, `first-last`. |
 | `ONEAPP_NFS_SERVER` | empty | Address of an NFS server of your own for the home. Empty uses the storage role. |
 | `ONEAPP_NFS_EXPORT` | `/export/home` | Path of the home export, on the storage role or on that server. |
@@ -140,6 +142,47 @@ $ oneflow scale <service_id> worker <cardinality>
 
 The role accepts from 1 to 6 workers. Raise `max_vms` in the service template for a larger
 pool.
+
+## Batch jobs with Slurm
+
+The VM pool has no scheduler. For a queue, a walltime and node accounting, attach the
+official OneSlurm service from the marketplace and the portal offers it as a second cluster
+in the Job Composer and in Active Jobs, while the interactive applications keep running on
+the pool. The Slurm cluster shares the users and the home with the portal, so nothing is
+copied and a job writes its output into the same home the notebooks use.
+
+1. With the Open OnDemand service running, note the compute addresses of its portal and
+   storage VMs:
+
+   ```shell
+   $ onevm list -f NAME~service_<service_id> -l ID,NAME,IP
+   ```
+
+2. Instantiate `OneSlurm` on the same compute network, with the local LDAP disabled and
+   these inputs, where `<portal>` and `<storage>` are those addresses:
+
+   ```text
+   ONEAPP_LDAP_ENABLE      NO
+   ONEAPP_LDAP_DOMAIN      ood.local
+   ONEAPP_LDAP_URL         ldap://<portal>
+   ONEAPP_SLURM_NFS_HOME   <storage>:/export/home
+   ```
+
+3. Once OneSlurm is `RUNNING`, give the portal the address of the controller. The portal
+   reconfigures itself in under a minute and the cluster appears:
+
+   ```shell
+   $ onevm updateconf <portal vm id> --append <<EOF
+   CONTEXT = [ ONEAPP_SLURM_CONTROLLER = "<controller compute address>" ]
+   EOF
+   ```
+
+`ONEAPP_SLURM_CONTROLLER` is also a service input, for a controller that exists before the
+service does. The portal installs no Slurm client: `sbatch`, `squeue`, `scancel`, `sinfo`,
+`sacct` and `scontrol` run on the controller over SSH as the user, with the key the portal
+keeps in each user's home, the same mechanism the AWS and Azure integrations use.
+Accounting history in `sacct` depends on OneSlurm running `slurmdbd`, which its default
+deployment does not.
 
 ## Users
 
@@ -213,17 +256,68 @@ This terminates the three VMs and the non persistent disks. A persistent home di
 released and keeps its content, an external export is untouched. The imported image, VM
 template and service template stay in your OpenNebula until you delete them.
 
-## Where to look when something is wrong
+## Metrics and where to look when something is wrong
+
+The portal serves Prometheus metrics for the whole service on port 9101,
+`http://<portal management address>:9101/metrics`. Per worker it exposes
+`ood_worker_active_sessions`, `ood_worker_idle`, `ood_worker_idle_seconds` and
+`ood_worker_healthy`, read from what the workers publish to OneGate, plus
+`ood_role_cardinality` per role and `ood_portal_puns`, the per user web servers running on
+the portal. The same values are in the user template of each worker VM:
+
+```shell
+$ onevm show <worker id> | grep -E 'ACTIVE_SESSIONS|IDLE|HEALTHY'
+```
+
+A worker checks its home mount, the software catalogue and sshd before every report and
+publishes `HEALTHY=0` when one of them is missing. The portal sends no new session to a
+worker in that state, and the log of the check is on the worker, `journalctl -t ood-publish-load`.
 
 Each role logs what it did at boot in `/var/log/ood-appliance-configure.log`, and
 `/etc/one-ondemand/build.env` records what the image was built from. A role that failed to
 configure shows it in its `motd` and in `/etc/one-appliance/status`, and OneFlow keeps the
 service out of `RUNNING` until every role has declared itself ready.
 
+On the portal, Open OnDemand writes the per user web server logs under
+`/var/log/ondemand-nginx/<user>/` and Apache under `/var/log/apache2/`. A session that does
+not start leaves its output in the session directory under the user's home,
+`~/ondemand/data/sys/dashboard/batch_connect/sys/<app>/output/<session id>/output.log`, which
+the shared home makes readable from the portal and from every worker.
+
+## When a session does not start
+
+1. `oneflow show <service_id>` says whether every role is `RUNNING`. A worker in a
+   different state has not declared itself ready, and its `/var/log/ood-appliance-configure.log`
+   says at which step it stopped.
+2. On the portal, `cat /var/lib/ood-pool/workers.json` lists the workers the portal will use.
+   `"source":"onegate"` means the list comes from the service; `"rango"` means OneGate did
+   not answer and the portal probed the address range instead. A worker missing from the
+   list is either not answering on port 22 or publishing `HEALTHY=0`.
+3. The session directory under the user's home has `connection.yml`, with the worker the
+   session ran on, and `output.log`, with what failed there. `module load` errors point at the software catalogue, `Permission denied`
+   on the home points at the export, and a refused SSH connection at the `from=` restriction on
+   the user's key, which only admits connections from the compute network.
+4. On the worker, `journalctl -t ood-publish-load` shows what the health check found, and
+   `runuser -u <user> -- ls /cvmfs/software.eessi.io/versions` whether the catalogue is
+   reachable as that user.
+
+## Upgrading
+
+A new version of the appliance is a new image and new templates, and the running service
+keeps the old ones. Download the new version from the marketplace, which imports them
+beside the old ones, and instantiate a new service from the new service template. The home
+survives the change when it lives on a persistent disk or on an NFS server of your own, as
+[Keeping the home](#keeping-the-home) describes: delete the old service, attach the same
+disk to the new one or point it at the same export, and the users find their files. With
+the home on the storage VM's root disk, copy it out with `onevm disk-saveas` before
+deleting the old service. Users, the LDAP directory, are recreated from `ONEAPP_LDAP_USERS`,
+so pass the same value or add the users again once the new portal is up.
+
 ## Limitations and operating mode
 
-* Sessions run on VMs without a scheduler. A worker holds every session that lands on it,
-  and a session uses the whole VM, shared with the other sessions on the same VM.
+* Interactive sessions run on VMs without a scheduler. A worker holds every session that
+  lands on it, and a session uses the whole VM, shared with the other sessions on the same
+  VM. Batch jobs can go to a Slurm cluster instead, see above.
 * There is no GPU support in this release.
 * The scientific software comes from EESSI over CernVM-FS. The first load of a module on a
   fresh deployment downloads it through the site cache on the storage role.

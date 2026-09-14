@@ -61,6 +61,7 @@ opennebula_template:
     oneapp_ood_ssl_cert: '$ONEAPP_OOD_SSL_CERT'
     oneapp_ood_ssl_key: '$ONEAPP_OOD_SSL_KEY'
     oneapp_worker_idle_seconds: '$ONEAPP_WORKER_IDLE_SECONDS'
+    oneapp_slurm_controller: '$ONEAPP_SLURM_CONTROLLER'
   cpu: '1'
   vcpu: '2'
   memory: '4096'
@@ -70,7 +71,7 @@ opennebula_template:
   os:
     arch: x86_64
   inputs_order: >-
-    ONEAPP_ROLE,ONEAPP_NFS_HOST,ONEAPP_NFS_SERVER,ONEAPP_NFS_EXPORT,ONEAPP_NFS_ADMIN_IPS,ONEAPP_NFS_NET,ONEAPP_SQUID_NETS,ONEAPP_CVMFS_PROXY,ONEAPP_LDAP_HOST,ONEAPP_LDAP_USERS,ONEAPP_POOL_RANGE,ONEAPP_OOD_SERVERNAME,ONEAPP_OOD_SSL_MODE,ONEAPP_OOD_SSL_CERT,ONEAPP_OOD_SSL_KEY,ONEAPP_WORKER_IDLE_SECONDS
+    ONEAPP_ROLE,ONEAPP_NFS_HOST,ONEAPP_NFS_SERVER,ONEAPP_NFS_EXPORT,ONEAPP_NFS_ADMIN_IPS,ONEAPP_NFS_NET,ONEAPP_SQUID_NETS,ONEAPP_CVMFS_PROXY,ONEAPP_LDAP_HOST,ONEAPP_LDAP_USERS,ONEAPP_POOL_RANGE,ONEAPP_OOD_SERVERNAME,ONEAPP_OOD_SSL_MODE,ONEAPP_OOD_SSL_CERT,ONEAPP_OOD_SSL_KEY,ONEAPP_WORKER_IDLE_SECONDS,ONEAPP_SLURM_CONTROLLER
   user_inputs:
     oneapp_role: 'M|list|Role this VM plays in the service|portal,storage,worker|worker'
     oneapp_nfs_host: 'O|text|Storage VM address on the compute network, for portal and worker||'
@@ -88,6 +89,7 @@ opennebula_template:
     oneapp_ood_ssl_cert: 'O|text64|PEM certificate chain, for the custom mode||'
     oneapp_ood_ssl_key: 'O|text64|PEM private key, for the custom mode||'
     oneapp_worker_idle_seconds: 'O|number|Seconds a worker stays empty before the pool shrinks||600'
+    oneapp_slurm_controller: 'O|text|Slurm controller sharing the users and the home, for portal||'
 logo: logos/openondemand.png
 images:
 - name: one-ondemand
@@ -95,7 +97,7 @@ images:
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 1390477312
+  size: 1391263744
   checksum:
-    md5: 06de299f91069f6b2d47c991a642618a
-    sha256: 7d1df8c7c01c8d6ae9bf033272d53dfee2c3965e478a47bf8ab577a8209f7dcf
+    md5: 5cebbcd95390987006a42fd1e1bff4fd
+    sha256: 47f19632636e19716fbf8fcfa2260ba19527b18176f903e2a942cfc610591339

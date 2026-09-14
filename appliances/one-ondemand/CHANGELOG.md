@@ -25,6 +25,13 @@ First release.
 - The pool shrinks one worker at a time, when the oldest worker has been empty for
   `ONEAPP_WORKER_IDLE_SECONDS`. New sessions go to the youngest of the least loaded workers,
   so the oldest one drains.
+- A Slurm cluster as a second target. `ONEAPP_SLURM_CONTROLLER`, as a service input or
+  added later with `onevm updateconf`, declares the controller of a OneSlurm service that
+  shares the users and the home, and the Job Composer and Active Jobs offer it beside the
+  VM pool through an SSH proxy, with no Slurm client on the portal.
+- Prometheus metrics of the whole service on the portal, port 9101, and a `HEALTHY`
+  attribute per worker that keeps new sessions away from a worker missing its home, its
+  software catalogue or sshd.
 - No fixed addresses. The storage role asks OneGate which VM plays the portal and grants
   root on the home export to that address alone, and takes the compute network from its
   own NIC, so the service asks only for the address range of the compute network.

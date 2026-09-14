@@ -292,7 +292,8 @@ cat > "${SRC}/appliance/configure.sh" <<'ONEOND_APPLIANCE_CONFIGURE_SH_'
 # Variables common to all the roles:
 #   ONEAPP_ROLE            portal | storage | worker (mandatory)
 # Per role, the ones each script documents:
-#   portal    ONEAPP_NFS_HOST, ONEAPP_OOD_SERVERNAME, ONEAPP_POOL_RANGE, ONEAPP_CVMFS_PROXY
+#   portal    ONEAPP_NFS_HOST, ONEAPP_OOD_SERVERNAME, ONEAPP_POOL_RANGE, ONEAPP_CVMFS_PROXY,
+#             ONEAPP_SLURM_CONTROLLER (optional)
 #   storage   nothing, it takes the network from its NIC and the portal from OneGate
 #   worker    ONEAPP_NFS_HOST, ONEAPP_LDAP_HOST, ONEAPP_CVMFS_PROXY
 #
@@ -342,6 +343,8 @@ if [[ "$ROLE" != "worker" && "$(hostname)" != "ood-${ROLE}" ]]; then
 fi
 case "$ROLE" in
 storage)
+    # The load publisher belongs to the worker role, see the portal case below.
+    systemctl disable --now ood-publish-load.service >/dev/null 2>&1 || true
     run "home NFS server"      bash "${DIR}/storage/10-install-nfs.sh"
     run "site Squid for EESSI" bash "${DIR}/storage/20-install-squid.sh"
     ;;
@@ -360,6 +363,7 @@ portal)
     run "application catalog"   bash "${DIR}/scripts/60-install-apps.sh"
     run "EESSI on the portal"   bash "${DIR}/scripts/70-install-cvmfs.sh"
     run "worker pool"           bash "${DIR}/scripts/90-configure-vm-pool.sh"
+    run "Slurm cluster"         bash "${DIR}/scripts/80-configure-slurm.sh"
     ;;
 worker)
     # The three addresses are optional on purpose. A worker without them is a standalone
@@ -537,6 +541,36 @@ ok "appliance built in $(( $(date +%s) - t0 ))s, for the portal, storage and wor
 ONEOND_APPLIANCE_INSTALL_SH_
 
 install -d -m 755 "${SRC}/config/clusters.d"
+cat > "${SRC}/config/clusters.d/slurm.yml" <<'ONEOND_CONFIG_CLUSTERS_D_SLURM_YML_'
+# Definition of a Slurm cluster as an Open OnDemand target, for batch jobs.
+# Installed at /etc/ood/config/clusters.d/slurm.yml by scripts/80-configure-slurm.sh
+#
+# The portal carries no Slurm client. Every command goes to the controller over SSH as the
+# user, through the proxy in /opt/one-ondemand/bin/slurm, the pattern the AWS and Azure
+# integrations use. The controller shares the home and the users with the portal, so the
+# key the portal already created for each user opens the session.
+#
+# The @@ placeholders are substituted by scripts/80-configure-slurm.sh.
+v2:
+  metadata:
+    title: "@@TITLE@@"
+    hidden: false
+  login:
+    host: "@@CONTROLLER@@"
+  job:
+    adapter: "slurm"
+    bin: "/usr/bin"
+    bin_overrides:
+      sbatch: "/opt/one-ondemand/bin/slurm/sbatch"
+      squeue: "/opt/one-ondemand/bin/slurm/squeue"
+      scancel: "/opt/one-ondemand/bin/slurm/scancel"
+      scontrol: "/opt/one-ondemand/bin/slurm/scontrol"
+      sinfo: "/opt/one-ondemand/bin/slurm/sinfo"
+      sacct: "/opt/one-ondemand/bin/slurm/sacct"
+      sacctmgr: "/opt/one-ondemand/bin/slurm/sacctmgr"
+ONEOND_CONFIG_CLUSTERS_D_SLURM_YML_
+
+install -d -m 755 "${SRC}/config/clusters.d"
 cat > "${SRC}/config/clusters.d/vms.yml" <<'ONEOND_CONFIG_CLUSTERS_D_VMS_YML_'
 # Definition of the OpenNebula VM pool as an Open OnDemand target.
 # Installed at /etc/ood/config/clusters.d/vms.yml
@@ -576,7 +610,7 @@ v2:
     basic:
       # The host published in the session is the private IP of the VM, because the
       # portal proxy reaches that address and host_regex accepts it.
-      set_host: "host=$(hostname -I | tr ' ' '\\n' | grep '^172\\.20\\.' | head -1)"
+      set_host: "host=$(hostname -I | tr ' ' '\\n' | grep '^@@COMPUTE_PREFIX_RE@@' | head -1)"
     ssh_allow: false
 ONEOND_CONFIG_CLUSTERS_D_VMS_YML_
 
@@ -697,6 +731,13 @@ ONEAPP_LDAP_BASE="${ONEAPP_LDAP_BASE:-dc=ood,dc=local}"
 # /etc/one-ondemand/ldap-admin.pass. ldap_admin_pass below resolves it.
 ONEAPP_LDAP_ADMIN_PASS="${ONEAPP_LDAP_ADMIN_PASS:-}"
 ONEAPP_LDAP_USERS="${ONEAPP_LDAP_USERS:-demo1:demo1pass:10001 demo2:demo2pass:10002}"
+
+# --- observability -----------------------------------------------------------------
+ONEAPP_METRICS_PORT="${ONEAPP_METRICS_PORT:-9101}"
+
+# --- batch cluster ---------------------------------------------------------------------
+# A Slurm controller that shares the users and the home, empty when there is none.
+ONEAPP_SLURM_CONTROLLER="${ONEAPP_SLURM_CONTROLLER:-}"
 
 # --- home parameters ----------------------------------------------------------------
 # The home comes from the storage role unless ONEAPP_NFS_SERVER names an NFS server the
@@ -1533,7 +1574,10 @@ except Exception:
 sys.exit(0)
 PYDB
     if (( migrada == 0 )); then
-        install -d -m 0700 -o "$user" -g "$(id -gn "$user")" "$myjobs_dir"
+        # As the user, so the directories on the way belong to the user too. install -d
+        # would leave ondemand/data/sys owned by root and the dashboard could never create
+        # its own directory beside myjobs.
+        runuser -u "$user" -- mkdir -p "$myjobs_dir" && chmod 700 "$myjobs_dir"
         if (cd "$myjobs_app" && runuser -u "$user" -- env \
                 GEM_PATH=/opt/ood/gems:/usr/lib/ruby/gems/3.2.0:/var/lib/gems/3.2.0 \
                 RAILS_ENV=production RAILS_LOG_TO_STDOUT=1 \
@@ -1647,6 +1691,31 @@ systemctl daemon-reload
 systemctl enable --now ood-pool-refresh.timer >/dev/null 2>&1
 /usr/local/bin/ood-pool-refresh || die "the pool roster could not be generated"
 ok "pool roster active: $(cat /var/lib/ood-pool/workers.json)"
+
+# --- metrics --------------------------------------------------------------------------
+# One Prometheus endpoint for the whole service. The exporter reads what the workers
+# publish to OneGate and adds the portal's own count of per user web servers. It listens on
+# every address of the VM, so scrape it over the management network and keep the port
+# out of any public firewall rule.
+METRICS_PORT="${ONEAPP_METRICS_PORT:-9101}"
+install -m 755 "${REPO_ROOT}/scripts/ood-metrics-exporter.py" /usr/local/bin/ood-metrics-exporter
+cat > /etc/systemd/system/ood-metrics-exporter.service <<UNIT
+[Unit]
+Description=Prometheus metrics of the Open OnDemand service
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/bin/ood-metrics-exporter ${METRICS_PORT}
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+service_up ood-metrics-exporter
+wait_for 30 bash -c "curl -sf http://127.0.0.1:${METRICS_PORT}/metrics | grep -q ood_exporter_scrape_ok" \
+    || die "the metrics exporter does not answer on port ${METRICS_PORT}"
+ok "metrics on http://<portal>:${METRICS_PORT}/metrics"
 
 # --- dashboard extensions -------------------------------------------------------------
 # Rails loads the files in this directory as initializers when the external configuration
@@ -1902,6 +1971,66 @@ fi
 ONEOND_SCRIPTS_70_INSTALL_CVMFS_SH_
 
 install -d -m 755 "${SRC}/scripts"
+cat > "${SRC}/scripts/80-configure-slurm.sh" <<'ONEOND_SCRIPTS_80_CONFIGURE_SLURM_SH_'
+#!/usr/bin/env bash
+# Declares a Slurm cluster as a second target of the portal, for batch jobs.
+#
+# Runs on the portal when ONEAPP_SLURM_CONTROLLER names the controller of a Slurm cluster
+# that shares the portal's users, over LDAP, and its home, over NFS, which is what the
+# official OneSlurm service does when it is given the portal and the storage addresses.
+# The portal installs no Slurm client: a proxy sends each command to the controller over
+# SSH as the user, with the key the portal keeps in the user's home, and the Job Composer
+# and Active Jobs then show the cluster beside the VM pool.
+#
+# It is idempotent. Variables:
+#   ONEAPP_SLURM_CONTROLLER   address or host name of the Slurm controller (empty disables it)
+#   ONEAPP_SLURM_TITLE        name of the cluster in the portal (Slurm)
+#
+# Usage:  ONEAPP_SLURM_CONTROLLER=172.20.0.100 ./80-configure-slurm.sh
+
+source "$(dirname "${BASH_SOURCE[0]}")/00-lib.sh"
+require_root
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CLUSTER_FILE=/etc/ood/config/clusters.d/slurm.yml
+PROXY_DIR=/opt/one-ondemand/bin/slurm
+STATE_DIR=/etc/one-ondemand
+CONTROLLER="${ONEAPP_SLURM_CONTROLLER:-}"
+TITLE="${ONEAPP_SLURM_TITLE:-Slurm}"
+
+if [[ -z "$CONTROLLER" ]]; then
+    rm -f "$CLUSTER_FILE" "${STATE_DIR}/slurm_controller"
+    ok "no Slurm controller given, the portal offers the VM pool only"
+    exit 0
+fi
+
+install -d -m 755 "$STATE_DIR" "$PROXY_DIR"
+printf '%s\n' "$CONTROLLER" > "${STATE_DIR}/slurm_controller"
+chmod 644 "${STATE_DIR}/slurm_controller"
+install -m 755 "${REPO_DIR}/scripts/slurm-proxy.sh" "${PROXY_DIR}/slurm-proxy"
+for cmd in sbatch squeue scancel scontrol sinfo sacct sacctmgr; do
+    ln -sfn slurm-proxy "${PROXY_DIR}/${cmd}"
+done
+ok "Slurm commands proxied to ${CONTROLLER} from ${PROXY_DIR}"
+
+msg "writing ${CLUSTER_FILE}"
+sed -e "s|@@CONTROLLER@@|${CONTROLLER}|g" -e "s|@@TITLE@@|${TITLE}|g" \
+    "${REPO_DIR}/config/clusters.d/slurm.yml" > "$CLUSTER_FILE"
+chmod 644 "$CLUSTER_FILE"
+ruby -e "require 'yaml'; YAML.load_file('${CLUSTER_FILE}')" 2>&1 | sed 's/^/    /' \
+    || die "${CLUSTER_FILE} is not valid YAML"
+
+# The controller answers on port 22 or the proxy is useless. Its sshd may still be coming
+# up when the portal configures itself, so this waits a little and only warns, because the
+# portal is complete without the cluster and the Job Composer reads the file on each use.
+if wait_for 60 bash -c "</dev/tcp/${CONTROLLER}/22" 2>/dev/null; then
+    ok "cluster ${TITLE} declared, controller ${CONTROLLER} answers on port 22"
+else
+    warn "controller ${CONTROLLER} does not answer on port 22 yet, the cluster is declared anyway"
+fi
+ONEOND_SCRIPTS_80_CONFIGURE_SLURM_SH_
+
+install -d -m 755 "${SRC}/scripts"
 cat > "${SRC}/scripts/90-configure-vm-pool.sh" <<'ONEOND_SCRIPTS_90_CONFIGURE_VM_POOL_SH_'
 #!/usr/bin/env bash
 # Declares the VM pool as the portal target.
@@ -1972,7 +2101,7 @@ install -d -m 755 /etc/one-ondemand
 {
     printf '# Generated by one-ondemand/scripts/90-configure-vm-pool.sh\n'
     printf '# Addresses inside the pool range that are not workers.\n'
-    for ip in ${ONEAPP_POOL_EXCLUDE_IPS:-} ${ONEAPP_LDAP_HOST:-} ${ONEAPP_NFS_HOST:-} $(hostname -I); do
+    for ip in ${ONEAPP_POOL_EXCLUDE_IPS:-} ${ONEAPP_LDAP_HOST:-} ${ONEAPP_NFS_HOST:-} ${ONEAPP_SLURM_CONTROLLER:-} $(hostname -I); do
         [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
         [[ "${ip%.*}" == "$net" ]] || continue
         printf '%s%s.%s\n' "$POOL_PREFIX" "${ip##*.}" "$POOL_DOMAIN"
@@ -2009,9 +2138,14 @@ ok "provisional fallback host: ${submit_host}, it will be adjusted with the rost
 
 # --- target definition ---------------------------------------------------------------------
 msg "writing ${CLUSTER_FILE}"
-awk -v sh="$submit_host" -v hosts="$(printf "$ssh_hosts")" '
+# The session publishes the address of the worker on the compute network, which is the one
+# the range is in, so the first three octets of the range become the pattern.
+# Two backslashes survive YAML's double quotes as one, and awk halves them again, so each
+# dot becomes four backslashes here to reach grep as one.
+prefix_re="$(printf '%s' "${first%.*}." | sed 's/\./\\\\\\\\./g')"
+awk -v sh="$submit_host" -v hosts="$(printf "$ssh_hosts")" -v pre="$prefix_re" '
     /@@SSH_HOSTS@@/ { print hosts; next }
-    { gsub(/@@SUBMIT_HOST@@/, sh); print }
+    { gsub(/@@SUBMIT_HOST@@/, sh); gsub(/@@COMPUTE_PREFIX_RE@@/, pre); print }
 ' "${REPO_DIR}/config/clusters.d/vms.yml" > "$CLUSTER_FILE"
 chmod 644 "$CLUSTER_FILE"
 ruby -e "require 'yaml'; YAML.load_file('${CLUSTER_FILE}')" 2>&1 | sed 's/^/    /' \
@@ -2174,6 +2308,130 @@ ok "EESSI ${EESSI_VERSION} available in ${MOUNT} (mode ${MODE}, proxy ${PROXY}, 
 ONEOND_SCRIPTS_CVMFS_CLIENT_SH_
 
 install -d -m 755 "${SRC}/scripts"
+cat > "${SRC}/scripts/ood-metrics-exporter.py" <<'ONEOND_SCRIPTS_OOD_METRICS_EXPORTER_PY_'
+#!/usr/bin/env python3
+"""Prometheus metrics for an Open OnDemand service on OpenNebula, served by the portal.
+
+Every 30 seconds it reads the service through OneGate and exposes, per worker, what the
+workers publish there (ACTIVE_SESSIONS, IDLE, IDLE_SECONDS, HEALTHY), the cardinality of
+each role, and the portal's own count of running per user web servers. One endpoint, so a
+Prometheus scrapes the whole service in one place. Host metrics such as CPU and memory are
+OpenNebula's and are not repeated here.
+
+Standard library only, so it runs on the portal without anything to install. Listens on
+the port given as the first argument, 9101 by default, on every address of the VM.
+"""
+import json
+import subprocess
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+REFRESH_SECONDS = 30
+ONEGATE = ["bash", "-c",
+           ". /etc/one-ondemand/onegate-lib.sh && onegate_ready && "
+           "onegate_call service show --json --extended"]
+NGINX_STAGE = "/opt/ood/nginx_stage/sbin/nginx_stage"
+
+WORKER_GAUGES = {
+    "ACTIVE_SESSIONS": ("ood_worker_active_sessions", "Open OnDemand sessions alive on the worker"),
+    "IDLE": ("ood_worker_idle", "1 when the worker has no session"),
+    "IDLE_SECONDS": ("ood_worker_idle_seconds", "Seconds since the last session on the worker ended"),
+    "HEALTHY": ("ood_worker_healthy", "1 when the worker passed its last check of NFS, CernVM-FS and sshd"),
+}
+
+state = {"text": "", "ts": 0}
+
+
+def run(cmd, timeout=20):
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return out.stdout if out.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def worker_address(vm):
+    nics = vm.get("TEMPLATE", {}).get("NIC", [])
+    nics = [nics] if isinstance(nics, dict) else nics
+    return next((n["IP"] for n in nics if n.get("IP")), "")
+
+
+def collect():
+    lines = []
+    scrape_ok = 0
+    doc = run(ONEGATE)
+    try:
+        service = json.loads(doc)["SERVICE"] if doc else None
+    except (ValueError, KeyError):
+        service = None
+    if service is not None:
+        scrape_ok = 1
+        lines.append("# HELP ood_service_state OneFlow state of the service, as its numeric code")
+        lines.append("# TYPE ood_service_state gauge")
+        lines.append('ood_service_state{service="%s"} %s' % (service.get("name", ""), service.get("state", -1)))
+        lines.append("# HELP ood_role_cardinality VMs the role has")
+        lines.append("# TYPE ood_role_cardinality gauge")
+        for role in service.get("roles", []):
+            lines.append('ood_role_cardinality{role="%s"} %s' % (role.get("name", ""), role.get("cardinality", 0)))
+        for key, (name, help_text) in WORKER_GAUGES.items():
+            lines.append("# HELP %s %s" % (name, help_text))
+            lines.append("# TYPE %s gauge" % name)
+            for role in service.get("roles", []):
+                if role.get("name") not in ("worker", "workers"):
+                    continue
+                for node in role.get("nodes", []):
+                    vm = (node.get("vm_info") or {}).get("VM", {})
+                    value = (vm.get("USER_TEMPLATE") or {}).get(key)
+                    if value is None:
+                        continue
+                    lines.append('%s{vm_id="%s",name="%s",address="%s"} %s'
+                                 % (name, vm.get("ID", ""), vm.get("NAME", ""), worker_address(vm), value))
+    lines.append("# HELP ood_portal_puns Per user web servers running on the portal")
+    lines.append("# TYPE ood_portal_puns gauge")
+    puns = run([NGINX_STAGE, "nginx_list"])
+    lines.append("ood_portal_puns %d" % len([u for u in puns.splitlines() if u.strip()]))
+    lines.append("# HELP ood_exporter_scrape_ok 1 when the last read of the service through OneGate succeeded")
+    lines.append("# TYPE ood_exporter_scrape_ok gauge")
+    lines.append("ood_exporter_scrape_ok %d" % scrape_ok)
+    return "\n".join(lines) + "\n"
+
+
+def refresher():
+    while True:
+        try:
+            state["text"] = collect()
+            state["ts"] = time.time()
+        except Exception as exc:  # the exporter must not die on a bad read
+            state["text"] = "ood_exporter_scrape_ok 0\n# %s\n" % exc
+        time.sleep(REFRESH_SECONDS)
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path != "/metrics":
+            self.send_response(404)
+            self.end_headers()
+            return
+        body = state["text"].encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+if __name__ == "__main__":
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 9101
+    threading.Thread(target=refresher, daemon=True).start()
+    HTTPServer(("", port), Handler).serve_forever()
+ONEOND_SCRIPTS_OOD_METRICS_EXPORTER_PY_
+
+install -d -m 755 "${SRC}/scripts"
 cat > "${SRC}/scripts/ood-pool-refresh.sh" <<'ONEOND_SCRIPTS_OOD_POOL_REFRESH_SH_'
 #!/usr/bin/env bash
 # Roster of the worker pool, computed on the portal.
@@ -2246,6 +2504,7 @@ done
 # the worker role has right now, so there is no need to probe anything else.
 source_name="rango"
 declare -A vm_ids
+unhealthy=()
 if [[ -r "$ONEGATE_LIB" ]]; then
     # shellcheck source=/dev/null
     . "$ONEGATE_LIB"
@@ -2253,8 +2512,11 @@ if [[ -r "$ONEGATE_LIB" ]]; then
         desde_onegate=()
         # The VM id travels with each worker so the dispatcher can prefer the youngest among
         # equals, which lets the oldest one drain and be the one OneFlow retires.
-        while read -r ip vmid; do
+        while read -r ip vmid healthy; do
             [[ -n "$ip" ]] || continue
+            # A worker that reports itself unhealthy is left out, so it gets no new session
+            # until its publisher sees NFS, CernVM-FS and sshd in place again.
+            [[ "$healthy" == "0" ]] && { unhealthy+=("$ip"); continue; }
             for h in "${permitted[@]}"; do
                 [[ "$h" == *"-${ip##*.}."* ]] && { desde_onegate+=("$h"); vm_ids["$h"]="$vmid"; break; }
             done
@@ -2273,11 +2535,12 @@ for r in d.get("SERVICE", {}).get("roles", []):
         nics = vm.get("TEMPLATE", {}).get("NIC", [])
         if isinstance(nics, dict):
             nics = [nics]
-        for nic in nics:
-            if nic.get("IP"):
-                print(nic["IP"], vm.get("ID", ""))
+        # The compute network is the last NIC of every role, the management one comes first.
+        ips = [nic["IP"] for nic in nics if nic.get("IP")]
+        if ips:
+            print(ips[-1], vm.get("ID", ""), (vm.get("USER_TEMPLATE") or {}).get("HEALTHY", ""))
 ' 2>/dev/null)
-        if (( ${#desde_onegate[@]} > 0 )); then
+        if (( ${#desde_onegate[@]} > 0 || ${#unhealthy[@]} > 0 )); then
             candidates=("${desde_onegate[@]}")
             source_name="onegate"
         fi
@@ -2337,8 +2600,8 @@ for h in "${candidates[@]}"; do
     fi
 done
 
-write_out "$(printf '{"ts":%s,"source":"%s","candidates":%s,"alive":%s,"workers":[%s]}' \
-    "$(date +%s)" "$source_name" "${#candidates[@]}" "$alive" "$(IFS=,; echo "${entries[*]}")")"
+write_out "$(printf '{"ts":%s,"source":"%s","candidates":%s,"alive":%s,"unhealthy":%s,"workers":[%s]}' \
+    "$(date +%s)" "$source_name" "${#candidates[@]}" "$alive" "${#unhealthy[@]}" "$(IFS=,; echo "${entries[*]}")")"
 
 # --- fallback host of the cluster file --------------------------------------------------------
 # submit_host is only used when the roster is stale or empty, so almost never, but it still
@@ -2360,6 +2623,25 @@ if (( alive > 0 )); then
     fi
 fi
 ONEOND_SCRIPTS_OOD_POOL_REFRESH_SH_
+
+install -d -m 755 "${SRC}/scripts"
+cat > "${SRC}/scripts/slurm-proxy.sh" <<'ONEOND_SCRIPTS_SLURM_PROXY_SH_'
+#!/usr/bin/env bash
+# Runs the Slurm command this file is named after on the controller, as the calling user.
+#
+# The portal has no Slurm client and the controller has the real one, so sbatch, squeue,
+# scancel, sinfo, sacct, scontrol and sacctmgr are links to this file, one per name. Every
+# argument is quoted for the remote shell, and standard input travels with the call, which
+# is how sbatch receives the job script from Open OnDemand.
+set -u
+cmd="$(basename "$0")"
+controller="$(cat /etc/one-ondemand/slurm_controller 2>/dev/null || true)"
+[[ -n "$controller" ]] || { echo "no Slurm controller configured on this portal" >&2; exit 1; }
+quoted=""
+for arg in "$@"; do quoted+=" $(printf '%q' "$arg")"; done
+exec ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 \
+    -o LogLevel=ERROR "$controller" "$cmd"$quoted
+ONEOND_SCRIPTS_SLURM_PROXY_SH_
 
 install -d -m 755 "${SRC}/storage"
 cat > "${SRC}/storage/10-install-nfs.sh" <<'ONEOND_STORAGE_10_INSTALL_NFS_SH_'
@@ -2783,7 +3065,13 @@ LDAP_HOST="${ONEAPP_LDAP_HOST:-}"
 CVMFS_PROXY="${ONEAPP_CVMFS_PROXY:-}"
 BASE="${ONEAPP_LDAP_BASE:-dc=ood,dc=local}"
 POOL_DOMAIN="${ONEAPP_POOL_DOMAIN:-ood.local}"
-NET_PREFIX="${ONEAPP_POOL_NET_PREFIX:-172.20.}"
+# The compute network is the one the portal and the storage are on, so their addresses give
+# the prefix that names this worker, unless the prefix is given.
+NET_PREFIX="${ONEAPP_POOL_NET_PREFIX:-}"
+if [[ -z "$NET_PREFIX" ]]; then
+    ref="${ONEAPP_LDAP_HOST:-${ONEAPP_NFS_HOST:-}}"
+    [[ "$ref" =~ ^([0-9]+\.[0-9]+\.[0-9]+)\. ]] && NET_PREFIX="${BASH_REMATCH[1]}."
+fi
 POOL_PREFIX="${ONEAPP_POOL_PREFIX:-ood-worker-}"
 EESSI_MOUNT="${ONEAPP_EESSI_MOUNT:-/cvmfs/software.eessi.io}"
 EESSI_VERSION="${ONEAPP_EESSI_VERSION:-2025.06}"
@@ -3413,7 +3701,8 @@ ONEGATE_LIB="${ONEGATE_LIB:-/etc/one-ondemand/onegate-lib.sh}"
 # shellcheck source=/dev/null
 . "$ONEGATE_LIB" || { echo "${ONEGATE_LIB} is missing" >&2; exit 1; }
 
-log() { logger -t ood-publish-load "$*"; echo "$*"; }
+# To stderr on purpose: functions whose output is captured, such as healthy, log too.
+log() { logger -t ood-publish-load "$*"; echo "$*" >&2; }
 
 # Live Open OnDemand sessions. The linux_host adapter opens one tmux session per job, named
 # launched-by-ondemand-<uuid>, on the user's socket. Counting /tmp/tmux-* directories would
@@ -3492,18 +3781,48 @@ else:
 ' "${VMID:-}" "$mine"
 }
 
+# healthy: 1 when what a session needs is in place, the home over NFS when the worker was
+# given one, the EESSI catalogue when it was configured, and sshd for the portal to reach
+# it. The portal skips a worker that publishes 0, so a broken worker gets no new sessions.
+healthy() {
+    local failed=""
+    if grep -q " /home nfs4 " /etc/fstab 2>/dev/null; then
+        findmnt -n -t nfs4 /home >/dev/null 2>&1 || failed="${failed} nfs"
+    fi
+    if [[ -f /etc/cvmfs/default.local ]]; then
+        [[ -d /cvmfs/software.eessi.io/versions ]] || failed="${failed} cvmfs"
+    fi
+    # The port, not the unit: on Ubuntu 24.04 ssh.service is socket activated and reads as
+    # inactive until the first connection, while the socket is already listening.
+    ss -Hltn 2>/dev/null | grep -qE '[:.]22 ' || failed="${failed} sshd"
+    # The state goes in a file because this runs in a command substitution, so a variable
+    # would not survive the call and every cycle would log the same thing.
+    local last; last="$(cat "${STATE}/unhealthy" 2>/dev/null || true)"
+    if [[ -n "$failed" ]]; then
+        [[ "$failed" == "$last" ]] || log "unhealthy:${failed}"
+        printf '%s' "$failed" > "${STATE}/unhealthy"
+        printf '0'
+    else
+        [[ -z "$last" ]] || log "healthy again"
+        rm -f "${STATE}/unhealthy"
+        printf '1'
+    fi
+}
+
 publish() {
-    local sessions="$1" busy="$2" idle_secs="$3" idle=1 oldest oldest_idle=0
+    local sessions="$1" busy="$2" idle_secs="$3" idle=1 oldest oldest_idle=0 health
+    health="$(healthy)"
     (( sessions > 0 )) && idle=0
     oldest="$(oldest_idle_seconds "$idle_secs")"
     [[ "$oldest" =~ ^[0-9]+$ ]] || oldest=0
     (( oldest > IDLE_THRESHOLD )) && oldest_idle=1
     local kv
     for kv in "ACTIVE_SESSIONS=${sessions}" "CPU_BUSY=${busy}" "IDLE=${idle}" \
-              "IDLE_SECONDS=${idle_secs}" "OLDEST_IDLE_SECONDS=${oldest}" "OLDEST_IDLE=${oldest_idle}"; do
+              "IDLE_SECONDS=${idle_secs}" "OLDEST_IDLE_SECONDS=${oldest}" "OLDEST_IDLE=${oldest_idle}" \
+              "HEALTHY=${health}"; do
         onegate_call vm update --data "$kv" >/dev/null 2>&1 || return 1
     done
-    PUBLISHED="ACTIVE_SESSIONS=${sessions} CPU_BUSY=${busy} IDLE=${idle} IDLE_SECONDS=${idle_secs} OLDEST_IDLE_SECONDS=${oldest} OLDEST_IDLE=${oldest_idle}"
+    PUBLISHED="ACTIVE_SESSIONS=${sessions} CPU_BUSY=${busy} IDLE=${idle} IDLE_SECONDS=${idle_secs} OLDEST_IDLE_SECONDS=${oldest} OLDEST_IDLE=${oldest_idle} HEALTHY=${health}"
 }
 
 # Initial value as soon as it starts, so a new VM is not missing from the average OneFlow

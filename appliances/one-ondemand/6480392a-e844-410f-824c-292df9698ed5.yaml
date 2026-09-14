@@ -149,6 +149,7 @@ opennebula_template:
     ONEAPP_OOD_SSL_KEY: 'O|text64|PEM private key, for the custom mode||'
     ONEAPP_LDAP_USERS: 'O|text|Initial users, user:password:uid separated by spaces||demo1:demo1pass:10001'
     ONEAPP_WORKER_IDLE_SECONDS: 'O|number|Seconds a worker stays empty before the pool shrinks||600'
+    ONEAPP_SLURM_CONTROLLER: 'O|text|Slurm controller sharing the users and the home, empty for none||'
     ONEAPP_NFS_SERVER: 'O|text|NFS server of your own for the home, empty to use the storage role||'
     ONEAPP_NFS_EXPORT: 'O|text|Path of the home export||/export/home'
 logo: logos/openondemand.png
