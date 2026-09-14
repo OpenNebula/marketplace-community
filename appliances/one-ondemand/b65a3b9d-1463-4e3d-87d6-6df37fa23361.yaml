@@ -37,12 +37,30 @@ os-arch: x86_64
 hypervisor: KVM
 opennebula_version: 6.10, 7.0, 7.2, 7.4
 opennebula_template:
+  # Every variable a role reads is declared here, as the Lithops appliance does, because a
+  # value the service template sets at the top level of vm_template_contents only reaches
+  # the CONTEXT of the VM through a reference like these. The service fills them per role.
   context:
     network: 'YES'
     report_ready: 'YES'
     token: 'YES'
     ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
     oneapp_role: '$ONEAPP_ROLE'
+    oneapp_nfs_admin_ips: '$ONEAPP_NFS_ADMIN_IPS'
+    oneapp_nfs_net: '$ONEAPP_NFS_NET'
+    oneapp_squid_nets: '$ONEAPP_SQUID_NETS'
+    oneapp_nfs_host: '$ONEAPP_NFS_HOST'
+    oneapp_nfs_server: '$ONEAPP_NFS_SERVER'
+    oneapp_nfs_export: '$ONEAPP_NFS_EXPORT'
+    oneapp_cvmfs_proxy: '$ONEAPP_CVMFS_PROXY'
+    oneapp_ldap_host: '$ONEAPP_LDAP_HOST'
+    oneapp_ldap_users: '$ONEAPP_LDAP_USERS'
+    oneapp_pool_range: '$ONEAPP_POOL_RANGE'
+    oneapp_ood_servername: '$ONEAPP_OOD_SERVERNAME'
+    oneapp_ood_ssl_mode: '$ONEAPP_OOD_SSL_MODE'
+    oneapp_ood_ssl_cert: '$ONEAPP_OOD_SSL_CERT'
+    oneapp_ood_ssl_key: '$ONEAPP_OOD_SSL_KEY'
+    oneapp_worker_idle_seconds: '$ONEAPP_WORKER_IDLE_SECONDS'
   cpu: '1'
   vcpu: '2'
   memory: '4096'
@@ -51,8 +69,25 @@ opennebula_template:
     type: vnc
   os:
     arch: x86_64
+  inputs_order: >-
+    ONEAPP_ROLE,ONEAPP_NFS_HOST,ONEAPP_NFS_SERVER,ONEAPP_NFS_EXPORT,ONEAPP_NFS_ADMIN_IPS,ONEAPP_NFS_NET,ONEAPP_SQUID_NETS,ONEAPP_CVMFS_PROXY,ONEAPP_LDAP_HOST,ONEAPP_LDAP_USERS,ONEAPP_POOL_RANGE,ONEAPP_OOD_SERVERNAME,ONEAPP_OOD_SSL_MODE,ONEAPP_OOD_SSL_CERT,ONEAPP_OOD_SSL_KEY,ONEAPP_WORKER_IDLE_SECONDS
   user_inputs:
     oneapp_role: 'M|list|Role this VM plays in the service|portal,storage,worker|worker'
+    oneapp_nfs_host: 'O|text|Storage VM address on the compute network, for portal and worker||'
+    oneapp_nfs_server: 'O|text|NFS server of your own for the home, empty to use the storage role||'
+    oneapp_nfs_export: 'O|text|Path of the home export||/export/home'
+    oneapp_nfs_admin_ips: 'O|text|Addresses with root on the export, the portal, for storage||'
+    oneapp_nfs_net: 'O|text|Network allowed on the export, for storage||'
+    oneapp_squid_nets: 'O|text|Networks allowed on the software cache, for storage||'
+    oneapp_cvmfs_proxy: 'O|text|URL of the software cache, for portal and worker||'
+    oneapp_ldap_host: 'O|text|Portal address on the compute network, for worker||'
+    oneapp_ldap_users: 'O|text|Initial users, user:password:uid separated by spaces, for portal||'
+    oneapp_pool_range: 'O|text|Address range reserved for the workers, first-last, for portal||'
+    oneapp_ood_servername: 'O|text|Public host name of the portal, empty to use its address||'
+    oneapp_ood_ssl_mode: 'O|list|TLS certificate, for portal|letsencrypt,selfsigned,custom|selfsigned'
+    oneapp_ood_ssl_cert: 'O|text64|PEM certificate chain, for the custom mode||'
+    oneapp_ood_ssl_key: 'O|text64|PEM private key, for the custom mode||'
+    oneapp_worker_idle_seconds: 'O|number|Seconds a worker stays empty before the pool shrinks||600'
 logo: logos/openondemand.png
 images:
 - name: one-ondemand
@@ -60,7 +95,7 @@ images:
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 1434648576
+  size: 1390477312
   checksum:
-    md5: de28130ff80012002c06dcce43de970b
-    sha256: 2f77031f1295e10103c6717d94ea1a9a7ca78d6c9b2f4eeb2136c4421f63c360
+    md5: 06de299f91069f6b2d47c991a642618a
+    sha256: 7d1df8c7c01c8d6ae9bf033272d53dfee2c3965e478a47bf8ab577a8209f7dcf

@@ -26,7 +26,8 @@ decides at boot which one a VM plays, and the OneFlow template sets it per role.
 * Two virtual networks. A management network with internet access, where the portal
   publishes its web interface, and a compute network **reserved for the service**, where
   the three roles talk to each other. The portal treats every live address in the range
-  you reserve for the workers as a worker, so nothing else may live there.
+  that network assigns as a worker, apart from its own and the storage role's, so nothing
+  else may live there.
 * Outbound access to the EESSI CernVM-FS servers from the storage role, the only role that
   needs it.
 
@@ -108,22 +109,28 @@ describe for Sunstone and for the CLI.
 | `ONEAPP_OOD_SSL_CERT` | empty | PEM certificate chain for the `custom` mode. Paste the file, the form encodes it. |
 | `ONEAPP_OOD_SSL_KEY` | empty | PEM private key for the `custom` mode. The service template passes it to the portal VM only. |
 | `ONEAPP_LDAP_USERS` | `demo1:demo1pass:10001` | Initial users, as `user:password:uid` separated by spaces. |
-| `ONEAPP_PORTAL_IP` | `172.20.0.60` | Fixed address of the portal on the compute network. |
-| `ONEAPP_COMPUTE_NET` | `172.20.0.0/24` | The compute network in CIDR notation. |
-| `ONEAPP_POOL_RANGE` | `172.20.0.230-172.20.0.249` | Address range reserved for the workers, `first-last`, inside the compute network. |
+| `ONEAPP_WORKER_IDLE_SECONDS` | `600` | How long the oldest worker stays empty before the pool loses a VM. |
+| `ONEAPP_POOL_RANGE` | `172.20.0.50-172.20.0.249` | The address range the compute network assigns to VMs, `first-last`. |
 | `ONEAPP_NFS_SERVER` | empty | Address of an NFS server of your own for the home. Empty uses the storage role. |
 | `ONEAPP_NFS_EXPORT` | `/export/home` | Path of the home export, on the storage role or on that server. |
 
-The three compute network inputs have to agree with the network you select as `Compute`
-when instantiating. The portal address has to be outside the pool range.
+`ONEAPP_POOL_RANGE` has to match the address range of the network you select as `Compute`
+when instantiating. The roles find each other without fixed addresses. OneFlow hands the
+storage address to the portal and the workers, and the storage role asks OneGate which VM
+plays the portal and grants root on the home export to that address alone, so the workers
+keep `root_squash`.
 
 ## Scaling the worker pool
 
 The pool grows and shrinks on its own. Every worker reports its open session count to
 OneGate, OneFlow adds a VM when the average passes one session per worker, and removes one
-after three minutes with every worker empty. The portal sends each new session to the least
-loaded worker, so a VM added by the autoscaler receives work as soon as it is ready, which
-takes under a minute.
+when the oldest worker has been empty for `ONEAPP_WORKER_IDLE_SECONDS`, ten minutes by
+default. It shrinks one VM at a time, so a single long session keeps one worker, not six.
+The portal sends each new session to the least loaded worker and, among equals, to the
+youngest, so a VM added by the autoscaler receives work as soon as it is ready, which takes
+under a minute, and the oldest one drains as its sessions end. OneFlow always removes the
+oldest VM of the role, so a long session on the oldest worker holds the pool at its size
+until it ends.
 
 To change the pool by hand:
 

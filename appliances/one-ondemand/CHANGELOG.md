@@ -20,3 +20,11 @@ First release.
 - `ONEAPP_OOD_SSL_MODE` accepts `custom`, with the certificate chain and the private key
   given in `ONEAPP_OOD_SSL_CERT` and `ONEAPP_OOD_SSL_KEY`.
 - Each role names its VM after itself, `ood-portal`, `ood-storage` and `ood-worker-<octet>`.
+- A second disk on the storage role keeps the homes across services, and
+  `ONEAPP_NFS_SERVER` points the roles at an NFS server the site already runs.
+- The pool shrinks one worker at a time, when the oldest worker has been empty for
+  `ONEAPP_WORKER_IDLE_SECONDS`. New sessions go to the youngest of the least loaded workers,
+  so the oldest one drains.
+- No fixed addresses. The storage role asks OneGate which VM plays the portal and grants
+  root on the home export to that address alone, and takes the compute network from its
+  own NIC, so the service asks only for the address range of the compute network.

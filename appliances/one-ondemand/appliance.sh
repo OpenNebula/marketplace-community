@@ -293,7 +293,7 @@ cat > "${SRC}/appliance/configure.sh" <<'ONEOND_APPLIANCE_CONFIGURE_SH_'
 #   ONEAPP_ROLE            portal | storage | worker (mandatory)
 # Per role, the ones each script documents:
 #   portal    ONEAPP_NFS_HOST, ONEAPP_OOD_SERVERNAME, ONEAPP_POOL_RANGE, ONEAPP_CVMFS_PROXY
-#   storage   ONEAPP_NFS_ADMIN_IPS
+#   storage   nothing, it takes the network from its NIC and the portal from OneGate
 #   worker    ONEAPP_NFS_HOST, ONEAPP_LDAP_HOST, ONEAPP_CVMFS_PROXY
 #
 # Usage:  ONEAPP_ROLE=worker /usr/local/sbin/ood-appliance-configure
@@ -342,7 +342,6 @@ if [[ "$ROLE" != "worker" && "$(hostname)" != "ood-${ROLE}" ]]; then
 fi
 case "$ROLE" in
 storage)
-    : "${ONEAPP_NFS_ADMIN_IPS:?the storage role needs ONEAPP_NFS_ADMIN_IPS with the private IP of the portal}"
     run "home NFS server"      bash "${DIR}/storage/10-install-nfs.sh"
     run "site Squid for EESSI" bash "${DIR}/storage/20-install-squid.sh"
     ;;
@@ -429,6 +428,10 @@ DEST="${ONEAPP_APPLIANCE_DIR:-/opt/one-ondemand}"
 t0=$(date +%s)
 
 msg "=== common packages ==="
+# unattended-upgrades starts on the base image at boot and can install a kernel while this
+# runs, which made two builds of the same code differ by a kernel. It is stopped for the
+# build; its timers stay enabled, so the deployed VM keeps receiving security updates.
+systemctl stop unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer >/dev/null 2>&1 || true
 wait_apt_lock
 apt-get update -qq || die "apt-get update failed"
 apt_install apt-transport-https ca-certificates wget curl gnupg python3
@@ -502,6 +505,23 @@ done
 # other two roles it starts, finds no sessions and publishes zero, which does no harm, so
 # the configure of those roles stops it.
 ok "role services disabled, they are enabled per role at boot"
+
+# The packages above can bring a newer kernel than the base image carries. The build runs
+# on the old one, so autoremove keeps it, and both would then travel in every download of
+# the appliance. Only the newest kernel stays; the first boot of the image uses it.
+msg "=== one kernel, and nothing that nothing depends on ==="
+newest="$(ls /boot/vmlinuz-* 2>/dev/null | sed 's#.*/vmlinuz-##' | sort -V | tail -1)"
+old_kernels="$(dpkg-query -W -f='${Package}\n' 'linux-image-[0-9]*' 'linux-modules-[0-9]*' \
+    'linux-modules-extra-[0-9]*' 'linux-headers-[0-9]*' 2>/dev/null | grep -v -F "${newest%-generic}" || true)"
+if [[ -n "$old_kernels" ]]; then
+    echo "linux-base linux-base/removing-running-kernel boolean false" | debconf-set-selections
+    # shellcheck disable=SC2086
+    apt-get purge -y -qq $old_kernels >/dev/null 2>&1 \
+        || warn "could not remove the old kernel packages, the image keeps them"
+fi
+apt-get autoremove --purge -y -qq >/dev/null 2>&1 || warn "apt-get autoremove failed, the image keeps what it has"
+apt-get clean
+ok "kernels present: $(ls /boot/vmlinuz-* 2>/dev/null | sed 's#.*/vmlinuz-##' | tr '\n' ' ')"
 
 # --- provenance ------------------------------------------------------------------------------
 cat >> /etc/one-ondemand/build.env <<EOF
@@ -630,11 +650,17 @@ module OneOnDemandPool
     []
   end
 
+  # The least loaded worker, and among equals the youngest one, so the oldest worker drains as
+  # its sessions end and OneFlow, which always retires the oldest VM of the role, finds it
+  # empty. Without VM ids in the roster the tie is broken at random.
   def self.pick
     candidates = workers
     return nil if candidates.empty?
     fewest = candidates.map { |w| w['sessions'].to_i }.min
-    candidates.select { |w| w['sessions'].to_i == fewest }.sample['fqdn']
+    tied = candidates.select { |w| w['sessions'].to_i == fewest }
+    with_id = tied.select { |w| w['vm_id'] }
+    return tied.sample['fqdn'] if with_id.empty?
+    with_id.max_by { |w| w['vm_id'].to_i }['fqdn']
   rescue StandardError
     nil
   end
@@ -779,6 +805,21 @@ ldap_admin_pass() {
         (umask 077; printf '%s' "$pw" > "$f")
         printf '%s' "$pw"
     fi
+}
+
+# compute_net_cidr: the network of the last NIC in the context, in CIDR notation. In the
+# service that NIC is the compute network, because the roles get the management network first
+# and the compute network second. Empty when the context carries no NIC.
+compute_net_cidr() {
+    [[ -r /var/run/one-context/one_env ]] && . /var/run/one-context/one_env
+    local i ip mask
+    for i in 3 2 1 0; do
+        ip="ETH${i}_IP"; mask="ETH${i}_MASK"
+        [[ -n "${!ip:-}" ]] || continue
+        python3 -c 'import ipaddress, sys; print(ipaddress.ip_network(f"{sys.argv[1]}/{sys.argv[2]}", strict=False))' \
+            "${!ip}" "${!mask:-255.255.255.0}" 2>/dev/null
+        return
+    done
 }
 
 # wait_for SECS CMD...: repeats CMD until it returns 0 or SECS seconds elapse.
@@ -1141,8 +1182,12 @@ ok "/home mounted from ${NFS_HOST}:${HOME_EXPORT}"
 # --- verification ---------------------------------------------------------------------
 msg "checking the mount"
 findmnt -n -o SOURCE,FSTYPE,OPTIONS /home | sed 's/^/    /'
+# The storage role grants root to this portal once OneGate tells it the portal address,
+# from a timer, so the first attempts can find root_squash still in force.
 probe="/home/.one-ondemand-probe.$$"
-touch "$probe" && rm -f "$probe" || die "root cannot write to /home over NFS, no_root_squash for this portal is missing on the server"
+msg "checking that root can create homes in the export"
+wait_for 180 bash -c "touch '${probe}' 2>/dev/null && rm -f '${probe}'" \
+    || die "root cannot write to /home over NFS after 180s, the server did not grant no_root_squash to this portal"
 ok "the portal root can create homes in the export"
 ls -1 /home | sed 's/^/    /'
 ok "persistent home operational"
@@ -2200,17 +2245,20 @@ done
 # OneGate is authoritative, so if it answers it replaces the whole range. It knows which VMs
 # the worker role has right now, so there is no need to probe anything else.
 source_name="rango"
+declare -A vm_ids
 if [[ -r "$ONEGATE_LIB" ]]; then
     # shellcheck source=/dev/null
     . "$ONEGATE_LIB"
     if onegate_ready 2>/dev/null; then
         desde_onegate=()
-        while read -r ip; do
+        # The VM id travels with each worker so the dispatcher can prefer the youngest among
+        # equals, which lets the oldest one drain and be the one OneFlow retires.
+        while read -r ip vmid; do
             [[ -n "$ip" ]] || continue
             for h in "${permitted[@]}"; do
-                [[ "$h" == *"-${ip##*.}."* ]] && { desde_onegate+=("$h"); break; }
+                [[ "$h" == *"-${ip##*.}."* ]] && { desde_onegate+=("$h"); vm_ids["$h"]="$vmid"; break; }
             done
-        done < <(onegate_call service show --json 2>/dev/null | python3 -c '
+        done < <(onegate_call service show --json --extended 2>/dev/null | python3 -c '
 import json, sys
 try:
     d = json.load(sys.stdin)
@@ -2221,13 +2269,13 @@ for r in d.get("SERVICE", {}).get("roles", []):
     if r.get("name") not in ("worker", "workers"):
         continue
     for n in r.get("nodes", []):
-        tmpl = ((n.get("vm_info") or {}).get("VM", {})).get("TEMPLATE", {})
-        nics = tmpl.get("NIC", [])
+        vm = (n.get("vm_info") or {}).get("VM", {})
+        nics = vm.get("TEMPLATE", {}).get("NIC", [])
         if isinstance(nics, dict):
             nics = [nics]
         for nic in nics:
             if nic.get("IP"):
-                print(nic["IP"])
+                print(nic["IP"], vm.get("ID", ""))
 ' 2>/dev/null)
         if (( ${#desde_onegate[@]} > 0 )); then
             candidates=("${desde_onegate[@]}")
@@ -2282,7 +2330,11 @@ for h in "${candidates[@]}"; do
     # network.
     [[ -e "${probe_dir}/${h}" ]] || continue
     alive=$(( alive + 1 ))
-    entries+=("$(printf '{"fqdn":"%s","sessions":%s,"alive":true}' "$h" "${sessions[$h]}")")
+    if [[ -n "${vm_ids[$h]:-}" ]]; then
+        entries+=("$(printf '{"fqdn":"%s","sessions":%s,"alive":true,"vm_id":%s}' "$h" "${sessions[$h]}" "${vm_ids[$h]}")")
+    else
+        entries+=("$(printf '{"fqdn":"%s","sessions":%s,"alive":true}' "$h" "${sessions[$h]}")")
+    fi
 done
 
 write_out "$(printf '{"ts":%s,"source":"%s","candidates":%s,"alive":%s,"workers":[%s]}' \
@@ -2320,6 +2372,10 @@ cat > "${SRC}/storage/10-install-nfs.sh" <<'ONEOND_STORAGE_10_INSTALL_NFS_SH_'
 # the home of each user on their first login. The UIDs are the same everywhere,
 # because the LDAP of the portal supplies them.
 #
+# The portal address is not known when this runs, because the storage role starts first
+# and OneFlow does not fix the address of a VM. storage/export-refresh.sh, installed here
+# on a timer, asks OneGate which VM plays the portal and keeps the exports pointed at it.
+#
 # It is idempotent, so it rewrites its exports file and reloads it.
 #
 # The export lives on the root disk unless the VM carries a second disk. With one, the homes
@@ -2327,8 +2383,9 @@ cat > "${SRC}/storage/10-install-nfs.sh" <<'ONEOND_STORAGE_10_INSTALL_NFS_SH_'
 # across services (README, "Keeping the home").
 #
 # Variables:
-#   ONEAPP_NFS_NET        network with read and write access (172.20.0.0/24)
-#   ONEAPP_NFS_ADMIN_IPS  IPs with no_root_squash, space separated (the portal)
+#   ONEAPP_NFS_NET        network with read and write access, by default the one of the last NIC
+#   ONEAPP_NFS_ADMIN_IPS  IPs with no_root_squash, space separated; in the service the portal
+#                         address comes from OneGate instead, see export-refresh.sh
 #   ONEAPP_NFS_EXPORT     path of the export (/export/home)
 #
 # Usage:  ONEAPP_NFS_ADMIN_IPS="172.20.0.220" ./10-install-nfs.sh
@@ -2336,12 +2393,19 @@ cat > "${SRC}/storage/10-install-nfs.sh" <<'ONEOND_STORAGE_10_INSTALL_NFS_SH_'
 source "$(dirname "${BASH_SOURCE[0]}")/../scripts/00-lib.sh"
 require_root
 
-NFS_NET="${ONEAPP_NFS_NET:-172.20.0.0/24}"
+# The compute network is the one of the last NIC in the context, unless given. The portal
+# address comes from OneGate later, or from ONEAPP_NFS_ADMIN_IPS on a VM outside a service.
+NFS_NET="${ONEAPP_NFS_NET:-$(compute_net_cidr)}"
 NFS_ADMIN_IPS="${ONEAPP_NFS_ADMIN_IPS:-}"
 HOME_EXPORT="${ONEAPP_NFS_EXPORT:-/export/home}"
 EXPORTS_FILE=/etc/exports.d/one-ondemand.exports
+STATE_DIR=/etc/one-ondemand
 
-[[ -n "$NFS_ADMIN_IPS" ]] || die "ONEAPP_NFS_ADMIN_IPS is missing, it needs the private IP of the portal"
+[[ "$NFS_NET" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]] \
+    || die "'${NFS_NET}' is not a network in CIDR notation, set ONEAPP_NFS_NET or give the VM a NIC"
+for ip in $NFS_ADMIN_IPS; do
+    [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "'${ip}' in ONEAPP_NFS_ADMIN_IPS is not an address"
+done
 
 msg "installing the NFS server"
 # The Marketplace image arrives with no package lists, so without this update apt
@@ -2391,29 +2455,50 @@ else
 fi
 
 # --- exports ----------------------------------------------------------------------
-# The per IP entries go before the network one, because exportfs applies the most
-# specific match.
-msg "writing ${EXPORTS_FILE}"
-install -d -m 755 /etc/exports.d
+# The refresher writes the exports file, here once and then every 20 seconds from a timer,
+# so the portal gets root on the export as soon as OneGate knows its address. The per IP
+# entries go before the network one, because exportfs applies the most specific match.
+install -d -m 755 /etc/exports.d "$STATE_DIR"
 {
-    printf '# Generated by one-ondemand/storage/10-install-nfs.sh\n'
-    for ip in $NFS_ADMIN_IPS; do
-        printf '%s %s(rw,sync,no_subtree_check,no_root_squash,fsid=1)\n' "$HOME_EXPORT" "$ip"
-    done
-    printf '%s %s(rw,sync,no_subtree_check,root_squash,fsid=1)\n' "$HOME_EXPORT" "$NFS_NET"
-} > "$EXPORTS_FILE"
-chmod 644 "$EXPORTS_FILE"
+    printf 'NFS_NET=%s\n' "$NFS_NET"
+    printf 'HOME_EXPORT=%s\n' "$HOME_EXPORT"
+    printf 'NFS_ADMIN_IPS=%s\n' "$NFS_ADMIN_IPS"
+} > "${STATE_DIR}/nfs.env"
+chmod 644 "${STATE_DIR}/nfs.env"
+install -m 755 "$(dirname "${BASH_SOURCE[0]}")/export-refresh.sh" /usr/local/bin/ood-export-refresh
+cat > /etc/systemd/system/ood-export-refresh.service <<'UNIT'
+[Unit]
+Description=Keep root on the Open OnDemand home export granted to the portal
+After=nfs-server.service
 
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ood-export-refresh
+UNIT
+cat > /etc/systemd/system/ood-export-refresh.timer <<'UNIT'
+[Unit]
+Description=Refresh the Open OnDemand home export every 20 seconds
+
+[Timer]
+OnBootSec=20
+OnUnitActiveSec=20
+AccuracySec=5
+
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
 systemctl enable --now nfs-server >/dev/null 2>&1 || die "nfs-server does not start"
-exportfs -ra || die "exportfs rejected the configuration"
-ok "exports loaded"
+/usr/local/bin/ood-export-refresh || die "the export refresher failed"
+systemctl enable --now ood-export-refresh.timer >/dev/null 2>&1 || die "the export refresher timer does not start"
+ok "exports loaded, root for: $(grep -o '^[^#]* [0-9.]*(' "$EXPORTS_FILE" | awk '{print $2}' | tr -d '(' | tr '\n' ' ')"
 
 # --- verification ---------------------------------------------------------------------
 msg "checking that the export is visible"
 showmount -e localhost 2>&1 | sed 's/^/    /'
 showmount -e localhost 2>/dev/null | grep -q "^${HOME_EXPORT} " \
     || die "the server does not announce ${HOME_EXPORT}"
-ok "NFS server serving ${HOME_EXPORT} to ${NFS_NET}, with root for ${NFS_ADMIN_IPS}"
+ok "NFS server serving ${HOME_EXPORT} to ${NFS_NET}, root for the portal follows it through OneGate"
 ONEOND_STORAGE_10_INSTALL_NFS_SH_
 
 install -d -m 755 "${SRC}/storage"
@@ -2441,7 +2526,8 @@ cat > "${SRC}/storage/20-install-squid.sh" <<'ONEOND_STORAGE_20_INSTALL_SQUID_SH
 source "$(dirname "${BASH_SOURCE[0]}")/../scripts/00-lib.sh"
 require_root
 
-NETS="${ONEAPP_SQUID_NETS:-172.20.0.0/24 192.168.100.0/24}"
+NETS="${ONEAPP_SQUID_NETS:-$(compute_net_cidr)}"
+[[ -n "$NETS" ]] || die "ONEAPP_SQUID_NETS is missing and the context has no NIC to take the network from"
 CACHE_MB="${ONEAPP_SQUID_CACHE_MB:-20000}"
 
 msg "installing squid"
@@ -2495,6 +2581,75 @@ grep -q "TCP_" /var/log/squid/access.log 2>/dev/null && ok "squid records traffi
     || ok "squid started (no traffic yet, the log fills up with the clients)"
 ok "site proxy ready at http://${ip:-?}:3128"
 ONEOND_STORAGE_20_INSTALL_SQUID_SH_
+
+install -d -m 755 "${SRC}/storage"
+cat > "${SRC}/storage/export-refresh.sh" <<'ONEOND_STORAGE_EXPORT_REFRESH_SH_'
+#!/usr/bin/env bash
+# Keeps root on the home export granted to the portal, and to nobody else.
+#
+# The storage role starts before the portal, so when it writes its exports it cannot know
+# the portal address, and a service input cannot carry it either, because OneFlow does not
+# fix the address of a VM. This runs from a timer on the storage VM, asks OneGate which VM
+# plays the portal role in the service, and rewrites the exports file when the set of
+# addresses with root changes. The workers keep root_squash, because they run user code, and
+# only the portal, the role that creates each home on first login, gets no_root_squash.
+#
+# A storage VM outside a service keeps the addresses ONEAPP_NFS_ADMIN_IPS gave it.
+#
+# Reads /etc/one-ondemand/nfs.env, written by storage/10-install-nfs.sh.
+set -u
+
+ENV_FILE=/etc/one-ondemand/nfs.env
+EXPORTS_FILE=/etc/exports.d/one-ondemand.exports
+ONEGATE_LIB="${ONEGATE_LIB:-/etc/one-ondemand/onegate-lib.sh}"
+
+[[ -r "$ENV_FILE" ]] || exit 0
+# shellcheck source=/dev/null
+. "$ENV_FILE"
+: "${NFS_NET:?}" "${HOME_EXPORT:?}"
+
+admin="${NFS_ADMIN_IPS:-}"
+if [[ -r "$ONEGATE_LIB" ]]; then
+    # shellcheck source=/dev/null
+    . "$ONEGATE_LIB"
+    if onegate_ready 2>/dev/null; then
+        portal="$(onegate_call service show --json --extended 2>/dev/null | python3 -c '
+import ipaddress, json, sys
+net = ipaddress.ip_network(sys.argv[1])
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for r in d.get("SERVICE", {}).get("roles", []):
+    if r.get("name") != "portal":
+        continue
+    for n in r.get("nodes", []):
+        nics = ((n.get("vm_info") or {}).get("VM", {})).get("TEMPLATE", {}).get("NIC", [])
+        nics = [nics] if isinstance(nics, dict) else nics
+        for nic in nics:
+            ip = nic.get("IP")
+            if ip and ipaddress.ip_address(ip) in net:
+                print(ip)
+' "$NFS_NET")"
+        admin="$(printf '%s\n' $admin $portal | grep -v '^$' | sort -u | tr '\n' ' ')"
+    fi
+fi
+
+content="$({
+    printf '# Generated by one-ondemand/storage/export-refresh.sh, rewritten when the portal changes\n'
+    for ip in $admin; do
+        printf '%s %s(rw,sync,no_subtree_check,no_root_squash,fsid=1)\n' "$HOME_EXPORT" "$ip"
+    done
+    printf '%s %s(rw,sync,no_subtree_check,root_squash,fsid=1)\n' "$HOME_EXPORT" "$NFS_NET"
+})"
+
+if [[ "$content" != "$(cat "$EXPORTS_FILE" 2>/dev/null)" ]]; then
+    printf '%s\n' "$content" > "${EXPORTS_FILE}.tmp"
+    chmod 644 "${EXPORTS_FILE}.tmp"
+    mv -f "${EXPORTS_FILE}.tmp" "$EXPORTS_FILE"
+    exportfs -ra && logger -t ood-export-refresh "root on ${HOME_EXPORT} for: ${admin:-nobody yet}"
+fi
+ONEOND_STORAGE_EXPORT_REFRESH_SH_
 
 install -d -m 755 "${SRC}/worker"
 cat > "${SRC}/worker/clean-for-image.sh" <<'ONEOND_WORKER_CLEAN_FOR_IMAGE_SH_'
@@ -2718,26 +2873,26 @@ if [[ -n "$LDAP_HOST" ]]; then
     msg "configuring sssd against ldap://${LDAP_HOST}"
     backup_once /etc/sssd/sssd.conf
     cat > /etc/sssd/sssd.conf <<EOF
-    # Generated by one-ondemand/worker/configure.sh
-    [sssd]
-    config_file_version = 2
-    services = nss, pam
-    domains = ood
+# Generated by one-ondemand/worker/configure.sh
+[sssd]
+config_file_version = 2
+services = nss, pam
+domains = ood
 
-    [nss]
-    filter_users = root
-    homedir_substring = /home
+[nss]
+filter_users = root
+homedir_substring = /home
 
-    [domain/ood]
-    id_provider = ldap
-    auth_provider = ldap
-    ldap_uri = ldap://${LDAP_HOST}
-    ldap_search_base = ${BASE}
-    ldap_id_use_start_tls = false
-    ldap_auth_disable_tls_never_use_in_production = true
-    enumerate = true
-    cache_credentials = false
-    EOF
+[domain/ood]
+id_provider = ldap
+auth_provider = ldap
+ldap_uri = ldap://${LDAP_HOST}
+ldap_search_base = ${BASE}
+ldap_id_use_start_tls = false
+ldap_auth_disable_tls_never_use_in_production = true
+enumerate = true
+cache_credentials = false
+EOF
     chmod 600 /etc/sssd/sssd.conf
     systemctl enable sssd >/dev/null 2>&1
     systemctl restart sssd || die "sssd does not start"
@@ -3224,7 +3379,7 @@ cat > "${SRC}/worker/publish-load.sh" <<'ONEOND_WORKER_PUBLISH_LOAD_SH_'
 #!/usr/bin/env bash
 # Publishes the worker load to OneGate so OneFlow can decide when to grow.
 #
-# Three attributes. ACTIVE_SESSIONS is the number of Open OnDemand sessions alive on this VM,
+# ACTIVE_SESSIONS is the number of Open OnDemand sessions alive on this VM,
 # and it is the one that triggers growth, because it matches what the user does, opening an
 # app. CPU_BUSY is published too because it costs nothing and is useful for the dashboard.
 #
@@ -3236,11 +3391,18 @@ cat > "${SRC}/worker/publish-load.sh" <<'ONEOND_WORKER_PUBLISH_LOAD_SH_'
 # accumulating sessions, and would kill somebody's work.
 #
 # IDLE is 1 if this VM has no session and 0 if it has any, so its average is the fraction of
-# idle workers. A condition "IDLE > 0.99" literally means that all of them are empty, and that
-# is the only situation in which powering off the oldest one cannot do any harm. An average
-# cannot tell "nobody is working" from "one is working and another is not" if it is given the
-# number of sessions, and with IDLE it can.
-
+# idle workers. A condition "IDLE > 0.99" literally means that all of them are empty. An
+# average cannot tell "nobody is working" from "one is working and another is not" if it is
+# given the number of sessions, and with IDLE it can.
+#
+# OLDEST_IDLE retires one worker at a time. Since OneFlow always removes the oldest VM of the
+# role, the only safe question is "has the oldest worker been empty long enough". Each worker
+# publishes IDLE_SECONDS, the time since its last session ended, and every worker looks up the
+# oldest worker of the role through OneGate and publishes OLDEST_IDLE, 1 when that VM has been
+# empty for more than ONEAPP_WORKER_IDLE_SECONDS. All of them publish the same value, so the
+# role average is that value and "OLDEST_IDLE > 0.99" means the oldest worker can go. The
+# portal sends new sessions to the youngest worker among the least loaded, so the oldest one
+# drains as its sessions end.
 #
 # /etc/one-ondemand/onegate-lib.sh resolves the OneGate endpoint and explains why the injected
 # one is not trusted, and the boot configuration shares that same library.
@@ -3293,17 +3455,62 @@ fi
 printf '%s\n' "$ONEGATE_ENDPOINT" > "${STATE}/endpoint"
 log "publishing to ${ONEGATE_ENDPOINT}"
 
+# onegate_ready loaded the context environment, where ONEAPP_WORKER_IDLE_SECONDS arrives.
+IDLE_THRESHOLD="${ONEAPP_WORKER_IDLE_SECONDS:-600}"
+[[ "$IDLE_THRESHOLD" =~ ^[0-9]+$ ]] || IDLE_THRESHOLD=600
+log "the oldest worker is retired after ${IDLE_THRESHOLD}s without a session"
+
+# oldest_idle_seconds MY_IDLE: the IDLE_SECONDS of the oldest worker of the role, read through
+# OneGate, or MY_IDLE when this VM is that worker. Empty when the VM is not in a service.
+oldest_idle_seconds() {
+    local mine="$1"
+    onegate_call service show --json --extended 2>/dev/null | python3 -c '
+import json, sys
+me = sys.argv[1]
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+oldest = None
+for r in d.get("SERVICE", {}).get("roles", []):
+    if r.get("name") not in ("worker", "workers"):
+        continue
+    for n in r.get("nodes", []):
+        vm = (n.get("vm_info") or {}).get("VM", {})
+        try:
+            vid = int(vm.get("ID"))
+        except (TypeError, ValueError):
+            continue
+        if oldest is None or vid < oldest[0]:
+            oldest = (vid, vm.get("USER_TEMPLATE") or {})
+if oldest is None:
+    sys.exit(0)
+if str(oldest[0]) == me:
+    print(sys.argv[2])
+else:
+    print(oldest[1].get("IDLE_SECONDS", "0"))
+' "${VMID:-}" "$mine"
+}
+
 publish() {
-    local sessions="$1" busy="$2" idle=1
+    local sessions="$1" busy="$2" idle_secs="$3" idle=1 oldest oldest_idle=0
     (( sessions > 0 )) && idle=0
-    onegate_call vm update --data "ACTIVE_SESSIONS=${sessions}" >/dev/null 2>&1 || return 1
-    onegate_call vm update --data "CPU_BUSY=${busy}" >/dev/null 2>&1 || return 1
-    onegate_call vm update --data "IDLE=${idle}" >/dev/null 2>&1 || return 1
+    oldest="$(oldest_idle_seconds "$idle_secs")"
+    [[ "$oldest" =~ ^[0-9]+$ ]] || oldest=0
+    (( oldest > IDLE_THRESHOLD )) && oldest_idle=1
+    local kv
+    for kv in "ACTIVE_SESSIONS=${sessions}" "CPU_BUSY=${busy}" "IDLE=${idle}" \
+              "IDLE_SECONDS=${idle_secs}" "OLDEST_IDLE_SECONDS=${oldest}" "OLDEST_IDLE=${oldest_idle}"; do
+        onegate_call vm update --data "$kv" >/dev/null 2>&1 || return 1
+    done
+    PUBLISHED="ACTIVE_SESSIONS=${sessions} CPU_BUSY=${busy} IDLE=${idle} IDLE_SECONDS=${idle_secs} OLDEST_IDLE_SECONDS=${oldest} OLDEST_IDLE=${oldest_idle}"
 }
 
 # Initial value as soon as it starts, so a new VM is not missing from the average OneFlow
-# evaluates before it has published anything.
-publish 0 0 && log "ACTIVE_SESSIONS=0 CPU_BUSY=0 IDLE=1 (initial)"
+# evaluates before it has published anything. A worker that has never had a session counts
+# its idle time from here.
+last_busy=$(date +%s)
+publish 0 0 0 && log "${PUBLISHED} (initial)"
 
 while true; do
     read -r t0 i0 < <(cpu_snapshot)
@@ -3313,9 +3520,12 @@ while true; do
     busy=0
     (( dt > 0 )) && busy=$(( (100 * (dt - di)) / dt ))
     sessions="$(count_sessions)"
-    if publish "$sessions" "$busy"; then
+    now=$(date +%s)
+    (( sessions > 0 )) && last_busy=$now
+    idle_secs=$(( now - last_busy ))
+    if publish "$sessions" "$busy" "$idle_secs"; then
         printf '%s\n' "$sessions" > "${STATE}/sessions"
-        log "ACTIVE_SESSIONS=${sessions} CPU_BUSY=${busy} IDLE=$(( sessions > 0 ? 0 : 1 ))"
+        log "$PUBLISHED"
     else
         log "publish failed against ${ONEGATE_ENDPOINT}"
     fi

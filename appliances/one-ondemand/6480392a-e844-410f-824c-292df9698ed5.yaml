@@ -54,6 +54,10 @@ opennebula_template:
   deployment: straight
   description: 'Open OnDemand portal with shared storage and an elastic pool of compute VMs'
   ready_status_gate: true
+  # A value one role takes from another goes as a plain line here and reaches the VM through
+  # the "$NAME" reference the image template declares in its CONTEXT. OneFlow resolves the
+  # ${role...} references and the network names, and copies the service inputs into every
+  # VM by itself, so they are not repeated per role.
   roles:
   - name: storage
     cardinality: 1
@@ -68,10 +72,6 @@ opennebula_template:
         NETWORK_ID = "$Compute"
       ]
       ONEAPP_ROLE = "storage"
-      ONEAPP_NFS_ADMIN_IPS = "$ONEAPP_PORTAL_IP"
-      ONEAPP_NFS_NET = "$ONEAPP_COMPUTE_NET"
-      ONEAPP_NFS_EXPORT = "$ONEAPP_NFS_EXPORT"
-      ONEAPP_SQUID_NETS = "$ONEAPP_COMPUTE_NET"
     cooldown: 120
     elasticity_policies: []
     scheduled_policies: []
@@ -87,21 +87,12 @@ opennebula_template:
       ]
       NIC = [
         NAME = "NIC1",
-        NETWORK_ID = "$Compute",
-        IP = "$ONEAPP_PORTAL_IP"
+        NETWORK_ID = "$Compute"
       ]
       MEMORY = "8192"
       ONEAPP_ROLE = "portal"
       ONEAPP_NFS_HOST = "${storage.TEMPLATE.CONTEXT.ETH1_IP}"
-      ONEAPP_NFS_SERVER = "$ONEAPP_NFS_SERVER"
-      ONEAPP_NFS_EXPORT = "$ONEAPP_NFS_EXPORT"
       ONEAPP_CVMFS_PROXY = "http://${storage.TEMPLATE.CONTEXT.ETH1_IP}:3128"
-      ONEAPP_POOL_RANGE = "$ONEAPP_POOL_RANGE"
-      ONEAPP_OOD_SERVERNAME = "$ONEAPP_OOD_SERVERNAME"
-      ONEAPP_OOD_SSL_MODE = "$ONEAPP_OOD_SSL_MODE"
-      ONEAPP_OOD_SSL_CERT = "$ONEAPP_OOD_SSL_CERT"
-      ONEAPP_OOD_SSL_KEY = "$ONEAPP_OOD_SSL_KEY"
-      ONEAPP_LDAP_USERS = "$ONEAPP_LDAP_USERS"
     cooldown: 120
     elasticity_policies: []
     scheduled_policies: []
@@ -123,8 +114,6 @@ opennebula_template:
       ]
       ONEAPP_ROLE = "worker"
       ONEAPP_NFS_HOST = "${storage.TEMPLATE.CONTEXT.ETH1_IP}"
-      ONEAPP_NFS_SERVER = "$ONEAPP_NFS_SERVER"
-      ONEAPP_NFS_EXPORT = "$ONEAPP_NFS_EXPORT"
       ONEAPP_LDAP_HOST = "${portal.TEMPLATE.CONTEXT.ETH1_IP}"
       ONEAPP_CVMFS_PROXY = "http://${storage.TEMPLATE.CONTEXT.ETH1_IP}:3128"
     cooldown: 120
@@ -135,30 +124,31 @@ opennebula_template:
       period_number: 1
       period: 30
       cooldown: 120
-    # Scale down only when ALL the workers are empty. OneFlow evaluates the average of the
-    # attribute across the VMs of the role and when reducing it terminates the oldest one
-    # without draining it, so a condition on the number of sessions would power off the busy
-    # worker as soon as another one was free. IDLE is 1 per empty worker, so its average is
-    # the fraction of idle workers and "> 0.99" means no session is left in the role.
+    # Scale down one worker at a time. OneFlow evaluates the average of the attribute across
+    # the VMs of the role and when reducing it terminates the oldest one without draining it,
+    # so a condition on the number of sessions would power off a busy worker as soon as
+    # another one was free. Every worker publishes OLDEST_IDLE, 1 when the oldest worker of
+    # the role has had no session for ONEAPP_WORKER_IDLE_SECONDS, so the average is 1 only
+    # when all of them agree that the VM OneFlow is about to remove is empty. The portal
+    # sends new sessions to the youngest worker among the least loaded, so the oldest drains.
     - type: CHANGE
       adjust: -1
-      expression: 'IDLE > 0.99'
-      period_number: 6
-      period: 30
+      expression: 'OLDEST_IDLE > 0.99'
+      period_number: 2
+      period: 60
       cooldown: 300
     scheduled_policies: []
   networks:
     Management: 'M|network|Management network, reaches OneGate and the internet| |id::'
     Compute: 'M|network|Compute network, reserved for the service| |id::'
   custom_attrs:
-    ONEAPP_PORTAL_IP: 'M|text|Fixed address of the portal on the compute network||172.20.0.60'
-    ONEAPP_COMPUTE_NET: 'M|text|Compute network in CIDR notation||172.20.0.0/24'
-    ONEAPP_POOL_RANGE: 'M|text|Address range reserved for the compute pool, first-last||172.20.0.230-172.20.0.249'
+    ONEAPP_POOL_RANGE: 'M|text|Address range the compute network assigns to VMs, first-last||172.20.0.50-172.20.0.249'
     ONEAPP_OOD_SERVERNAME: 'O|text|Public host name of the portal, empty to use its address||'
     ONEAPP_OOD_SSL_MODE: 'O|list|TLS certificate|letsencrypt,selfsigned,custom|selfsigned'
     ONEAPP_OOD_SSL_CERT: 'O|text64|PEM certificate chain, for the custom mode||'
     ONEAPP_OOD_SSL_KEY: 'O|text64|PEM private key, for the custom mode||'
     ONEAPP_LDAP_USERS: 'O|text|Initial users, user:password:uid separated by spaces||demo1:demo1pass:10001'
+    ONEAPP_WORKER_IDLE_SECONDS: 'O|number|Seconds a worker stays empty before the pool shrinks||600'
     ONEAPP_NFS_SERVER: 'O|text|NFS server of your own for the home, empty to use the storage role||'
     ONEAPP_NFS_EXPORT: 'O|text|Path of the home export||/export/home'
 logo: logos/openondemand.png
