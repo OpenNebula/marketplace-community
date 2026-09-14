@@ -30,6 +30,21 @@ decides at boot which one a VM plays, and the OneFlow template sets it per role.
 * Outbound access to the EESSI CernVM-FS servers from the storage role, the only role that
   needs it.
 
+If a firewall sits between the networks, these are the flows the service needs:
+
+| From | To | Port | What for |
+|---|---|---|---|
+| users | portal, management network | 443, and 80 with `letsencrypt` | the web interface |
+| portal | workers | 22 | starting and stopping sessions |
+| workers | portal | 389 | resolving users against the directory |
+| portal and workers | storage | 2049 | the shared home over NFSv4 |
+| portal and workers | storage | 3128 | the software catalogue through the site cache |
+| every role | OneGate endpoint | 5030 by default | reporting readiness and session counts |
+| storage | internet | 80 and 8000 | the EESSI CernVM-FS servers, plain HTTP |
+
+The compute network carries the directory lookups in the clear, so it has to stay reserved
+for the service, as the first requirement says.
+
 Marketplace defaults per VM: 2 vCPU and 4 GB of memory, 8 GB for the portal role. A worker
 runs every session that lands on it inside one VM, so give the worker role the CPU and
 memory your sessions need.
@@ -89,11 +104,15 @@ describe for Sunstone and for the CLI.
 | Parameter | Service Default | Description |
 |---|---|---|
 | `ONEAPP_OOD_SERVERNAME` | empty | Public host name of the portal. It has to resolve to the management address of the portal VM. Empty makes the portal answer on that address. |
-| `ONEAPP_OOD_SSL_MODE` | `selfsigned` | `selfsigned` or `letsencrypt`. Let's Encrypt needs the host name to be public and port 80 reachable. |
+| `ONEAPP_OOD_SSL_MODE` | `selfsigned` | `selfsigned`, `letsencrypt` or `custom`. Let's Encrypt needs the host name to be public and port 80 reachable. `custom` installs the certificate given in the next two inputs. |
+| `ONEAPP_OOD_SSL_CERT` | empty | PEM certificate chain for the `custom` mode. Paste the file, the form encodes it. |
+| `ONEAPP_OOD_SSL_KEY` | empty | PEM private key for the `custom` mode. The service template passes it to the portal VM only. |
 | `ONEAPP_LDAP_USERS` | `demo1:demo1pass:10001` | Initial users, as `user:password:uid` separated by spaces. |
 | `ONEAPP_PORTAL_IP` | `172.20.0.60` | Fixed address of the portal on the compute network. |
 | `ONEAPP_COMPUTE_NET` | `172.20.0.0/24` | The compute network in CIDR notation. |
 | `ONEAPP_POOL_RANGE` | `172.20.0.230-172.20.0.249` | Address range reserved for the workers, `first-last`, inside the compute network. |
+| `ONEAPP_NFS_SERVER` | empty | Address of an NFS server of your own for the home. Empty uses the storage role. |
+| `ONEAPP_NFS_EXPORT` | `/export/home` | Path of the home export, on the storage role or on that server. |
 
 The three compute network inputs have to agree with the network you select as `Compute`
 when instantiating. The portal address has to be outside the pool range.
@@ -118,11 +137,12 @@ pool.
 ## Users
 
 Users live in the LDAP directory of the portal role, and adding one is one entry in it.
-On the portal VM, with the administrator password that `/etc/sssd/sssd.conf` holds as
-`ldap_default_authtok`:
+The portal generates the administrator password of the directory when it first configures
+itself and keeps it in `/etc/one-ondemand/ldap-admin.pass`, readable by root only. On the
+portal VM:
 
 ```shell
-$ ldapadd -x -D cn=admin,dc=ood,dc=local -W <<EOF
+$ ldapadd -x -D cn=admin,dc=ood,dc=local -y /etc/one-ondemand/ldap-admin.pass <<EOF
 dn: cn=alice,ou=Groups,dc=ood,dc=local
 objectClass: posixGroup
 cn: alice
@@ -146,15 +166,45 @@ EOF
 Generate the password hash with `slappasswd -h '{SSHA}' -s <password>`. The new user can
 sign in right away, and their home is created on first login.
 
+## Keeping the home
+
+By default the shared home lives on the root disk of the storage VM and goes with the
+service when the service is deleted. Two ways keep it.
+
+**A persistent disk on the storage role.** Create a persistent datablock once and attach
+it to the storage role of the service template, as a second `DISK` in its
+`vm_template_contents`:
+
+```shell
+$ oneimage create --name ood-home --type DATABLOCK --size 51200 --persistent --datastore default
+$ oneflow-template update 'Open OnDemand Service'
+```
+
+```text
+DISK = [ IMAGE_ID = "<id of ood-home>" ]
+```
+
+The storage role formats a blank second disk at first boot, labels it `ood-home` and keeps
+the homes on it. A disk that already carries the label is mounted as it is, so deleting the
+service and instantiating it again with the same image brings every home back. A disk with
+any other filesystem is left alone, and the role stops with an error that says so. Back the homes up with
+`onevm disk-saveas` or a disk snapshot of the storage VM, whichever your datastore supports.
+
+**An NFS server you already run.** Set `ONEAPP_NFS_SERVER` and `ONEAPP_NFS_EXPORT` and the
+portal and the workers mount that export instead of the storage role. The server has to
+export it with `no_root_squash` for the portal address, the role that creates each home on
+first login, and can keep `root_squash` for the workers. The storage role still runs the
+software cache, so it stays in the service.
+
 ## Removing the service
 
 ```shell
 $ oneflow delete <service_id>
 ```
 
-This terminates the three roles and their disks. The shared home lives on the disk of the
-storage VM, so it goes with the service unless you copy it out first. The imported image,
-VM template and service template stay in your OpenNebula until you delete them.
+This terminates the three VMs and the non persistent disks. A persistent home disk is
+released and keeps its content, an external export is untouched. The imported image, VM
+template and service template stay in your OpenNebula until you delete them.
 
 ## Where to look when something is wrong
 

@@ -154,6 +154,8 @@ service_cleanup()
 # do not edit by hand, edit the project repository and generate again.
 
 _one_ondemand_write_source() {
+    # The one-apps wrapper sets umask 0077, which would leave every file root only.
+    umask 022
     rm -rf "${SRC}"
     install -d -m 755 "${SRC}"
 
@@ -297,6 +299,14 @@ cat > "${SRC}/appliance/configure.sh" <<'ONEOND_APPLIANCE_CONFIGURE_SH_'
 # Usage:  ONEAPP_ROLE=worker /usr/local/sbin/ood-appliance-configure
 
 set -uo pipefail
+# The one-apps service wrapper runs this with umask 0077, so anything created with a plain
+# redirection would be readable by root only. Configuration that other users read, such as the
+# CernVM-FS client settings the cvmfs user parses or the cluster and application files each
+# user's PUN reads, needs the normal mode. Secrets are tightened where they are written.
+umask 022
+# one-context runs without HOME, and the EESSI modulefiles build paths from it, so a module
+# load here would fail on a nil value that a shell session never sees.
+export HOME="${HOME:-/root}"
 LOG=/var/log/ood-appliance-configure.log
 exec > >(tee -a "$LOG") 2>&1
 printf '\n===== %s =====\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -322,6 +332,14 @@ run() {
 }
 
 t0=$(date +%s)
+# The portal and the storage VM take their role as host name, so logs, certificates and the
+# prompt say what the machine is instead of carrying the name of the VM the image was built
+# on. The worker derives its own from its address in worker/configure.sh.
+if [[ "$ROLE" != "worker" && "$(hostname)" != "ood-${ROLE}" ]]; then
+    hostnamectl set-hostname "ood-${ROLE}" 2>/dev/null || hostname "ood-${ROLE}"
+    sed -i "s/^127\.0\.1\.1 .*/127.0.1.1 ood-${ROLE}/" /etc/hosts 2>/dev/null || true
+    grep -q "^127.0.1.1 ood-${ROLE}" /etc/hosts || echo "127.0.1.1 ood-${ROLE}" >> /etc/hosts
+fi
 case "$ROLE" in
 storage)
     : "${ONEAPP_NFS_ADMIN_IPS:?the storage role needs ONEAPP_NFS_ADMIN_IPS with the private IP of the portal}"
@@ -329,7 +347,8 @@ storage)
     run "site Squid for EESSI" bash "${DIR}/storage/20-install-squid.sh"
     ;;
 portal)
-    : "${ONEAPP_NFS_HOST:?the portal role needs ONEAPP_NFS_HOST}"
+    [[ -n "${ONEAPP_NFS_SERVER:-}${ONEAPP_NFS_HOST:-}" ]] \
+        || die "the portal role needs ONEAPP_NFS_HOST, or ONEAPP_NFS_SERVER for a server of your own"
     : "${ONEAPP_CVMFS_PROXY:?the portal role needs ONEAPP_CVMFS_PROXY}"
     : "${ONEAPP_POOL_RANGE:?the portal role needs ONEAPP_POOL_RANGE with the range reserved for the workers}"
     # The metrics publisher belongs to the worker role. On the portal it would only spend
@@ -397,6 +416,13 @@ cat > "${SRC}/appliance/install.sh" <<'ONEOND_APPLIANCE_INSTALL_SH_'
 
 source "$(dirname "${BASH_SOURCE[0]}")/../scripts/00-lib.sh"
 require_root
+# The one-apps service wrapper runs this with umask 0077. Files the image ships for other
+# users, such as the applications each user's PUN reads, need the normal mode, so it is set
+# here and appliance/configure.sh does the same at boot.
+umask 022
+# one-context runs without HOME, and the EESSI modulefiles build paths from it, so a module
+# load here would fail on a nil value that a shell session never sees.
+export HOME="${HOME:-/root}"
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="${ONEAPP_APPLIANCE_DIR:-/opt/one-ondemand}"
@@ -640,8 +666,17 @@ ONEAPP_OOD_SSL_EMAIL="${ONEAPP_OOD_SSL_EMAIL:-}"
 # --- identity parameters -------------------------------------------------------
 ONEAPP_LDAP_DOMAIN="${ONEAPP_LDAP_DOMAIN:-ood.local}"
 ONEAPP_LDAP_BASE="${ONEAPP_LDAP_BASE:-dc=ood,dc=local}"
-ONEAPP_LDAP_ADMIN_PASS="${ONEAPP_LDAP_ADMIN_PASS:-oodadmin}"
+# Empty by default. A published image must not ship a password, so when none is given the
+# portal generates one the first time it configures the directory and keeps it root only in
+# /etc/one-ondemand/ldap-admin.pass. ldap_admin_pass below resolves it.
+ONEAPP_LDAP_ADMIN_PASS="${ONEAPP_LDAP_ADMIN_PASS:-}"
 ONEAPP_LDAP_USERS="${ONEAPP_LDAP_USERS:-demo1:demo1pass:10001 demo2:demo2pass:10002}"
+
+# --- home parameters ----------------------------------------------------------------
+# The home comes from the storage role unless ONEAPP_NFS_SERVER names an NFS server the
+# site already runs. Both the portal and the workers read these two.
+ONEAPP_NFS_SERVER="${ONEAPP_NFS_SERVER:-}"
+ONEAPP_NFS_EXPORT="${ONEAPP_NFS_EXPORT:-/export/home}"
 
 # --- target parameters ---------------------------------------------------------
 # EESSI catalogue version and the module with JupyterLab and ipykernel for the kernel.
@@ -699,11 +734,14 @@ apt_install() {
 
 # service_up UNIT: start and enable it, and check that it ended up active.
 service_up() {
-    local unit="$1"
-    systemctl enable --now "$unit" >/dev/null 2>&1
-    # A unit that systemd generates from an LSB init script, which is what slapd still is on
-    # Ubuntu 24.04, is not reported active the moment enable returns. Checking straight away
-    # reports a failure for a service that starts correctly a second later.
+    local unit="$1" out
+    # enable and start are two calls on purpose. For a unit that systemd generates from an
+    # LSB init script, which is what slapd still is on Ubuntu 24.04, `enable --now` hands the
+    # whole call to systemd-sysv-install and returns 0 without starting anything.
+    out="$(systemctl enable "$unit" 2>&1)" \
+        || warn "could not enable ${unit} at boot: ${out}"
+    out="$(systemctl start "$unit" 2>&1)" \
+        || die "service ${unit} did not start: ${out}"
     wait_for 30 systemctl is-active --quiet "$unit" \
         || die "service ${unit} did not end up active"
     ok "${unit} active and enabled at boot"
@@ -724,6 +762,23 @@ ldap_users_each() {
         IFS=: read -r user pass uid <<<"$entry"
         "$fn" "$user" "$pass" "$uid"
     done
+}
+
+# ldap_admin_pass: the LDAP administrator password, from the context, from the file the portal
+# keeps, or generated now and written to that file with mode 600. Only the portal calls it.
+ldap_admin_pass() {
+    local f=/etc/one-ondemand/ldap-admin.pass
+    if [[ -n "$ONEAPP_LDAP_ADMIN_PASS" ]]; then
+        printf '%s' "$ONEAPP_LDAP_ADMIN_PASS"
+    elif [[ -s "$f" ]]; then
+        cat "$f"
+    else
+        install -d -m 755 /etc/one-ondemand
+        local pw
+        pw="$(openssl rand -base64 30 | tr -d '/+=' | cut -c1-24)"
+        (umask 077; printf '%s' "$pw" > "$f")
+        printf '%s' "$pw"
+    fi
 }
 
 # wait_for SECS CMD...: repeats CMD until it returns 0 or SECS seconds elapse.
@@ -824,6 +879,7 @@ require_root
 
 BASE="$ONEAPP_LDAP_BASE"
 ADMIN_DN="cn=admin,${BASE}"
+ONEAPP_LDAP_ADMIN_PASS="$(ldap_admin_pass)"
 PEOPLE_OU="ou=People,${BASE}"
 GROUPS_OU="ou=Groups,${BASE}"
 
@@ -1019,15 +1075,17 @@ cat > "${SRC}/scripts/25-mount-home.sh" <<'ONEOND_SCRIPTS_25_MOUNT_HOME_SH_'
 # nothing beyond checking it.
 #
 # Variables:
-#   ONEAPP_NFS_HOST   private IP of the storage VM (required)
+#   ONEAPP_NFS_HOST     private IP of the storage VM (required)
+#   ONEAPP_NFS_SERVER   an NFS server the site already runs, it replaces the storage VM
+#   ONEAPP_NFS_EXPORT   path of the export (/export/home)
 #
 # Usage:  ONEAPP_NFS_HOST=172.20.0.221 ./25-mount-home.sh
 
 source "$(dirname "${BASH_SOURCE[0]}")/00-lib.sh"
 require_root
 
-NFS_HOST="${ONEAPP_NFS_HOST:?ONEAPP_NFS_HOST is missing, set it to the private IP of the NFS server}"
-HOME_EXPORT="${ONEAPP_NFS_HOME_EXPORT:-/export/home}"
+NFS_HOST="${ONEAPP_NFS_SERVER:-${ONEAPP_NFS_HOST:?ONEAPP_NFS_HOST is missing, set it to the private IP of the NFS server}}"
+HOME_EXPORT="$ONEAPP_NFS_EXPORT"
 STATE_DIR=/etc/one-ondemand
 FSTAB_LINE="${NFS_HOST}:${HOME_EXPORT} /home nfs4 _netdev,hard,noatime 0 0"
 
@@ -1109,6 +1167,7 @@ PORTAL_YML=/etc/ood/config/ood_portal.yml
 CERT_DIR=/etc/ood/ssl
 SERVERNAME="$ONEAPP_OOD_SERVERNAME"
 BASE="$ONEAPP_LDAP_BASE"
+ONEAPP_LDAP_ADMIN_PASS="$(ldap_admin_pass)"
 
 # Without a name given, the portal answers on its own address. A published image cannot
 # default to any particular host name, and an address always works for a first login over
@@ -1156,6 +1215,20 @@ issue_selfsigned() {
 
 if [[ -f "$cert" && -f "$key" ]]; then
     ok "a certificate for ${SERVERNAME} already exists"
+elif [[ "$ONEAPP_OOD_SSL_MODE" == "custom" ]]; then
+    # A certificate the customer already owns, given as two base64 encoded PEM inputs, which
+    # is how a text64 user input reaches the context. A value that already starts with the
+    # PEM header is taken as is.
+    pem_input() {
+        if [[ "$1" == "-----BEGIN"* ]]; then printf '%s\n' "$1"; else printf '%s' "$1" | base64 -d; fi
+    }
+    [[ -n "${ONEAPP_OOD_SSL_CERT:-}" && -n "${ONEAPP_OOD_SSL_KEY:-}" ]] \
+        || die "ONEAPP_OOD_SSL_MODE=custom needs ONEAPP_OOD_SSL_CERT and ONEAPP_OOD_SSL_KEY"
+    pem_input "$ONEAPP_OOD_SSL_CERT" > "$cert"
+    (umask 077; pem_input "$ONEAPP_OOD_SSL_KEY" > "$key")
+    openssl x509 -in "$cert" -noout >/dev/null 2>&1 || die "ONEAPP_OOD_SSL_CERT is not a PEM certificate"
+    openssl pkey -in "$key" -noout >/dev/null 2>&1 || die "ONEAPP_OOD_SSL_KEY is not a PEM private key"
+    ok "customer certificate installed at ${cert}"
 elif [[ "$ONEAPP_OOD_SSL_MODE" == "letsencrypt" ]]; then
     apt_install certbot
     msg "requesting a Let's Encrypt certificate for ${SERVERNAME}"
@@ -1726,13 +1799,6 @@ MOUNT=/cvmfs/software.eessi.io
 EESSI_VERSION="${ONEAPP_EESSI_VERSION:-2025.06}"
 EESSI_JUPYTER_MODULE="${ONEAPP_EESSI_JUPYTER_MODULE:-JupyterLab/4.4.9-GCCcore-14.3.0}"
 
-# The first version mounted /cvmfs over NFS, so that mount is removed if it is still there.
-if findmnt -n -t nfs4,nfs "$MOUNT" >/dev/null 2>&1; then
-    umount "$MOUNT" || die "could not unmount the old NFS ${MOUNT}"
-    sed -i "\# ${MOUNT} nfs4 #d" /etc/fstab
-    ok "old NFS mount of ${MOUNT} removed"
-fi
-
 CVMFS_PROXY="$PROXY" EESSI_VERSION="$EESSI_VERSION" CVMFS_MOUNT=autofs \
     bash "$(dirname "${BASH_SOURCE[0]}")/cvmfs-client.sh" || die "the CernVM-FS client did not end up operational"
 
@@ -1780,9 +1846,12 @@ done
 ok "version, modules and proxy recorded in ${STATE_DIR}/eessi.env"
 
 msg "checking the EESSI Jupyter module from the portal"
-if bash -c "source '${init}' >/dev/null 2>&1 && module load '${EESSI_JUPYTER_MODULE}' >/dev/null 2>&1 && python -c 'import ipykernel'" 2>/dev/null; then
+# The output is kept, because a module that fails to load on a cold cache says why on stderr
+# and that is what a reader of the log needs.
+if out="$(bash -c "source '${init}' >/dev/null 2>&1 && module load '${EESSI_JUPYTER_MODULE}' && python -c 'import ipykernel'" 2>&1)"; then
     ok "${EESSI_JUPYTER_MODULE} loads and brings ipykernel"
 else
+    printf '%s\n' "$out" | tail -n 8 | sed 's/^/    /'
     die "could not load ${EESSI_JUPYTER_MODULE} from EESSI ${EESSI_VERSION}"
 fi
 ONEOND_SCRIPTS_70_INSTALL_CVMFS_SH_
@@ -2043,7 +2112,18 @@ else
     cvmfs_config reload >/dev/null 2>&1 || true
 fi
 
-cvmfs_config probe "$REPO" 2>&1 | grep -q OK || die "cvmfs_config probe ${REPO} failed, does it reach the proxy ${PROXY}?"
+# Anything that stats the mount point before this configuration exists, such as a findmnt or
+# a shell completion, makes autofs record a failed mount and refuse the repository for its
+# negative timeout, 60 seconds by default. The probe therefore retries past that window.
+probe_ok() { cvmfs_config probe "$REPO" 2>&1 | grep -q OK; }
+if ! probe_ok; then
+    msg "the first probe of ${REPO} failed, retrying while autofs forgets it"
+    deadline=$(( $(date +%s) + 90 ))
+    until probe_ok; do
+        (( $(date +%s) < deadline )) || die "cvmfs_config probe ${REPO} failed, does it reach the proxy ${PROXY}?"
+        sleep 5
+    done
+fi
 [[ -f "${MOUNT}/versions/${EESSI_VERSION}/init/bash" ]] || die "EESSI ${EESSI_VERSION} is not present in ${MOUNT}"
 ok "EESSI ${EESSI_VERSION} available in ${MOUNT} (mode ${MODE}, proxy ${PROXY}, cache ${QUOTA_MB} MB)"
 ONEOND_SCRIPTS_CVMFS_CLIENT_SH_
@@ -2242,9 +2322,14 @@ cat > "${SRC}/storage/10-install-nfs.sh" <<'ONEOND_STORAGE_10_INSTALL_NFS_SH_'
 #
 # It is idempotent, so it rewrites its exports file and reloads it.
 #
+# The export lives on the root disk unless the VM carries a second disk. With one, the homes
+# go there, so an operator who attaches a persistent image to the storage role keeps them
+# across services (README, "Keeping the home").
+#
 # Variables:
 #   ONEAPP_NFS_NET        network with read and write access (172.20.0.0/24)
 #   ONEAPP_NFS_ADMIN_IPS  IPs with no_root_squash, space separated (the portal)
+#   ONEAPP_NFS_EXPORT     path of the export (/export/home)
 #
 # Usage:  ONEAPP_NFS_ADMIN_IPS="172.20.0.220" ./10-install-nfs.sh
 
@@ -2253,7 +2338,7 @@ require_root
 
 NFS_NET="${ONEAPP_NFS_NET:-172.20.0.0/24}"
 NFS_ADMIN_IPS="${ONEAPP_NFS_ADMIN_IPS:-}"
-HOME_EXPORT="${ONEAPP_NFS_HOME_EXPORT:-/export/home}"
+HOME_EXPORT="${ONEAPP_NFS_EXPORT:-/export/home}"
 EXPORTS_FILE=/etc/exports.d/one-ondemand.exports
 
 [[ -n "$NFS_ADMIN_IPS" ]] || die "ONEAPP_NFS_ADMIN_IPS is missing, it needs the private IP of the portal"
@@ -2267,7 +2352,43 @@ apt_install nfs-kernel-server
 ok "nfs-kernel-server installed"
 
 install -d -m 755 "$HOME_EXPORT"
-ok "home export at ${HOME_EXPORT}"
+
+# --- home disk ------------------------------------------------------------------------
+# The first disk that is not the root disk and has no partitions is the home disk. The
+# context comes as a CD-ROM, so it never matches. A blank disk is formatted and labelled;
+# one that already carries the label is mounted as it is, with whatever it holds. A disk
+# with any other filesystem belongs to someone else and is left alone, out loud.
+HOME_LABEL=ood-home
+home_disk() {
+    local root_dev dev
+    root_dev="$(lsblk -n -o PKNAME "$(findmnt -n -o SOURCE /)" 2>/dev/null | head -1)"
+    for dev in $(lsblk -dn -o NAME,TYPE | awk '$2 == "disk" {print $1}'); do
+        [[ "$dev" == "${root_dev:-vda}" ]] && continue
+        [[ "$(lsblk -n -o TYPE "/dev/${dev}" | grep -c part)" -eq 0 ]] || continue
+        printf '/dev/%s' "$dev"
+        return 0
+    done
+    return 1
+}
+if disk="$(home_disk)"; then
+    fs_label="$(blkid -o value -s LABEL "$disk" 2>/dev/null || true)"
+    fs_type="$(blkid -o value -s TYPE "$disk" 2>/dev/null || true)"
+    if [[ "$fs_label" == "$HOME_LABEL" ]]; then
+        ok "${disk} carries the home from an earlier service"
+    elif [[ -z "$fs_type" ]]; then
+        msg "formatting the blank disk ${disk} for the homes"
+        mkfs.ext4 -q -L "$HOME_LABEL" "$disk" || die "mkfs.ext4 ${disk} failed"
+    else
+        die "${disk} holds a ${fs_type} filesystem that is not the home, refusing to format it"
+    fi
+    backup_once /etc/fstab
+    sed -i "\#^LABEL=${HOME_LABEL} #d" /etc/fstab
+    printf 'LABEL=%s %s ext4 defaults,nofail 0 2\n' "$HOME_LABEL" "$HOME_EXPORT" >> /etc/fstab
+    findmnt -n "$HOME_EXPORT" >/dev/null 2>&1 || mount "$HOME_EXPORT" || die "could not mount ${disk} on ${HOME_EXPORT}"
+    ok "homes on ${disk}, mounted at ${HOME_EXPORT}"
+else
+    ok "no home disk attached, the homes live on the root disk at ${HOME_EXPORT}"
+fi
 
 # --- exports ----------------------------------------------------------------------
 # The per IP entries go before the network one, because exportfs applies the most
@@ -2286,16 +2407,6 @@ chmod 644 "$EXPORTS_FILE"
 systemctl enable --now nfs-server >/dev/null 2>&1 || die "nfs-server does not start"
 exportfs -ra || die "exportfs rejected the configuration"
 ok "exports loaded"
-
-# --- pool register --------------------------------------------------------------------
-# The workers announce themselves here with their name and their session count, and the
-# portal reads it to send each new session to the one with the most room. The storage VM
-# creates the directory, because the workers mount the home with root_squash and cannot
-# create anything at the root of the export. That mount option is right for them, because
-# they run user code. Mode 1777 lets each worker write its own file without giving it
-# permissions on the rest.
-install -d -m 1777 "${HOME_EXPORT}/.ood-pool"
-ok "pool register at ${HOME_EXPORT}/.ood-pool"
 
 # --- verification ---------------------------------------------------------------------
 msg "checking that the export is visible"
@@ -2511,7 +2622,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # here, that VM would end in configure_failure with the motd in red, and the harness checks
 # would pass anyway because they only read what was baked in. Each block below skips itself
 # and warns.
-NFS_HOST="${ONEAPP_NFS_HOST:-}"
+NFS_HOST="${ONEAPP_NFS_SERVER:-${ONEAPP_NFS_HOST:-}}"
+HOME_EXPORT="$ONEAPP_NFS_EXPORT"
 LDAP_HOST="${ONEAPP_LDAP_HOST:-}"
 CVMFS_PROXY="${ONEAPP_CVMFS_PROXY:-}"
 BASE="${ONEAPP_LDAP_BASE:-dc=ood,dc=local}"
@@ -2580,9 +2692,9 @@ ok "hostname -A returns ${fqdn} (${priv_ip})"
 if [[ -n "$NFS_HOST" ]]; then
     msg "mounting the home from ${NFS_HOST}"
     backup_once /etc/fstab
-    entry="${NFS_HOST}:/export/home /home nfs4 _netdev,hard,noatime 0 0"
+    entry="${NFS_HOST}:${HOME_EXPORT} /home nfs4 _netdev,hard,noatime 0 0"
     install -d -m 755 /home
-    sed -i '\#^[0-9.]*:/export/home /home nfs4 #d' /etc/fstab
+    sed -i '\#^[^ ]*:[^ ]* /home nfs4 #d' /etc/fstab
     printf '%s\n' "$entry" >> /etc/fstab
     findmnt -n /home >/dev/null 2>&1 || mount /home || die "could not mount /home from ${NFS_HOST}"
     ok "/home mounted from ${NFS_HOST}"

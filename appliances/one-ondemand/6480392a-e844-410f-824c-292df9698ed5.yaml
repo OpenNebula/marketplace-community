@@ -1,6 +1,6 @@
 ---
 name: Open OnDemand Service
-version: 1.0.0-20260909
+version: 1.0.0-20260914
 publisher: OpenNebula Systems
 publisher_email: contact@opennebula.io
 description: |-
@@ -38,7 +38,7 @@ tags:
 - eessi
 - ubuntu
 - service
-creation_time: 1788950621
+creation_time: 1789391060
 os-id: Ubuntu
 os-release: '24.04 LTS'
 os-arch: x86_64
@@ -70,6 +70,7 @@ opennebula_template:
       ONEAPP_ROLE = "storage"
       ONEAPP_NFS_ADMIN_IPS = "$ONEAPP_PORTAL_IP"
       ONEAPP_NFS_NET = "$ONEAPP_COMPUTE_NET"
+      ONEAPP_NFS_EXPORT = "$ONEAPP_NFS_EXPORT"
       ONEAPP_SQUID_NETS = "$ONEAPP_COMPUTE_NET"
     cooldown: 120
     elasticity_policies: []
@@ -92,10 +93,14 @@ opennebula_template:
       MEMORY = "8192"
       ONEAPP_ROLE = "portal"
       ONEAPP_NFS_HOST = "${storage.TEMPLATE.CONTEXT.ETH1_IP}"
+      ONEAPP_NFS_SERVER = "$ONEAPP_NFS_SERVER"
+      ONEAPP_NFS_EXPORT = "$ONEAPP_NFS_EXPORT"
       ONEAPP_CVMFS_PROXY = "http://${storage.TEMPLATE.CONTEXT.ETH1_IP}:3128"
       ONEAPP_POOL_RANGE = "$ONEAPP_POOL_RANGE"
       ONEAPP_OOD_SERVERNAME = "$ONEAPP_OOD_SERVERNAME"
       ONEAPP_OOD_SSL_MODE = "$ONEAPP_OOD_SSL_MODE"
+      ONEAPP_OOD_SSL_CERT = "$ONEAPP_OOD_SSL_CERT"
+      ONEAPP_OOD_SSL_KEY = "$ONEAPP_OOD_SSL_KEY"
       ONEAPP_LDAP_USERS = "$ONEAPP_LDAP_USERS"
     cooldown: 120
     elasticity_policies: []
@@ -118,6 +123,8 @@ opennebula_template:
       ]
       ONEAPP_ROLE = "worker"
       ONEAPP_NFS_HOST = "${storage.TEMPLATE.CONTEXT.ETH1_IP}"
+      ONEAPP_NFS_SERVER = "$ONEAPP_NFS_SERVER"
+      ONEAPP_NFS_EXPORT = "$ONEAPP_NFS_EXPORT"
       ONEAPP_LDAP_HOST = "${portal.TEMPLATE.CONTEXT.ETH1_IP}"
       ONEAPP_CVMFS_PROXY = "http://${storage.TEMPLATE.CONTEXT.ETH1_IP}:3128"
     cooldown: 120
@@ -148,7 +155,11 @@ opennebula_template:
     ONEAPP_COMPUTE_NET: 'M|text|Compute network in CIDR notation||172.20.0.0/24'
     ONEAPP_POOL_RANGE: 'M|text|Address range reserved for the compute pool, first-last||172.20.0.230-172.20.0.249'
     ONEAPP_OOD_SERVERNAME: 'O|text|Public host name of the portal, empty to use its address||'
-    ONEAPP_OOD_SSL_MODE: 'O|list|TLS certificate|letsencrypt,selfsigned|selfsigned'
+    ONEAPP_OOD_SSL_MODE: 'O|list|TLS certificate|letsencrypt,selfsigned,custom|selfsigned'
+    ONEAPP_OOD_SSL_CERT: 'O|text64|PEM certificate chain, for the custom mode||'
+    ONEAPP_OOD_SSL_KEY: 'O|text64|PEM private key, for the custom mode||'
     ONEAPP_LDAP_USERS: 'O|text|Initial users, user:password:uid separated by spaces||demo1:demo1pass:10001'
+    ONEAPP_NFS_SERVER: 'O|text|NFS server of your own for the home, empty to use the storage role||'
+    ONEAPP_NFS_EXPORT: 'O|text|Path of the home export||/export/home'
 logo: logos/openondemand.png
 images: []

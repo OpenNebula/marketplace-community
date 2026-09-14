@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0-20260909
+## 1.0.0-20260914
 
 First release.
 
@@ -14,3 +14,9 @@ First release.
 - Elastic pool of compute VMs. Every worker reports its session count to OneGate, OneFlow
   resizes the role, and the portal sends each new session to the least loaded worker.
 - A worker created from the image reaches `READY` in well under a minute.
+- The image ships no directory and no password. The portal creates its LDAP directory at
+  first boot with an administrator password it generates and keeps in
+  `/etc/one-ondemand/ldap-admin.pass`, readable by root only.
+- `ONEAPP_OOD_SSL_MODE` accepts `custom`, with the certificate chain and the private key
+  given in `ONEAPP_OOD_SSL_CERT` and `ONEAPP_OOD_SSL_KEY`.
+- Each role names its VM after itself, `ood-portal`, `ood-storage` and `ood-worker-<octet>`.

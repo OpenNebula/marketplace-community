@@ -1,6 +1,6 @@
 ---
 name: Open OnDemand
-version: 1.0.0-20260909
+version: 1.0.0-20260914
 publisher: OpenNebula Systems
 publisher_email: contact@opennebula.io
 description: |-
@@ -30,7 +30,7 @@ tags:
 - ubuntu
 - service
 format: qcow2
-creation_time: 1788950621
+creation_time: 1789391060
 os-id: Ubuntu
 os-release: '24.04 LTS'
 os-arch: x86_64
@@ -56,11 +56,11 @@ opennebula_template:
 logo: logos/openondemand.png
 images:
 - name: one-ondemand
-  url: 'https://d38nm155miqkyg.cloudfront.net/service_one-ondemand-1.0.0-20260909.qcow2'
+  url: 'https://d38nm155miqkyg.cloudfront.net/service_one-ondemand-1.0.0-20260914.qcow2'
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 1433665536
+  size: 1434648576
   checksum:
-    md5: e3f7bc124dd3e343b27434c36c0c2ff6
-    sha256: ebd264fc5f4d286dd574e57bdebe789a2c59ecde0b1635591138a5b0ed40a154
+    md5: de28130ff80012002c06dcce43de970b
+    sha256: 2f77031f1295e10103c6717d94ea1a9a7ca78d6c9b2f4eeb2136c4421f63c360
