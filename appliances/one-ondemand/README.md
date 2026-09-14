@@ -2,97 +2,161 @@
 
 [Open OnDemand](https://openondemand.org/) gives HPC users a browser interface to a
 cluster: a file browser, a shell, job submission and interactive applications. This
-appliance runs it on OpenNebula, with an elastic pool of compute VMs behind it.
+appliance runs it on OpenNebula as a OneFlow service with an elastic pool of compute VMs
+behind the portal. A user signs in, presses a button and gets a JupyterLab notebook,
+RStudio, Octave, a C++ notebook or VS Code running on a compute VM, with the scientific
+software served from the [EESSI](https://www.eessi.io/) catalogue and a home directory
+that follows them from session to session.
 
-## One image, three roles
-
-The three roles of the service run from the same image. `ONEAPP_ROLE` decides at boot which
-role a VM plays, and the OneFlow template sets it per role.
+The service has three roles, all of them running from the same image. `ONEAPP_ROLE`
+decides at boot which one a VM plays, and the OneFlow template sets it per role.
 
 | Role | What it runs | Cardinality |
 |---|---|---|
 | `storage` | NFS server for the shared home, site cache for the software catalogue | 1 |
-| `portal` | Open OnDemand, its LDAP directory and Dex authentication | 1 |
-| `worker` | User sessions, inside Apptainer containers | 1 to N, elastic |
-
-One image instead of three because it is one thing to build, publish and document, and
-because the OneKS appliance is packaged the same way, with one image for the control plane
-and for the nodes.
-
-## What a session runs
-
-Scientific software comes from [EESSI](https://www.eessi.io/) over CernVM-FS, cached by the
-storage role. A notebook opened here loads the same modules a user would find at a EuroHPC
-centre, so nothing has to be installed per site. The catalogue is read only and shared, and
-the container is only there to isolate the processes of one session from another.
-
-The applications shipped are JupyterLab, Octave, a C++ notebook, RStudio and VS Code.
-
-## How the pool grows
-
-Every worker reports its open session count to OneGate. OneFlow adds a VM when the average
-passes the threshold and removes one after a quiet period. Resizing the role is only half of
-the work, because the portal also has to send new sessions to the new VM and the
-`linux_host` adapter sends everything to a single fixed host by default. So the portal keeps
-a roster of live workers and sends each new session to the least loaded one, and without
-that an added worker would sit idle.
-
-A worker created from this image is ready in well under a minute, because everything that
-only depends on the internet is already inside the image and only the addresses of the
-deployment are applied at boot.
+| `portal` | Open OnDemand, its own LDAP directory and Dex authentication | 1 |
+| `worker` | User sessions, inside Apptainer containers | 1 to 6, elastic |
 
 ## Requirements
 
-- [OneFlow](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/overview.html)
-  and [OneGate](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/onegate_usage.html).
-- OneGate reachable from the service network. In a deployment without a virtual router the
-  appliance uses the gateway of the VM instead, but the requirement stands.
-- A compute network **reserved for the service**. The portal treats every live address in
-  the declared range as a worker, so nothing else may live there.
-- Outbound access to the EESSI CernVM-FS servers from the storage role, which is the only
-  role that needs it.
+* OpenNebula version: >= 6.10
+* [OneFlow](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/overview.html)
+  and [OneGate](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/onegate_usage.html),
+  with OneGate reachable from the service networks.
+* Two virtual networks. A management network with internet access, where the portal
+  publishes its web interface, and a compute network **reserved for the service**, where
+  the three roles talk to each other. The portal treats every live address in the range
+  you reserve for the workers as a worker, so nothing else may live there.
+* Outbound access to the EESSI CernVM-FS servers from the storage role, the only role that
+  needs it.
 
-## Parameters
+Marketplace defaults per VM: 2 vCPU and 4 GB of memory, 8 GB for the portal role. A worker
+runs every session that lands on it inside one VM, so give the worker role the CPU and
+memory your sessions need.
 
-Common to every role:
+## Downloading and deploying the service
 
-| Parameter | Meaning |
-|---|---|
-| `ONEAPP_ROLE` | `portal`, `storage` or `worker` |
+1. Download the `Open OnDemand Service` appliance from the OpenNebula Community
+   Marketplace. This imports the service template, the VM template and the image that the
+   three roles share:
 
-Role `storage`:
+   ```shell
+   $ onemarketapp export 'Open OnDemand Service' 'Open OnDemand Service' --datastore default
+   ```
 
-| Parameter | Meaning |
-|---|---|
-| `ONEAPP_NFS_ADMIN_IPS` | addresses allowed to act as root on the shared home, that is the portal |
-| `ONEAPP_NFS_NET` | network allowed to mount the shared home |
-| `ONEAPP_SQUID_NETS` | networks allowed to use the site cache |
+2. Adjust the templates if you need to. The worker cardinality, its CPU and its memory are
+   the settings most deployments change, and they are in the `worker` role of the service
+   template:
 
-Role `portal`:
+   ```shell
+   $ oneflow-template update 'Open OnDemand Service'
+   ```
 
-| Parameter | Meaning |
-|---|---|
-| `ONEAPP_NFS_HOST` | address of the storage role |
-| `ONEAPP_CVMFS_PROXY` | URL of the site cache |
-| `ONEAPP_POOL_RANGE` | address range reserved for the compute pool, `first-last` |
-| `ONEAPP_OOD_SERVERNAME` | public hostname of the portal |
-| `ONEAPP_OOD_SSL_MODE` | `letsencrypt` or `selfsigned` |
-| `ONEAPP_LDAP_USERS` | initial users, `user:password:uid` separated by spaces |
+3. Instantiate the service. It asks for the two networks and for the inputs listed in the
+   next section:
 
-Role `worker`:
+   ```shell
+   $ oneflow-template instantiate 'Open OnDemand Service'
+   ```
 
-| Parameter | Meaning |
-|---|---|
-| `ONEAPP_NFS_HOST` | address of the storage role |
-| `ONEAPP_LDAP_HOST` | address of the portal role |
-| `ONEAPP_CVMFS_PROXY` | URL of the site cache |
+4. Wait for the service to reach `RUNNING`. The roles start in order, storage first and the
+   workers last, and each one declares itself ready only when it is actually serving:
 
-## After deployment
+   ```shell
+   $ oneflow list
+   $ oneflow show <service_id>
+   ```
 
-The portal answers on `https://<ONEAPP_OOD_SERVERNAME>/`. Sign in with one of the users
-given in `ONEAPP_LDAP_USERS`, and the home directory is created on first login. Adding a user
-later is one entry in the directory on the portal role, and their home and their sessions
-follow from that entry.
+   The whole service is running about four minutes after instantiation.
+
+5. Open the portal. Its address is the one you gave as `ONEAPP_OOD_SERVERNAME`, or the
+   management address of the portal VM if you left it empty:
+
+   ```shell
+   $ onevm list -f NAME~portal -l ID,NAME,IP
+   ```
+
+   Then go to `https://<ONEAPP_OOD_SERVERNAME>/` and sign in with one of the users given in
+   `ONEAPP_LDAP_USERS`, by default `demo1` with password `demo1pass`. The home directory
+   is created on first login.
+
+## Service inputs
+
+| Parameter | Service Default | Description |
+|---|---|---|
+| `ONEAPP_OOD_SERVERNAME` | empty | Public host name of the portal. It has to resolve to the management address of the portal VM. Empty makes the portal answer on that address. |
+| `ONEAPP_OOD_SSL_MODE` | `selfsigned` | `selfsigned` or `letsencrypt`. Let's Encrypt needs the host name to be public and port 80 reachable. |
+| `ONEAPP_LDAP_USERS` | `demo1:demo1pass:10001` | Initial users, as `user:password:uid` separated by spaces. |
+| `ONEAPP_PORTAL_IP` | `172.20.0.60` | Fixed address of the portal on the compute network. |
+| `ONEAPP_COMPUTE_NET` | `172.20.0.0/24` | The compute network in CIDR notation. |
+| `ONEAPP_POOL_RANGE` | `172.20.0.230-172.20.0.249` | Address range reserved for the workers, `first-last`, inside the compute network. |
+
+The three compute network inputs have to agree with the network you select as `Compute`
+when instantiating. The portal address has to be outside the pool range.
+
+## Scaling the worker pool
+
+The pool grows and shrinks on its own. Every worker reports its open session count to
+OneGate, OneFlow adds a VM when the average passes one session per worker, and removes one
+after three minutes with every worker empty. The portal sends each new session to the least
+loaded worker, so a VM added by the autoscaler receives work as soon as it is ready, which
+takes under a minute.
+
+To change the pool by hand:
+
+```shell
+$ oneflow scale <service_id> worker <cardinality>
+```
+
+The role accepts from 1 to 6 workers. Raise `max_vms` in the service template for a larger
+pool.
+
+## Users
+
+Users live in the LDAP directory of the portal role, and adding one is one entry in it.
+On the portal VM, with the administrator password that `/etc/sssd/sssd.conf` holds as
+`ldap_default_authtok`:
+
+```shell
+$ ldapadd -x -D cn=admin,dc=ood,dc=local -W <<EOF
+dn: cn=alice,ou=Groups,dc=ood,dc=local
+objectClass: posixGroup
+cn: alice
+gidNumber: 10003
+
+dn: uid=alice,ou=People,dc=ood,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: alice
+cn: alice
+sn: alice
+uidNumber: 10003
+gidNumber: 10003
+homeDirectory: /home/alice
+loginShell: /bin/bash
+userPassword: {SSHA}...
+EOF
+```
+
+Generate the password hash with `slappasswd -h '{SSHA}' -s <password>`. The new user can
+sign in right away, and their home is created on first login.
+
+## Where to look when something is wrong
 
 Each role logs what it did at boot in `/var/log/ood-appliance-configure.log`, and
-`/etc/one-ondemand/build.env` records what the image was built from.
+`/etc/one-ondemand/build.env` records what the image was built from. A role that failed to
+configure shows it in its `motd` and in `/etc/one-appliance/status`, and OneFlow keeps the
+service out of `RUNNING` until every role has declared itself ready.
+
+## Limitations and operating mode
+
+* Sessions run on VMs without a scheduler. A worker holds every session that lands on it,
+  and a session uses the whole VM, shared with the other sessions on the same VM.
+* There is no GPU support in this release.
+* The scientific software comes from EESSI over CernVM-FS. The first load of a module on a
+  fresh deployment downloads it through the site cache on the storage role.
+
+## Release notes
+
+See the [changelog](CHANGELOG.md).

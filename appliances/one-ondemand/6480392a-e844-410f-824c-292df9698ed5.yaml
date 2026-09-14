@@ -147,7 +147,7 @@ opennebula_template:
     ONEAPP_PORTAL_IP: 'M|text|Fixed address of the portal on the compute network||172.20.0.60'
     ONEAPP_COMPUTE_NET: 'M|text|Compute network in CIDR notation||172.20.0.0/24'
     ONEAPP_POOL_RANGE: 'M|text|Address range reserved for the compute pool, first-last||172.20.0.230-172.20.0.249'
-    ONEAPP_OOD_SERVERNAME: 'M|text|Public hostname of the portal||'
+    ONEAPP_OOD_SERVERNAME: 'O|text|Public host name of the portal, empty to use its address||'
     ONEAPP_OOD_SSL_MODE: 'O|list|TLS certificate|letsencrypt,selfsigned|selfsigned'
     ONEAPP_LDAP_USERS: 'O|text|Initial users, user:password:uid separated by spaces||demo1:demo1pass:10001'
 logo: logos/openondemand.png
