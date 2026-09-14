@@ -20,8 +20,8 @@ decides at boot which one a VM plays, and the OneFlow template sets it per role.
 ## Requirements
 
 * OpenNebula version: >= 6.10
-* [OneFlow](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/overview.html)
-  and [OneGate](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/onegate_usage.html),
+* [OneFlow](https://docs.opennebula.io/7.4/product/operation_references/opennebula_services_configuration/oneflow/)
+  and [OneGate](https://docs.opennebula.io/7.4/product/virtual_machines_operation/multi-vm_workflows/onegate_usage/),
   with OneGate reachable from the service networks.
 * Two virtual networks. A management network with internet access, where the portal
   publishes its web interface, and a compute network **reserved for the service**, where
@@ -35,6 +35,10 @@ runs every session that lands on it inside one VM, so give the worker role the C
 memory your sessions need.
 
 ## Downloading and deploying the service
+
+The Community Marketplace has to be registered in your OpenNebula first, once, as
+[the marketplace instructions](https://github.com/OpenNebula/marketplace-community/wiki/marketplace_start)
+describe for Sunstone and for the CLI.
 
 1. Download the `Open OnDemand Service` appliance from the OpenNebula Community
    Marketplace. This imports the service template, the VM template and the image that the
@@ -142,6 +146,16 @@ EOF
 Generate the password hash with `slappasswd -h '{SSHA}' -s <password>`. The new user can
 sign in right away, and their home is created on first login.
 
+## Removing the service
+
+```shell
+$ oneflow delete <service_id>
+```
+
+This terminates the three roles and their disks. The shared home lives on the disk of the
+storage VM, so it goes with the service unless you copy it out first. The imported image,
+VM template and service template stay in your OpenNebula until you delete them.
+
 ## Where to look when something is wrong
 
 Each role logs what it did at boot in `/var/log/ood-appliance-configure.log`, and
@@ -156,6 +170,13 @@ service out of `RUNNING` until every role has declared itself ready.
 * There is no GPU support in this release.
 * The scientific software comes from EESSI over CernVM-FS. The first load of a module on a
   fresh deployment downloads it through the site cache on the storage role.
+
+## Versions and licence
+
+Open OnDemand 4.2 on Ubuntu 24.04, EESSI 2025.06, Apptainer 1.5. Open OnDemand is
+[MIT licensed](https://github.com/OSC/ondemand/blob/master/LICENSE.txt) and the appliance
+code is Apache 2.0, like the rest of this repository. There is no fee for the appliance, and
+it runs on your own OpenNebula, so it costs what the VMs it creates cost.
 
 ## Release notes
 

@@ -6,7 +6,7 @@ publisher_email: contact@opennebula.io
 description: |-
   A complete [Open OnDemand](https://openondemand.org/) deployment on OpenNebula,
   orchestrated by
-  [OneFlow](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/overview.html).
+  [OneFlow](https://docs.opennebula.io/7.4/product/operation_references/opennebula_services_configuration/oneflow/).
 
   Three roles start in order:
 
@@ -23,9 +23,9 @@ description: |-
   the autoscaler receives work immediately instead of sitting idle.
 
   Requires
-  [OneFlow](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/overview.html)
+  [OneFlow](https://docs.opennebula.io/7.4/product/operation_references/opennebula_services_configuration/oneflow/)
   and
-  [OneGate](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/onegate_usage.html),
+  [OneGate](https://docs.opennebula.io/7.4/product/virtual_machines_operation/multi-vm_workflows/onegate_usage/),
   and OneGate must be reachable from the service network.
 
   Based on the VM template
