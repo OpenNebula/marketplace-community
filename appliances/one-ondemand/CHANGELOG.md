@@ -37,6 +37,7 @@ First release.
   application forms offer the sizes that exist.
 - The OpenID Connect connector no longer requires the preferred_username claim: it falls
   back to the email, so providers that omit the claim work. Verified against a Dex provider.
+- The portal publishes its address as `OOD_URL` in the attributes of its VM, next to `READY`.
 - The VM template lists only the service inputs as user inputs. The values the service
   derives per role are not, so the Sunstone instantiate wizard has no "Roles Inputs" step
   that could send them back empty and override the role expressions.

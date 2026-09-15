@@ -385,6 +385,13 @@ esac
 # standard hook would do nothing and OneFlow would keep waiting.
 if . /etc/one-ondemand/onegate-lib.sh 2>/dev/null && onegate_ready; then
     onegate_fix_context_env || true
+    # The portal also publishes the address users type, so it shows in the attributes of
+    # the portal VM in Sunstone and in onevm show, next to READY.
+    if [[ "$ROLE" == "portal" && -s /etc/one-ondemand/portal-url ]]; then
+        onegate_call vm update --data "OOD_URL=$(cat /etc/one-ondemand/portal-url)" >/dev/null 2>&1 \
+            && ok "OOD_URL published: $(cat /etc/one-ondemand/portal-url)" \
+            || warn "could not publish OOD_URL"
+    fi
     onegate_call vm update --data "READY=YES" >/dev/null 2>&1 \
         && ok "READY=YES published to ${ONEGATE_ENDPOINT}" \
         || warn "could not publish READY=YES to ${ONEGATE_ENDPOINT}"
@@ -1307,6 +1314,10 @@ if [[ -z "$SERVERNAME" ]]; then
     [[ -n "$SERVERNAME" ]] || die "ONEAPP_OOD_SERVERNAME is missing and this VM has no IPv4 address"
     warn "no ONEAPP_OOD_SERVERNAME, the portal answers on ${SERVERNAME}"
 fi
+# The address users type. configure.sh publishes it to OneGate as OOD_URL of this VM, so
+# it shows in the attributes of the portal VM in Sunstone and in onevm show.
+install -d -m 755 /etc/one-ondemand
+printf 'https://%s/\n' "$SERVERNAME" > /etc/one-ondemand/portal-url
 if [[ "$SERVERNAME" =~ ^[0-9]+(\.[0-9]+){3}$ ]]; then
     SERVERNAME_SAN="IP:${SERVERNAME}"
 else

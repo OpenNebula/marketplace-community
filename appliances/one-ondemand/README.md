@@ -90,12 +90,15 @@ describe for Sunstone and for the CLI.
 
    The whole service is running about four minutes after instantiation.
 
-5. Open the portal. Its address is the one you gave as `ONEAPP_OOD_SERVERNAME`, or the
-   management address of the portal VM if you left it empty:
+5. Open the portal. The portal VM publishes its address as `OOD_URL`, visible in the
+   attributes of the VM in Sunstone and from the command line:
 
    ```shell
-   $ onevm list -f NAME~portal -l ID,NAME,IP
+   $ onevm show <portal vm id> | grep OOD_URL
    ```
+
+   It is `https://` and the name you gave as `ONEAPP_OOD_SERVERNAME`, or the management
+   address of the portal VM if you left it empty.
 
    Then go to `https://<ONEAPP_OOD_SERVERNAME>/` and sign in with one of the users given in
    `ONEAPP_LDAP_USERS`, by default `demo1` with password `demo1pass`. The home directory
