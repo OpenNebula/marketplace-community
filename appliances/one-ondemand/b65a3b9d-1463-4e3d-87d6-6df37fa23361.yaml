@@ -40,6 +40,11 @@ opennebula_template:
   # Every variable a role reads is declared here, as the Lithops appliance does, because a
   # value the service template sets at the top level of vm_template_contents only reaches
   # the CONTEXT of the VM through a reference like these. The service fills them per role.
+  # The user_inputs below list only the service inputs. The values the service template
+  # derives per role (the role itself, the storage and portal addresses, the cache URL) stay
+  # out of user_inputs on purpose: Sunstone shows every VM template input that is not a
+  # service input in a "Roles Inputs" step and sends its value back, and an empty value
+  # from that step overrides the role expression in the service template.
   context:
     network: 'YES'
     report_ready: 'YES'
@@ -76,17 +81,10 @@ opennebula_template:
   os:
     arch: x86_64
   inputs_order: >-
-    ONEAPP_ROLE,ONEAPP_NFS_HOST,ONEAPP_NFS_SERVER,ONEAPP_NFS_EXPORT,ONEAPP_NFS_ADMIN_IPS,ONEAPP_NFS_NET,ONEAPP_SQUID_NETS,ONEAPP_CVMFS_PROXY,ONEAPP_LDAP_HOST,ONEAPP_LDAP_USERS,ONEAPP_POOL_RANGE,ONEAPP_OOD_SERVERNAME,ONEAPP_OOD_SSL_MODE,ONEAPP_OOD_SSL_CERT,ONEAPP_OOD_SSL_KEY,ONEAPP_WORKER_IDLE_SECONDS,ONEAPP_WORKER_MAX_SESSIONS,ONEAPP_SLURM_CONTROLLER,ONEAPP_OIDC_ISSUER,ONEAPP_OIDC_CLIENT_ID,ONEAPP_OIDC_CLIENT_SECRET,ONEAPP_OIDC_NAME
+    ONEAPP_NFS_SERVER,ONEAPP_NFS_EXPORT,ONEAPP_LDAP_USERS,ONEAPP_POOL_RANGE,ONEAPP_OOD_SERVERNAME,ONEAPP_OOD_SSL_MODE,ONEAPP_OOD_SSL_CERT,ONEAPP_OOD_SSL_KEY,ONEAPP_WORKER_IDLE_SECONDS,ONEAPP_WORKER_MAX_SESSIONS,ONEAPP_SLURM_CONTROLLER,ONEAPP_OIDC_ISSUER,ONEAPP_OIDC_CLIENT_ID,ONEAPP_OIDC_CLIENT_SECRET,ONEAPP_OIDC_NAME
   user_inputs:
-    oneapp_role: 'M|list|Role this VM plays in the service|portal,storage,worker|worker'
-    oneapp_nfs_host: 'O|text|Storage VM address on the compute network, for portal and worker||'
     oneapp_nfs_server: 'O|text|NFS server of your own for the home, empty to use the storage role||'
     oneapp_nfs_export: 'O|text|Path of the home export||/export/home'
-    oneapp_nfs_admin_ips: 'O|text|Addresses with root on the export, the portal, for storage||'
-    oneapp_nfs_net: 'O|text|Network allowed on the export, for storage||'
-    oneapp_squid_nets: 'O|text|Networks allowed on the software cache, for storage||'
-    oneapp_cvmfs_proxy: 'O|text|URL of the software cache, for portal and worker||'
-    oneapp_ldap_host: 'O|text|Portal address on the compute network, for worker||'
     oneapp_ldap_users: 'O|text|Initial users, user:password:uid separated by spaces, for portal||'
     oneapp_pool_range: 'O|text|Address range reserved for the workers, first-last, for portal||'
     oneapp_ood_servername: 'O|text|Public host name of the portal, empty to use its address||'

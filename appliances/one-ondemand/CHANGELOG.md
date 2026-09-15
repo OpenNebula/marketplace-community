@@ -34,6 +34,9 @@ First release.
   NVIDIA device, and the README shows the role with PCI passthrough. Untested, no GPU at hand.
 - Worker sizes. Any `worker_<size>` role in the service template is a second pool, and the
   application forms offer the sizes that exist.
+- The VM template lists only the service inputs as user inputs. The values the service
+  derives per role are not, so the Sunstone instantiate wizard has no "Roles Inputs" step
+  that could send them back empty and override the role expressions.
 - A Slurm cluster as a second target. `ONEAPP_SLURM_CONTROLLER`, as a service input or
   added later with `onevm updateconf`, declares the controller of a OneSlurm service that
   shares the users and the home, and the Job Composer and Active Jobs offer it beside the
