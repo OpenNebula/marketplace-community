@@ -105,7 +105,7 @@ images:
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 1554644992
+  size: 1552941056
   checksum:
-    md5: 900bb8fbf7c69427a21907c926f05d45
-    sha256: 7edce6e1f9fb784720416215861d0922719c58aca4984878e373cd499273bd40
+    md5: a0c45357cf75f46af4d9f8b19e464ad1
+    sha256: ed28edca4da414f00c6c7e52e06d622dd8e5926531b5bff0c7238dbd42abdf23
