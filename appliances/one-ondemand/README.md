@@ -4,8 +4,8 @@
 cluster: a file browser, a shell, job submission and interactive applications. This
 appliance runs it on OpenNebula as a OneFlow service with an elastic pool of compute VMs
 behind the portal. A user signs in, presses a button and gets a JupyterLab notebook,
-RStudio, Octave, a C++ notebook or VS Code running on a compute VM, with the scientific
-software served from the [EESSI](https://www.eessi.io/) catalogue and a home directory
+RStudio, Octave, a C++ notebook, VS Code or an Xfce desktop running on a compute VM, with the
+scientific software served from the [EESSI](https://www.eessi.io/) catalogue and a home directory
 that follows them from session to session.
 
 The service has three roles, all of them running from the same image. `ONEAPP_ROLE`
@@ -173,6 +173,17 @@ Each size grows and shrinks on its own, with the same rules, and starts with at 
 VM, because OneFlow scales a role from its metrics and a role with no VM has none. A session
 asked for a size with no live worker falls back to the whole pool.
 
+## The desktop
+
+The Xfce Desktop application opens a Linux desktop on a worker VM inside the browser. The
+session starts a TurboVNC server on the VM, runs Xfce under its display and bridges the
+display with websockify; the portal serves noVNC and proxies the websocket through its
+`/rnode` route, so the user needs nothing beyond port 443 of the portal. The desktop uses
+the same worker pool, the same home and the same EESSI catalogue as the notebooks: a terminal
+opened on it has `module load`. The form asks for the resolution and the session hours, and
+for the worker size when the service has more than one. The desktop packages live on the
+worker VM and reach the container through the bind of `/usr` and `/etc`.
+
 ## GPU workers, prepared
 
 A worker role with a GPU is a `worker_gpu` role in the service template, [as any other
@@ -229,7 +240,9 @@ service does. The portal installs no Slurm client: `sbatch`, `squeue`, `scancel`
 `sacct` and `scontrol` run on the controller over SSH as the user, with the key the portal
 keeps in each user's home, the same mechanism the AWS and Azure integrations use.
 Accounting history in `sacct` depends on OneSlurm running `slurmdbd`, which its default
-deployment does not.
+deployment does not. `docs/slurmdbd-setup.sh` in the project repository adds it to the
+controller (MariaDB, `slurmdbd`, the accounting lines in `slurm.conf` and the cluster
+registration); with it, `sacct` from the portal lists the finished jobs of the user.
 
 ## An external identity provider
 
@@ -238,8 +251,8 @@ login page offers the provider beside the local directory, through the OpenID Co
 connector of Dex, with `https://<ONEAPP_OOD_SERVERNAME>/dex/callback` as the redirect URI to
 register at the provider. A user who signs in that way still needs an account in the
 directory under the same name, the `preferred_username` claim or the part of the email
-before the at sign, because a session runs as a Unix user with a home. This was written
-without a provider to test against, so a site enabling it checks one login first.
+before the at sign, because a session runs as a Unix user with a home. Verified against a
+Dex provider that sends no `preferred_username`: the email fallback mapped the user.
 
 ## Users
 
@@ -384,7 +397,8 @@ so pass the same value or add the users again once the new portal is up.
 
 ## Versions and licence
 
-Open OnDemand 4.2 on Ubuntu 24.04, EESSI 2025.06, Apptainer 1.5. Open OnDemand is
+Open OnDemand 4.2 on Ubuntu 24.04, EESSI 2025.06, Apptainer 1.5, TurboVNC 3.3.1 and Xfce
+4.18 for the desktop. Open OnDemand is
 [MIT licensed](https://github.com/OSC/ondemand/blob/master/LICENSE.txt) and the appliance
 code is Apache 2.0, like the rest of this repository. There is no fee for the appliance, and
 it runs on your own OpenNebula, so it costs what the VMs it creates cost.

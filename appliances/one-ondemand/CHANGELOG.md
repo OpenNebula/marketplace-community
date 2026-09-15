@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0-20260914
+## 1.0.0-20260915
 
 First release.
 
@@ -10,7 +10,8 @@ First release.
   portal only, the role that creates each home on first login.
 - Scientific software from EESSI 2025.06 over CernVM-FS, through a site cache on the
   storage role.
-- Five interactive applications: JupyterLab, Octave, a C++ notebook, RStudio and VS Code.
+- Six interactive applications: JupyterLab, Octave, a C++ notebook, RStudio, VS Code and an
+  Xfce desktop in the browser (TurboVNC on the VM, noVNC on the portal).
 - Elastic pool of compute VMs. Every worker reports its session count to OneGate, OneFlow
   resizes the role, and the portal sends each new session to the least loaded worker.
 - A worker created from the image reaches `READY` in well under a minute.
@@ -28,12 +29,14 @@ First release.
 - `ONEAPP_WORKER_MAX_SESSIONS` caps the sessions a worker takes, the pool grows when every
   worker is at the cap, and each worker publishes `SESSION_USERS`, who has a session and
   since when.
-- An OpenID Connect provider on the login page, through Dex, with `ONEAPP_OIDC_*`. Written
-  without a provider to test against.
+- An OpenID Connect provider on the login page, through Dex, with `ONEAPP_OIDC_*`. Verified
+  end to end against a Dex provider on 15 September 2026.
 - GPU workers prepared: a wrapper adds `--nv` to the session container on a VM with an
   NVIDIA device, and the README shows the role with PCI passthrough. Untested, no GPU at hand.
 - Worker sizes. Any `worker_<size>` role in the service template is a second pool, and the
   application forms offer the sizes that exist.
+- The OpenID Connect connector no longer requires the preferred_username claim: it falls
+  back to the email, so providers that omit the claim work. Verified against a Dex provider.
 - The VM template lists only the service inputs as user inputs. The values the service
   derives per role are not, so the Sunstone instantiate wizard has no "Roles Inputs" step
   that could send them back empty and override the role expressions.
