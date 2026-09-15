@@ -2531,10 +2531,10 @@ cat > "${SRC}/scripts/ood-pool-refresh.sh" <<'ONEOND_SCRIPTS_OOD_POOL_REFRESH_SH
 # each one has. The launch template reads it and sends every new session to the least loaded
 # worker, so every worker OneFlow adds takes a share of the sessions.
 #
-# WHO IS A WORKER. The address range the role has reserved decides it, because the compute
-# network of the service belongs to the workers and to nobody else. When the portal belongs
-# to a OneFlow service the list is also crossed with OneGate, the authoritative source,
-# because OneGate knows exactly which VMs the role has.
+# WHO IS A WORKER. When the portal belongs to a OneFlow service, OneGate decides, because it
+# knows exactly which VMs the worker roles have. Without OneGate, on a standalone portal,
+# the address range the role has reserved decides it, because then the compute network of
+# the service belongs to the workers and to nobody else.
 #
 # A probe to port 22 does not decide who is a worker, and it only says whether the address
 # is alive. On 9 September 2026, with the range set to the whole network, a roster based only
@@ -2591,8 +2591,13 @@ for h in "${permitted[@]}"; do
 done
 
 # --- OneGate, when the portal belongs to the service ------------------------------------------
-# OneGate is authoritative, so if it answers it replaces the whole range. It knows which VMs
-# the worker role has right now, so there is no need to probe anything else.
+# OneGate is authoritative, so if it answers it replaces the whole range, even when it lists
+# no worker yet. It knows which VMs the worker role has right now, so there is no need to
+# probe anything else, and the range must not be probed either: on 15 September 2026 a
+# portal without this rule sent a session to a Kubernetes VM that a colleague had attached to
+# the same network, because that address answered on port 22 and fell inside the range. An
+# empty roster makes the launch fail on the portal with a clear message; a foreign host makes
+# it fail with "Permission denied" from a machine that is not ours.
 source_name="rango"
 declare -A vm_ids roles
 unhealthy=()
@@ -2632,10 +2637,8 @@ for r in d.get("SERVICE", {}).get("roles", []):
         if ips:
             print(ips[-1], vm.get("ID", ""), (vm.get("USER_TEMPLATE") or {}).get("HEALTHY", "") or "-", r.get("name", ""))
 ' 2>/dev/null)
-        if (( ${#desde_onegate[@]} > 0 || ${#unhealthy[@]} > 0 )); then
-            candidates=("${desde_onegate[@]}")
-            source_name="onegate"
-        fi
+        candidates=("${desde_onegate[@]}")
+        source_name="onegate"
     fi
 fi
 

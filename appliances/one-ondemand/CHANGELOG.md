@@ -5,6 +5,7 @@
 First release.
 
 - One image for the three roles of the service, selected with `ONEAPP_ROLE`.
+- The portal takes its list of workers from OneGate, so a VM that is not part of the service never receives a session; the address range is only probed on a standalone portal.
 - Open OnDemand 4.2 on Ubuntu 24.04, with its own LDAP directory and Dex authentication.
 - Shared home over NFS, exported with `root_squash` to the workers and without it to the
   portal only, the role that creates each home on first login.
