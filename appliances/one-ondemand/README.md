@@ -243,7 +243,7 @@ service does. The portal installs no Slurm client: `sbatch`, `squeue`, `scancel`
 `sacct` and `scontrol` run on the controller over SSH as the user, with the key the portal
 keeps in each user's home, the same mechanism the AWS and Azure integrations use.
 Accounting history in `sacct` depends on OneSlurm running `slurmdbd`, which its default
-deployment does not. `docs/slurmdbd-setup.sh` in the project repository adds it to the
+deployment does not. `docs/slurmdbd-setup.sh` next to this README adds it to the
 controller (MariaDB, `slurmdbd`, the accounting lines in `slurm.conf` and the cluster
 registration); with it, `sacct` from the portal lists the finished jobs of the user.
 
