@@ -124,7 +124,7 @@ that reveals the inputs of its section only when it is on.
 
 | Input | Default | Description |
 |---|---|---|
-| `ONEAPP_AUTH_LOCAL_USERS` | `demo1:demo1pass:10001` | Initial users, as `user:password:uid` separated by spaces, created in the directory of the portal at first boot. |
+| `ONEAPP_AUTH_LOCAL_USERS` | `demo1:demo1pass` | Initial users, as `user:password` separated by spaces, created in the directory of the portal at first boot. A uid may follow, `user:password:uid`, to match accounts that exist elsewhere; the others get the next free number from 10001. |
 | `ONEAPP_AUTH_OIDC_ENABLED` | `NO` | Sign in through an OpenID Connect provider as well. See [An external identity provider](#an-external-identity-provider). |
 | `ONEAPP_AUTH_OIDC_ISSUER` | empty | Issuer URL of the provider. Required when the switch is on. |
 | `ONEAPP_AUTH_OIDC_CLIENT_ID` | empty | Client id registered at the provider. Required when the switch is on. |

@@ -160,7 +160,7 @@ opennebula_template:
     ONEAPP_PORTAL_CERTIFICATE_ENABLED: 'O|boolean|Use a certificate of your own||NO'
     ONEAPP_PORTAL_CERTIFICATE_CHAIN: 'O|text64|PEM certificate chain||'
     ONEAPP_PORTAL_CERTIFICATE_KEY: 'O|text64|PEM private key||'
-    ONEAPP_AUTH_LOCAL_USERS: 'O|text|Initial users, user:password:uid separated by spaces||demo1:demo1pass:10001'
+    ONEAPP_AUTH_LOCAL_USERS: 'O|text|Initial users, user:password separated by spaces, a uid may follow as user:password:uid||demo1:demo1pass'
     ONEAPP_AUTH_OIDC_ENABLED: 'O|boolean|Sign in through an OpenID Connect provider as well||NO'
     ONEAPP_AUTH_OIDC_ISSUER: 'O|text|Issuer URL of the provider||'
     ONEAPP_AUTH_OIDC_CLIENT_ID: 'O|text|Client id registered at the provider||'

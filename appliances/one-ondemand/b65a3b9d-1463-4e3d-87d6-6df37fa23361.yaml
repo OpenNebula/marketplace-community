@@ -97,7 +97,7 @@ opennebula_template:
     oneapp_portal_certificate_enabled: 'O|boolean|Use a certificate of your own||NO'
     oneapp_portal_certificate_chain: 'O|text64|PEM certificate chain||'
     oneapp_portal_certificate_key: 'O|text64|PEM private key||'
-    oneapp_auth_local_users: 'O|text|Initial users, user:password:uid separated by spaces||demo1:demo1pass:10001'
+    oneapp_auth_local_users: 'O|text|Initial users, user:password separated by spaces, a uid may follow as user:password:uid||demo1:demo1pass'
     oneapp_auth_oidc_enabled: 'O|boolean|Sign in through an OpenID Connect provider as well||NO'
     oneapp_auth_oidc_issuer: 'O|text|Issuer URL of the provider||'
     oneapp_auth_oidc_client_id: 'O|text|Client id registered at the provider||'
@@ -159,7 +159,7 @@ images:
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 1553137664
+  size: 1552285696
   checksum:
-    md5: 183142a446e22f311a1ef7f2aada9c20
-    sha256: b0e103b00c8482533e89abf160535cb09c01826a6f5630faec2a1a29d6dc4545
+    md5: 933722b8561c638cd645f458292d766f
+    sha256: 72f04bf0d91225daef2905d3dcfe9c6c97929ec4ea9cfd8e2ae0e4ba9ea2013b

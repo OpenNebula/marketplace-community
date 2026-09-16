@@ -43,7 +43,7 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_PORTAL_CERTIFICATE_ENABLED'  'configure' 'Use a certificate of your own'                                'O|boolean'
     'ONEAPP_PORTAL_CERTIFICATE_CHAIN'    'configure' 'PEM certificate chain'                                        'O|text64'
     'ONEAPP_PORTAL_CERTIFICATE_KEY'      'configure' 'PEM private key'                                              'O|text64'
-    'ONEAPP_AUTH_LOCAL_USERS'            'configure' 'Initial users, user:password:uid separated by spaces'         'O|text'
+    'ONEAPP_AUTH_LOCAL_USERS'            'configure' 'Initial users, user:password separated by spaces, uid optional' 'O|text'
     'ONEAPP_AUTH_OIDC_ENABLED'           'configure' 'Sign in through an OpenID Connect provider as well'           'O|boolean'
     'ONEAPP_AUTH_OIDC_ISSUER'            'configure' 'Issuer URL of the provider'                                   'O|text'
     'ONEAPP_AUTH_OIDC_CLIENT_ID'         'configure' 'Client id registered at the provider'                         'O|text'
@@ -135,7 +135,7 @@ service_configure()
         cat > "${ONE_SERVICE_REPORT}" <<REPORT
 [Open OnDemand]
 portal      = $(cat /etc/one-ondemand/portal-url 2>/dev/null || printf 'https://%s/\n' "${ONEAPP_PORTAL_HOST_NAME:-$(hostname -I | awk '{print $1}')}")
-users       = ${ONEAPP_AUTH_LOCAL_USERS:-demo1:demo1pass:10001}
+users       = ${ONEAPP_AUTH_LOCAL_USERS:-demo1:demo1pass}
 directory   = ldap://$(hostname -I | awk '{print $NF}')/${ONEAPP_LDAP_BASE:-dc=ood,dc=local}
 oidc_secret = /etc/ood/config/.oidc_crypto_passphrase
 boot_log    = /var/log/ood-appliance-configure.log
@@ -844,7 +844,7 @@ ONEAPP_LDAP_BASE="${ONEAPP_LDAP_BASE:-dc=ood,dc=local}"
 # portal generates one the first time it configures the directory and keeps it root only in
 # /etc/one-ondemand/ldap-admin.pass. ldap_admin_pass below resolves it.
 ONEAPP_LDAP_ADMIN_PASS="${ONEAPP_LDAP_ADMIN_PASS:-}"
-ONEAPP_AUTH_LOCAL_USERS="${ONEAPP_AUTH_LOCAL_USERS:-demo1:demo1pass:10001}"
+ONEAPP_AUTH_LOCAL_USERS="${ONEAPP_AUTH_LOCAL_USERS:-demo1:demo1pass}"
 # An OpenID Connect provider beside the local directory, only when its switch is on. With
 # the switch off the four values below are ignored even if they are filled in.
 ONEAPP_AUTH_OIDC_ENABLED="${ONEAPP_AUTH_OIDC_ENABLED:-NO}"
@@ -952,7 +952,8 @@ backup_once() {
 
 # ldap_users_check: stops on an entry of ONEAPP_AUTH_LOCAL_USERS that would leave the
 # directory inconsistent, with a message that names the entry, so a typo in the wizard shows
-# as the ERROR of the VM instead of as two users sharing files.
+# as the ERROR of the VM instead of as two users sharing files. An entry is user:password
+# with an optional :uid.
 ldap_users_check() {
     local entry user pass uid seen_users=" " seen_uids=" "
     for entry in $ONEAPP_AUTH_LOCAL_USERS; do
@@ -960,21 +961,31 @@ ldap_users_check() {
         [[ "$user" =~ ^[a-z_][a-z0-9_-]*$ ]] \
             || die "ONEAPP_AUTH_LOCAL_USERS: '${entry}' has no valid user name (lowercase letters, digits, _ and -)"
         [[ -n "$pass" ]] || die "ONEAPP_AUTH_LOCAL_USERS: '${entry}' has no password"
-        [[ "$uid" =~ ^[0-9]+$ && "$uid" -ge 1000 ]] \
-            || die "ONEAPP_AUTH_LOCAL_USERS: '${entry}' needs a numeric uid of 1000 or more"
+        [[ -z "$uid" || ( "$uid" =~ ^[0-9]+$ && "$uid" -ge 1000 ) ]] \
+            || die "ONEAPP_AUTH_LOCAL_USERS: '${entry}' needs a numeric uid of 1000 or more, or no uid at all"
         [[ "$seen_users" == *" ${user} "* ]] && die "ONEAPP_AUTH_LOCAL_USERS: user ${user} appears twice"
-        [[ "$seen_uids" == *" ${uid} "* ]] && die "ONEAPP_AUTH_LOCAL_USERS: uid ${uid} is given to two users"
-        seen_users+="${user} "; seen_uids+="${uid} "
+        [[ -n "$uid" && "$seen_uids" == *" ${uid} "* ]] && die "ONEAPP_AUTH_LOCAL_USERS: uid ${uid} is given to two users"
+        seen_users+="${user} "; [[ -n "$uid" ]] && seen_uids+="${uid} "
     done
 }
 
 # ldap_users_each: splits each entry of ONEAPP_AUTH_LOCAL_USERS and calls the given
-# function with user, password and uid.
+# function with user, password and uid. An entry without a uid gets the next free number
+# from 10001, in the order of the list, skipping the uids given to other entries, so the
+# same list always produces the same accounts.
 ldap_users_each() {
-    local fn="$1" entry user pass uid
+    local fn="$1" entry user pass uid given=" " next=10001
     ldap_users_check
     for entry in $ONEAPP_AUTH_LOCAL_USERS; do
         IFS=: read -r user pass uid <<<"$entry"
+        [[ -n "$uid" ]] && given+="${uid} "
+    done
+    for entry in $ONEAPP_AUTH_LOCAL_USERS; do
+        IFS=: read -r user pass uid <<<"$entry"
+        if [[ -z "$uid" ]]; then
+            while [[ "$given" == *" ${next} "* ]]; do next=$(( next + 1 )); done
+            uid=$next; next=$(( next + 1 ))
+        fi
         "$fn" "$user" "$pass" "$uid"
     done
 }

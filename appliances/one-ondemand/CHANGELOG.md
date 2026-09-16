@@ -13,9 +13,11 @@ provider split across two tabs and two empty PEM boxes for everyone.
 - A check that stops a role at boot is published through OneGate as the `ERROR` attribute
   of the VM, so Sunstone shows it on the VM and `onevm show` lists it, without opening a
   console. A switch turned on with its field empty is the usual case.
-- `ONEAPP_AUTH_LOCAL_USERS` is validated before the directory is seeded. A duplicate user
-  name or uid, a missing password, a uid under 1000 or a name with capitals stops the portal
-  with a message that names the entry.
+- `ONEAPP_AUTH_LOCAL_USERS` takes `user:password` entries, and the uid is optional. An entry
+  without one gets the next free number from 10001 in the order of the list. The list is
+  validated before the directory is seeded: a duplicate user name or uid, a missing password,
+  a uid under 1000 or a name with capitals stops the portal with a message that names the
+  entry.
 - Four tabs, Portal, Users and login, Home directories and Slurm, each with a title, and
   every optional feature in its own section behind an `_ENABLED` switch,
   so an unused feature shows one switch and nothing else. The names follow the tabs.
