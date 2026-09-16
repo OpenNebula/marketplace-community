@@ -25,9 +25,9 @@ decides at boot which one a VM plays, and the OneFlow template sets it per role.
   with OneGate reachable from the service networks.
 * Two virtual networks. A management network with internet access, where the portal
   publishes its web interface, and a compute network **reserved for the service**, where
-  the three roles talk to each other. The portal treats every live address in the range
-  that network assigns as a worker, apart from its own and the storage role's, so nothing
-  else may live there.
+  the three roles talk to each other. The portal declares the whole /24 around its compute
+  address as the worker range, and the directory lookups travel that network in the clear,
+  so nothing else may live there.
 * Outbound access to the EESSI CernVM-FS servers from the storage role, the only role that
   needs it.
 
@@ -35,7 +35,7 @@ If a firewall sits between the networks, these are the flows the service needs:
 
 | From | To | Port | What for |
 |---|---|---|---|
-| users | portal, management network | 443, and 80 with `letsencrypt` | the web interface |
+| users | portal, management network | 443, and 80 with Let's Encrypt | the web interface |
 | portal | workers | 22 | starting and stopping sessions |
 | workers | portal | 389 | resolving users against the directory |
 | portal and workers | storage | 2049 | the shared home over NFSv4 |
@@ -73,8 +73,8 @@ describe for Sunstone and for the CLI.
    $ oneflow-template update 'Open OnDemand Service'
    ```
 
-3. Instantiate the service. It asks for the two networks and for the inputs listed in the
-   next section:
+3. Instantiate the service. It asks for the two networks, and every input listed in the
+   next section is optional, so a first start changes none of them:
 
    ```shell
    $ oneflow-template instantiate 'Open OnDemand Service'
@@ -97,35 +97,73 @@ describe for Sunstone and for the CLI.
    $ onevm show <portal vm id> | grep OOD_URL
    ```
 
-   It is `https://` and the name you gave as `ONEAPP_OOD_SERVERNAME`, or the management
+   It is `https://` and the name you gave as `ONEAPP_PORTAL_HOST_NAME`, or the management
    address of the portal VM if you left it empty.
 
-   Then go to `https://<ONEAPP_OOD_SERVERNAME>/` and sign in with one of the users given in
-   `ONEAPP_LDAP_USERS`, by default `demo1` with password `demo1pass`. The home directory
-   is created on first login.
+   Then go to that address and sign in with one of the users given in
+   `ONEAPP_AUTH_LOCAL_USERS`, by default `demo1` with password `demo1pass`. The home
+   directory is created on first login.
 
 ## Service inputs
 
-| Parameter | Service Default | Description |
-|---|---|---|
-| `ONEAPP_OOD_SERVERNAME` | empty | Public host name of the portal. It has to resolve to the management address of the portal VM. Empty makes the portal answer on that address. |
-| `ONEAPP_OOD_SSL_MODE` | `selfsigned` | `selfsigned`, `letsencrypt` or `custom`. Let's Encrypt needs the host name to be public and port 80 reachable. `custom` installs the certificate given in the next two inputs. |
-| `ONEAPP_OOD_SSL_CERT` | empty | PEM certificate chain for the `custom` mode. Paste the file, the form encodes it. |
-| `ONEAPP_OOD_SSL_KEY` | empty | PEM private key for the `custom` mode. OneFlow puts every service input in the context of every VM of the service, where root can read it. |
-| `ONEAPP_LDAP_USERS` | `demo1:demo1pass:10001` | Initial users, as `user:password:uid` separated by spaces. |
-| `ONEAPP_WORKER_IDLE_SECONDS` | `600` | How long the oldest worker stays empty before the pool loses a VM. |
-| `ONEAPP_WORKER_MAX_SESSIONS` | `4` | Sessions a worker takes. The portal sends new sessions elsewhere at that count, and a pool whose workers are all at it grows. |
-| `ONEAPP_SLURM_CONTROLLER` | empty | Compute address of a Slurm controller that shares the users and the home. See [Batch jobs with Slurm](#batch-jobs-with-slurm). |
-| `ONEAPP_OIDC_ISSUER`, `ONEAPP_OIDC_CLIENT_ID`, `ONEAPP_OIDC_CLIENT_SECRET`, `ONEAPP_OIDC_NAME` | empty | An OpenID Connect provider on the login page. See [An external identity provider](#an-external-identity-provider). |
-| `ONEAPP_POOL_RANGE` | `172.20.0.50-172.20.0.249` | The address range the compute network assigns to VMs, `first-last`. |
-| `ONEAPP_NFS_SERVER` | empty | Address of an NFS server of your own for the home. Empty uses the storage role. |
-| `ONEAPP_NFS_EXPORT` | `/export/home` | Path of the home export, on the storage role or on that server. |
+Every input is optional, so a first start needs nothing beyond the two networks. The
+instantiate wizard shows them on four tabs, and each optional feature sits behind a switch
+that reveals the inputs of its section only when it is on.
 
-`ONEAPP_POOL_RANGE` has to match the address range of the network you select as `Compute`
-when instantiating. The roles find each other without fixed addresses. OneFlow hands the
-storage address to the portal and the workers, and the storage role asks OneGate which VM
-plays the portal and grants root on the home export to that address alone, so the workers
-keep `root_squash`.
+**Portal**, the public name and the TLS certificate of the web portal.
+
+| Input | Default | Description |
+|---|---|---|
+| `ONEAPP_PORTAL_HOST_NAME` | empty | Public host name of the portal. It has to resolve to the management address of the portal VM. Empty makes the portal answer on that address. |
+| `ONEAPP_PORTAL_LETSENCRYPT_ENABLED` | `NO` | Request a Let's Encrypt certificate for the host name. The name has to resolve to the portal and ports 80 and 443 have to be reachable from the Internet when the portal boots. When the request fails the portal continues with a self-signed certificate and says so in its log. |
+| `ONEAPP_PORTAL_CERTIFICATE_ENABLED` | `NO` | Use a certificate of your own, given in the next two inputs. It replaces the self-signed one, and with both switches on it is the one installed. |
+| `ONEAPP_PORTAL_CERTIFICATE_CHAIN` | empty | PEM certificate chain. Paste the file, the form encodes it. Required when the switch is on. |
+| `ONEAPP_PORTAL_CERTIFICATE_KEY` | empty | PEM private key. Required when the switch is on. OneFlow puts every service input in the context of every VM of the service, where root can read it. |
+
+**Users and login**, who can sign in to the portal.
+
+| Input | Default | Description |
+|---|---|---|
+| `ONEAPP_AUTH_LOCAL_USERS` | `demo1:demo1pass:10001` | Initial users, as `user:password:uid` separated by spaces, created in the directory of the portal at first boot. |
+| `ONEAPP_AUTH_OIDC_ENABLED` | `NO` | Sign in through an OpenID Connect provider as well. See [An external identity provider](#an-external-identity-provider). |
+| `ONEAPP_AUTH_OIDC_ISSUER` | empty | Issuer URL of the provider. Required when the switch is on. |
+| `ONEAPP_AUTH_OIDC_CLIENT_ID` | empty | Client id registered at the provider. Required when the switch is on. |
+| `ONEAPP_AUTH_OIDC_CLIENT_SECRET` | empty | Client secret registered at the provider. Empty only for a provider that allows public clients. |
+| `ONEAPP_AUTH_OIDC_NAME` | `Institutional login` | Name of the provider on the login page. |
+
+**Home directories**, where the files of the users live.
+
+| Input | Default | Description |
+|---|---|---|
+| `ONEAPP_HOME_NFS_ENABLED` | `NO` | Use an NFS server of your own instead of the storage role. See [Keeping the home](#keeping-the-home). |
+| `ONEAPP_HOME_NFS_SERVER` | empty | Address of that server. Required when the switch is on. |
+| `ONEAPP_HOME_NFS_EXPORT` | `/export/home` | Path of the home export, on the storage role or on that server. |
+
+**Slurm**, batch jobs on a Slurm cluster.
+
+| Input | Default | Description |
+|---|---|---|
+| `ONEAPP_SLURM_CONTROLLER_ENABLED` | `NO` | Submit batch jobs to a Slurm cluster that shares the users and the home. See [Batch jobs with Slurm](#batch-jobs-with-slurm). |
+| `ONEAPP_SLURM_CONTROLLER_HOST` | empty | Compute address of the Slurm controller. Required when the switch is on. |
+
+The roles find each other without fixed addresses. OneFlow hands the storage address to the
+portal and the workers, and the storage role asks OneGate which VM plays the portal and
+grants root on the home export to that address alone, so the workers keep `root_squash`.
+The portal declares the whole /24 around its compute address as the worker range, the names
+the adapter accepts. Inside a service OneGate says which of those addresses are workers, and
+only a standalone portal probes the range, skipping its own address and the storage role's.
+
+### Advanced attributes
+
+These are not in the wizard. Set them in the `vm_template_contents` of a role in the
+service template, with `oneflow-template update`, or in the `CONTEXT` of a standalone VM.
+A value set in a role reaches that role only.
+
+| Attribute | Default | Meaning |
+|---|---|---|
+| `ONEAPP_WORKER_IDLE_SECONDS` | `600` | Seconds a worker stays empty before the pool shrinks. The worker role reads it. |
+| `ONEAPP_WORKER_MAX_SESSIONS` | `4` | Sessions a worker takes before the pool grows. The portal sends new sessions elsewhere at that count. The worker role and the portal role both read it, so set it in both. |
+| `ONEAPP_POOL_RANGE` | derived | Worker address range, `first-last`, for a portal outside a OneFlow service or on a compute network larger than a /24. The portal role reads it. |
 
 ## Scaling the worker pool
 
@@ -234,14 +272,17 @@ copied and a job writes its output into the same home the notebooks use.
 
    ```shell
    $ onevm updateconf <portal vm id> --append <<EOF
-   CONTEXT = [ ONEAPP_SLURM_CONTROLLER = "<controller compute address>" ]
+   CONTEXT = [
+     ONEAPP_SLURM_CONTROLLER_ENABLED = "YES",
+     ONEAPP_SLURM_CONTROLLER_HOST = "<controller compute address>" ]
    EOF
    ```
 
-`ONEAPP_SLURM_CONTROLLER` is also a service input, for a controller that exists before the
-service does. The portal installs no Slurm client: `sbatch`, `squeue`, `scancel`, `sinfo`,
-`sacct` and `scontrol` run on the controller over SSH as the user, with the key the portal
-keeps in each user's home, the same mechanism the AWS and Azure integrations use.
+The Slurm tab of the service inputs sets the same two values, for a controller that exists
+before the service does. The portal installs no Slurm client, so `sbatch`, `squeue`,
+`scancel`, `sinfo`, `sacct` and `scontrol` run on the controller over SSH as the user, with
+the key the portal keeps in each user's home, the same mechanism the AWS and Azure
+integrations use.
 Accounting history in `sacct` depends on OneSlurm running `slurmdbd`, which its default
 deployment does not. `docs/slurmdbd-setup.sh` next to this README adds it to the
 controller (MariaDB, `slurmdbd`, the accounting lines in `slurm.conf` and the cluster
@@ -249,13 +290,15 @@ registration); with it, `sacct` from the portal lists the finished jobs of the u
 
 ## An external identity provider
 
-With `ONEAPP_OIDC_ISSUER`, `ONEAPP_OIDC_CLIENT_ID` and `ONEAPP_OIDC_CLIENT_SECRET` set, the
-login page offers the provider beside the local directory, through the OpenID Connect
-connector of Dex, with `https://<ONEAPP_OOD_SERVERNAME>/dex/callback` as the redirect URI to
-register at the provider. A user who signs in that way still needs an account in the
-directory under the same name, the `preferred_username` claim or the part of the email
-before the at sign, because a session runs as a Unix user with a home. Verified against a
-Dex provider that sends no `preferred_username`: the email fallback mapped the user.
+With `ONEAPP_AUTH_OIDC_ENABLED` set to `YES` and the provider given in
+`ONEAPP_AUTH_OIDC_ISSUER`, `ONEAPP_AUTH_OIDC_CLIENT_ID` and `ONEAPP_AUTH_OIDC_CLIENT_SECRET`,
+the login page offers the provider beside the local directory, through the OpenID Connect
+connector of Dex, with `https://<ONEAPP_PORTAL_HOST_NAME>/dex/callback` as the redirect URI
+to register at the provider. `ONEAPP_AUTH_OIDC_NAME` is the name the login page shows for
+it. A user who signs in that way still needs an account in the directory under the same
+name, the `preferred_username` claim or the part of the email before the at sign, because a
+session runs as a Unix user with a home. Verified against a Dex provider that sends no
+`preferred_username`, where the email fallback mapped the user.
 
 ## Users
 
@@ -313,7 +356,8 @@ service and instantiating it again with the same image brings every home back. A
 any other filesystem is left alone, and the role stops with an error that says so. Back the homes up with
 `onevm disk-saveas` or a disk snapshot of the storage VM, whichever your datastore supports.
 
-**An NFS server you already run.** Set `ONEAPP_NFS_SERVER` and `ONEAPP_NFS_EXPORT` and the
+**An NFS server you already run.** Set `ONEAPP_HOME_NFS_ENABLED` to `YES` and give its
+address in `ONEAPP_HOME_NFS_SERVER` and the path in `ONEAPP_HOME_NFS_EXPORT`, and the
 portal and the workers mount that export instead of the storage role. The server has to
 export it with `no_root_squash` for the portal address, the role that creates each home on
 first login, and can keep `root_squash` for the workers. The storage role still runs the
@@ -386,8 +430,9 @@ survives the change when it lives on a persistent disk or on an NFS server of yo
 [Keeping the home](#keeping-the-home) describes: delete the old service, attach the same
 disk to the new one or point it at the same export, and the users find their files. With
 the home on the storage VM's root disk, copy it out with `onevm disk-saveas` before
-deleting the old service. Users, the LDAP directory, are recreated from `ONEAPP_LDAP_USERS`,
-so pass the same value or add the users again once the new portal is up.
+deleting the old service. Users, the LDAP directory, are recreated from
+`ONEAPP_AUTH_LOCAL_USERS`, so pass the same value or add the users again once the new portal
+is up.
 
 ## Limitations and operating mode
 

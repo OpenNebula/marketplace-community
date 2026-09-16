@@ -1,6 +1,6 @@
 ---
 name: Open OnDemand Service
-version: 1.0.0-20260915
+version: 1.0.0-20260916
 publisher: OpenNebula Systems
 publisher_email: contact@opennebula.io
 description: |-
@@ -38,7 +38,7 @@ tags:
 - eessi
 - ubuntu
 - service
-creation_time: 1789463841
+creation_time: 1789556598
 os-id: Ubuntu
 os-release: '24.04 LTS'
 os-arch: x86_64
@@ -148,21 +148,75 @@ opennebula_template:
   networks:
     Management: 'M|network|Management network, reaches OneGate and the internet| |id::'
     Compute: 'M|network|Compute network, reserved for the service| |id::'
+  # Every input is optional, so a first start changes nothing here. The key order is the
+  # order of the tabs in the instantiate wizard, one tab per second token of the name and
+  # one section per third token, with the other inputs of a section shown only while its
+  # _ENABLED switch is on. The portal derives the worker range from its compute interface,
+  # so no range is asked. ONEAPP_WORKER_IDLE_SECONDS, ONEAPP_WORKER_MAX_SESSIONS and
+  # ONEAPP_POOL_RANGE are advanced attributes for the vm_template_contents of a role.
   custom_attrs:
-    ONEAPP_POOL_RANGE: 'M|text|Address range the compute network assigns to VMs, first-last||172.20.0.50-172.20.0.249'
-    ONEAPP_OOD_SERVERNAME: 'O|text|Public host name of the portal, empty to use its address||'
-    ONEAPP_OOD_SSL_MODE: 'O|list|TLS certificate|letsencrypt,selfsigned,custom|selfsigned'
-    ONEAPP_OOD_SSL_CERT: 'O|text64|PEM certificate chain, for the custom mode||'
-    ONEAPP_OOD_SSL_KEY: 'O|text64|PEM private key, for the custom mode||'
-    ONEAPP_LDAP_USERS: 'O|text|Initial users, user:password:uid separated by spaces||demo1:demo1pass:10001'
-    ONEAPP_WORKER_IDLE_SECONDS: 'O|number|Seconds a worker stays empty before the pool shrinks||600'
-    ONEAPP_WORKER_MAX_SESSIONS: 'O|number|Sessions a worker takes before the pool grows||4'
-    ONEAPP_SLURM_CONTROLLER: 'O|text|Slurm controller sharing the users and the home, empty for none||'
-    ONEAPP_OIDC_ISSUER: 'O|text|Issuer URL of an OpenID Connect provider, empty for the local directory only||'
-    ONEAPP_OIDC_CLIENT_ID: 'O|text|Client id registered at that provider||'
-    ONEAPP_OIDC_CLIENT_SECRET: 'O|password|Client secret registered at that provider||'
-    ONEAPP_OIDC_NAME: 'O|text|Name of the provider on the login page||Institutional login'
-    ONEAPP_NFS_SERVER: 'O|text|NFS server of your own for the home, empty to use the storage role||'
-    ONEAPP_NFS_EXPORT: 'O|text|Path of the home export||/export/home'
+    ONEAPP_PORTAL_HOST_NAME: 'O|text|Public host name of the portal, empty to use its address||'
+    ONEAPP_PORTAL_LETSENCRYPT_ENABLED: 'O|boolean|Request a Let''s Encrypt certificate for the host name||NO'
+    ONEAPP_PORTAL_CERTIFICATE_ENABLED: 'O|boolean|Use a certificate of your own||NO'
+    ONEAPP_PORTAL_CERTIFICATE_CHAIN: 'O|text64|PEM certificate chain||'
+    ONEAPP_PORTAL_CERTIFICATE_KEY: 'O|text64|PEM private key||'
+    ONEAPP_AUTH_LOCAL_USERS: 'O|text|Initial users, user:password:uid separated by spaces||demo1:demo1pass:10001'
+    ONEAPP_AUTH_OIDC_ENABLED: 'O|boolean|Sign in through an OpenID Connect provider as well||NO'
+    ONEAPP_AUTH_OIDC_ISSUER: 'O|text|Issuer URL of the provider||'
+    ONEAPP_AUTH_OIDC_CLIENT_ID: 'O|text|Client id registered at the provider||'
+    ONEAPP_AUTH_OIDC_CLIENT_SECRET: 'O|password|Client secret registered at the provider||'
+    ONEAPP_AUTH_OIDC_NAME: 'O|text|Name of the provider on the login page||Institutional login'
+    ONEAPP_HOME_NFS_ENABLED: 'O|boolean|Use an NFS server of your own instead of the storage role||NO'
+    ONEAPP_HOME_NFS_SERVER: 'O|text|Address of the NFS server||'
+    ONEAPP_HOME_NFS_EXPORT: 'O|text|Path of the home export||/export/home'
+    ONEAPP_SLURM_CONTROLLER_ENABLED: 'O|boolean|Submit batch jobs to a Slurm cluster that shares the users and the home||NO'
+    ONEAPP_SLURM_CONTROLLER_HOST: 'O|text|Address of the Slurm controller||'
+  # Titles and descriptions of the tabs (APP) and the sections (GROUP) of the wizard. OneFlow
+  # keeps this key in the service template body, and FireEdge reads it.
+  user_inputs_metadata:
+  - name: PORTAL
+    type: APP
+    title: Portal
+    description: Public name and TLS certificate of the web portal
+  - name: HOST
+    type: GROUP
+    title: Host name
+    description: Users open the portal at https://<host name>; with no host name they use the management address
+  - name: LETSENCRYPT
+    type: GROUP
+    title: Let's Encrypt
+    description: Needs a host name that resolves to the portal and ports 80 and 443 reachable from the Internet when the portal boots
+  - name: CERTIFICATE
+    type: GROUP
+    title: Your own certificate
+    description: Paste the chain and the key in PEM, they replace the self-signed one
+  - name: AUTH
+    type: APP
+    title: Users and login
+    description: Who can sign in to the portal
+  - name: LOCAL
+    type: GROUP
+    title: Local users
+    description: Accounts created in the directory of the portal at first boot
+  - name: OIDC
+    type: GROUP
+    title: OpenID Connect
+    description: An institutional login next to the local one, for example MyAccessID or Keycloak
+  - name: HOME
+    type: APP
+    title: Home directories
+    description: Where the files of the users live
+  - name: NFS
+    type: GROUP
+    title: NFS server of your own
+    description: By default the storage role exports the home directories; with a server of your own the storage role only keeps the software cache
+  - name: SLURM
+    type: APP
+    title: Slurm
+    description: Batch jobs on a Slurm cluster
+  - name: CONTROLLER
+    type: GROUP
+    title: Controller
+    description: A OneSlurm service on the same compute network, see the Slurm page of the documentation
 logo: logos/openondemand.png
 images: []

@@ -1,6 +1,6 @@
 ---
 name: Open OnDemand
-version: 1.0.0-20260915
+version: 1.0.0-20260916
 publisher: OpenNebula Systems
 publisher_email: contact@opennebula.io
 description: |-
@@ -30,7 +30,7 @@ tags:
 - ubuntu
 - service
 format: qcow2
-creation_time: 1789463841
+creation_time: 1789556598
 os-id: Ubuntu
 os-release: '24.04 LTS'
 os-arch: x86_64
@@ -45,6 +45,8 @@ opennebula_template:
   # out of user_inputs on purpose: Sunstone shows every VM template input that is not a
   # service input in a "Roles Inputs" step and sends its value back, and an empty value
   # from that step overrides the role expression in the service template.
+  # The worker tuning attributes and the pool range are declared here too, so an operator
+  # can set them in the vm_template_contents of a role, but they are not user inputs either.
   context:
     network: 'YES'
     report_ready: 'YES'
@@ -55,23 +57,27 @@ opennebula_template:
     oneapp_nfs_net: '$ONEAPP_NFS_NET'
     oneapp_squid_nets: '$ONEAPP_SQUID_NETS'
     oneapp_nfs_host: '$ONEAPP_NFS_HOST'
-    oneapp_nfs_server: '$ONEAPP_NFS_SERVER'
-    oneapp_nfs_export: '$ONEAPP_NFS_EXPORT'
     oneapp_cvmfs_proxy: '$ONEAPP_CVMFS_PROXY'
     oneapp_ldap_host: '$ONEAPP_LDAP_HOST'
-    oneapp_ldap_users: '$ONEAPP_LDAP_USERS'
-    oneapp_pool_range: '$ONEAPP_POOL_RANGE'
-    oneapp_ood_servername: '$ONEAPP_OOD_SERVERNAME'
-    oneapp_ood_ssl_mode: '$ONEAPP_OOD_SSL_MODE'
-    oneapp_ood_ssl_cert: '$ONEAPP_OOD_SSL_CERT'
-    oneapp_ood_ssl_key: '$ONEAPP_OOD_SSL_KEY'
+    oneapp_portal_host_name: '$ONEAPP_PORTAL_HOST_NAME'
+    oneapp_portal_letsencrypt_enabled: '$ONEAPP_PORTAL_LETSENCRYPT_ENABLED'
+    oneapp_portal_certificate_enabled: '$ONEAPP_PORTAL_CERTIFICATE_ENABLED'
+    oneapp_portal_certificate_chain: '$ONEAPP_PORTAL_CERTIFICATE_CHAIN'
+    oneapp_portal_certificate_key: '$ONEAPP_PORTAL_CERTIFICATE_KEY'
+    oneapp_auth_local_users: '$ONEAPP_AUTH_LOCAL_USERS'
+    oneapp_auth_oidc_enabled: '$ONEAPP_AUTH_OIDC_ENABLED'
+    oneapp_auth_oidc_issuer: '$ONEAPP_AUTH_OIDC_ISSUER'
+    oneapp_auth_oidc_client_id: '$ONEAPP_AUTH_OIDC_CLIENT_ID'
+    oneapp_auth_oidc_client_secret: '$ONEAPP_AUTH_OIDC_CLIENT_SECRET'
+    oneapp_auth_oidc_name: '$ONEAPP_AUTH_OIDC_NAME'
+    oneapp_home_nfs_enabled: '$ONEAPP_HOME_NFS_ENABLED'
+    oneapp_home_nfs_server: '$ONEAPP_HOME_NFS_SERVER'
+    oneapp_home_nfs_export: '$ONEAPP_HOME_NFS_EXPORT'
+    oneapp_slurm_controller_enabled: '$ONEAPP_SLURM_CONTROLLER_ENABLED'
+    oneapp_slurm_controller_host: '$ONEAPP_SLURM_CONTROLLER_HOST'
     oneapp_worker_idle_seconds: '$ONEAPP_WORKER_IDLE_SECONDS'
-    oneapp_slurm_controller: '$ONEAPP_SLURM_CONTROLLER'
     oneapp_worker_max_sessions: '$ONEAPP_WORKER_MAX_SESSIONS'
-    oneapp_oidc_issuer: '$ONEAPP_OIDC_ISSUER'
-    oneapp_oidc_client_id: '$ONEAPP_OIDC_CLIENT_ID'
-    oneapp_oidc_client_secret: '$ONEAPP_OIDC_CLIENT_SECRET'
-    oneapp_oidc_name: '$ONEAPP_OIDC_NAME'
+    oneapp_pool_range: '$ONEAPP_POOL_RANGE'
   cpu: '1'
   vcpu: '2'
   memory: '4096'
@@ -80,32 +86,82 @@ opennebula_template:
     type: vnc
   os:
     arch: x86_64
+  # The order of the inputs is the order of the tabs in the instantiate wizard. FireEdge
+  # takes the tab from the second token of the name and the section from the third, and
+  # shows the other inputs of a section only while its _ENABLED switch is on.
   inputs_order: >-
-    ONEAPP_NFS_SERVER,ONEAPP_NFS_EXPORT,ONEAPP_LDAP_USERS,ONEAPP_POOL_RANGE,ONEAPP_OOD_SERVERNAME,ONEAPP_OOD_SSL_MODE,ONEAPP_OOD_SSL_CERT,ONEAPP_OOD_SSL_KEY,ONEAPP_WORKER_IDLE_SECONDS,ONEAPP_WORKER_MAX_SESSIONS,ONEAPP_SLURM_CONTROLLER,ONEAPP_OIDC_ISSUER,ONEAPP_OIDC_CLIENT_ID,ONEAPP_OIDC_CLIENT_SECRET,ONEAPP_OIDC_NAME
+    ONEAPP_PORTAL_HOST_NAME,ONEAPP_PORTAL_LETSENCRYPT_ENABLED,ONEAPP_PORTAL_CERTIFICATE_ENABLED,ONEAPP_PORTAL_CERTIFICATE_CHAIN,ONEAPP_PORTAL_CERTIFICATE_KEY,ONEAPP_AUTH_LOCAL_USERS,ONEAPP_AUTH_OIDC_ENABLED,ONEAPP_AUTH_OIDC_ISSUER,ONEAPP_AUTH_OIDC_CLIENT_ID,ONEAPP_AUTH_OIDC_CLIENT_SECRET,ONEAPP_AUTH_OIDC_NAME,ONEAPP_HOME_NFS_ENABLED,ONEAPP_HOME_NFS_SERVER,ONEAPP_HOME_NFS_EXPORT,ONEAPP_SLURM_CONTROLLER_ENABLED,ONEAPP_SLURM_CONTROLLER_HOST
   user_inputs:
-    oneapp_nfs_server: 'O|text|NFS server of your own for the home, empty to use the storage role||'
-    oneapp_nfs_export: 'O|text|Path of the home export||/export/home'
-    oneapp_ldap_users: 'O|text|Initial users, user:password:uid separated by spaces, for portal||'
-    oneapp_pool_range: 'O|text|Address range reserved for the workers, first-last, for portal||'
-    oneapp_ood_servername: 'O|text|Public host name of the portal, empty to use its address||'
-    oneapp_ood_ssl_mode: 'O|list|TLS certificate, for portal|letsencrypt,selfsigned,custom|selfsigned'
-    oneapp_ood_ssl_cert: 'O|text64|PEM certificate chain, for the custom mode||'
-    oneapp_ood_ssl_key: 'O|text64|PEM private key, for the custom mode||'
-    oneapp_worker_idle_seconds: 'O|number|Seconds a worker stays empty before the pool shrinks||600'
-    oneapp_slurm_controller: 'O|text|Slurm controller sharing the users and the home, for portal||'
-    oneapp_worker_max_sessions: 'O|number|Sessions a worker takes before the pool grows||4'
-    oneapp_oidc_issuer: 'O|text|Issuer URL of an OpenID Connect provider, for portal||'
-    oneapp_oidc_client_id: 'O|text|Client id registered at that provider, for portal||'
-    oneapp_oidc_client_secret: 'O|password|Client secret registered at that provider, for portal||'
-    oneapp_oidc_name: 'O|text|Name of the provider on the login page, for portal||Institutional login'
+    oneapp_portal_host_name: 'O|text|Public host name of the portal, empty to use its address||'
+    oneapp_portal_letsencrypt_enabled: 'O|boolean|Request a Let''s Encrypt certificate for the host name||NO'
+    oneapp_portal_certificate_enabled: 'O|boolean|Use a certificate of your own||NO'
+    oneapp_portal_certificate_chain: 'O|text64|PEM certificate chain||'
+    oneapp_portal_certificate_key: 'O|text64|PEM private key||'
+    oneapp_auth_local_users: 'O|text|Initial users, user:password:uid separated by spaces||demo1:demo1pass:10001'
+    oneapp_auth_oidc_enabled: 'O|boolean|Sign in through an OpenID Connect provider as well||NO'
+    oneapp_auth_oidc_issuer: 'O|text|Issuer URL of the provider||'
+    oneapp_auth_oidc_client_id: 'O|text|Client id registered at the provider||'
+    oneapp_auth_oidc_client_secret: 'O|password|Client secret registered at the provider||'
+    oneapp_auth_oidc_name: 'O|text|Name of the provider on the login page||Institutional login'
+    oneapp_home_nfs_enabled: 'O|boolean|Use an NFS server of your own instead of the storage role||NO'
+    oneapp_home_nfs_server: 'O|text|Address of the NFS server||'
+    oneapp_home_nfs_export: 'O|text|Path of the home export||/export/home'
+    oneapp_slurm_controller_enabled: 'O|boolean|Submit batch jobs to a Slurm cluster that shares the users and the home||NO'
+    oneapp_slurm_controller_host: 'O|text|Address of the Slurm controller||'
+  # Titles and descriptions of the tabs (APP) and the sections (GROUP) of the wizard.
+  user_inputs_metadata:
+  - name: PORTAL
+    type: APP
+    title: Portal
+    description: Public name and TLS certificate of the web portal
+  - name: HOST
+    type: GROUP
+    title: Host name
+    description: Users open the portal at https://<host name>; with no host name they use the management address
+  - name: LETSENCRYPT
+    type: GROUP
+    title: Let's Encrypt
+    description: Needs a host name that resolves to the portal and ports 80 and 443 reachable from the Internet when the portal boots
+  - name: CERTIFICATE
+    type: GROUP
+    title: Your own certificate
+    description: Paste the chain and the key in PEM, they replace the self-signed one
+  - name: AUTH
+    type: APP
+    title: Users and login
+    description: Who can sign in to the portal
+  - name: LOCAL
+    type: GROUP
+    title: Local users
+    description: Accounts created in the directory of the portal at first boot
+  - name: OIDC
+    type: GROUP
+    title: OpenID Connect
+    description: An institutional login next to the local one, for example MyAccessID or Keycloak
+  - name: HOME
+    type: APP
+    title: Home directories
+    description: Where the files of the users live
+  - name: NFS
+    type: GROUP
+    title: NFS server of your own
+    description: By default the storage role exports the home directories; with a server of your own the storage role only keeps the software cache
+  - name: SLURM
+    type: APP
+    title: Slurm
+    description: Batch jobs on a Slurm cluster
+  - name: CONTROLLER
+    type: GROUP
+    title: Controller
+    description: A OneSlurm service on the same compute network, see the Slurm page of the documentation
 logo: logos/openondemand.png
 images:
 - name: one-ondemand
-  url: 'https://d38nm155miqkyg.cloudfront.net/service_one-ondemand-1.0.0-20260915.qcow2'
+  url: 'https://d38nm155miqkyg.cloudfront.net/service_one-ondemand-1.0.0-20260916.qcow2'
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 1553334272
+  size: 1554251776
   checksum:
-    md5: 7c8e03a0c79370a2f0480e3f1aaab1d9
-    sha256: 4b83ee3b58e5cd6b6a22a54f4327484817f49d0ef0ef2df676700b15584b0038
+    md5: 326c8e3a0b2f7273ff950bcda1a14e74
+    sha256: c9f1b8b0233dfb2a18a0d0e265a758b4bb19c4c2812ee84fba1b971375688377

@@ -29,19 +29,41 @@ APPLIANCE_DIR="/opt/one-ondemand"                   ### Where the appliance code
 ### CONTEXT SECTION ###########################################################
 
 ONE_SERVICE_PARAMS=(
-    'ONEAPP_ROLE'              'configure' 'Role this VM plays: portal, storage or worker'         'M|list|portal,storage,worker'
-    'ONEAPP_NFS_HOST'          'configure' 'Address of the storage role, for the shared home'      'O|text'
-    'ONEAPP_LDAP_HOST'         'configure' 'Address of the portal role, where the directory lives' 'O|text'
-    'ONEAPP_CVMFS_PROXY'       'configure' 'URL of the site cache for the software catalogue'      'O|text'
-    'ONEAPP_NFS_ADMIN_IPS'     'configure' 'Addresses allowed to act as root on the shared home'   'O|text'
-    'ONEAPP_NFS_NET'           'configure' 'Network allowed to mount the shared home'              'O|text'
-    'ONEAPP_SQUID_NETS'        'configure' 'Networks allowed to use the site cache'                'O|text'
-    'ONEAPP_POOL_RANGE'        'configure' 'Address range reserved for the compute pool'           'O|text'
-    'ONEAPP_OOD_SERVERNAME'    'configure' 'Public hostname of the portal'                         'O|text'
-    'ONEAPP_OOD_SSL_MODE'      'configure' 'TLS certificate: letsencrypt or selfsigned'            'O|list|letsencrypt,selfsigned'
-    'ONEAPP_OOD_SSL_EMAIL'     'configure' 'Contact address for Let''s Encrypt'                    'O|text'
-    'ONEAPP_LDAP_USERS'        'configure' 'Initial users, user:password:uid separated by spaces'  'O|text'
-    'ONEAPP_EESSI_VERSION'     'configure' 'EESSI release to load in sessions'                     'O|text'
+    # The role and the values the service template derives per role.
+    'ONEAPP_ROLE'                        'configure' 'Role this VM plays, portal, storage or worker'                'M|list|portal,storage,worker'
+    'ONEAPP_NFS_HOST'                    'configure' 'Address of the storage role, for the shared home'             'O|text'
+    'ONEAPP_LDAP_HOST'                   'configure' 'Address of the portal role, where the directory lives'        'O|text'
+    'ONEAPP_CVMFS_PROXY'                 'configure' 'URL of the site cache for the software catalogue'             'O|text'
+    'ONEAPP_NFS_ADMIN_IPS'               'configure' 'Addresses allowed to act as root on the shared home'          'O|text'
+    'ONEAPP_NFS_NET'                     'configure' 'Network allowed to mount the shared home'                     'O|text'
+    'ONEAPP_SQUID_NETS'                  'configure' 'Networks allowed to use the site cache'                       'O|text'
+    # The service inputs, one tab of the instantiate wizard per prefix.
+    'ONEAPP_PORTAL_HOST_NAME'            'configure' 'Public host name of the portal, empty to use its address'     'O|text'
+    'ONEAPP_PORTAL_LETSENCRYPT_ENABLED'  'configure' "Request a Let's Encrypt certificate for the host name"        'O|boolean'
+    'ONEAPP_PORTAL_CERTIFICATE_ENABLED'  'configure' 'Use a certificate of your own'                                'O|boolean'
+    'ONEAPP_PORTAL_CERTIFICATE_CHAIN'    'configure' 'PEM certificate chain'                                        'O|text64'
+    'ONEAPP_PORTAL_CERTIFICATE_KEY'      'configure' 'PEM private key'                                              'O|text64'
+    'ONEAPP_AUTH_LOCAL_USERS'            'configure' 'Initial users, user:password:uid separated by spaces'         'O|text'
+    'ONEAPP_AUTH_OIDC_ENABLED'           'configure' 'Sign in through an OpenID Connect provider as well'           'O|boolean'
+    'ONEAPP_AUTH_OIDC_ISSUER'            'configure' 'Issuer URL of the provider'                                   'O|text'
+    'ONEAPP_AUTH_OIDC_CLIENT_ID'         'configure' 'Client id registered at the provider'                         'O|text'
+    'ONEAPP_AUTH_OIDC_CLIENT_SECRET'     'configure' 'Client secret registered at the provider'                     'O|password'
+    'ONEAPP_AUTH_OIDC_NAME'              'configure' 'Name of the provider on the login page'                       'O|text'
+    'ONEAPP_HOME_NFS_ENABLED'            'configure' 'Use an NFS server of your own instead of the storage role'    'O|boolean'
+    'ONEAPP_HOME_NFS_SERVER'             'configure' 'Address of the NFS server'                                    'O|text'
+    'ONEAPP_HOME_NFS_EXPORT'             'configure' 'Path of the home export'                                      'O|text'
+    'ONEAPP_SLURM_CONTROLLER_ENABLED'    'configure' 'Submit batch jobs to a Slurm cluster that shares the users and the home' 'O|boolean'
+    'ONEAPP_SLURM_CONTROLLER_HOST'       'configure' 'Address of the Slurm controller'                              'O|text'
+    # Advanced attributes, set in the vm_template_contents of a role or in the CONTEXT of a
+    # standalone VM, never asked by the wizard.
+    'ONEAPP_WORKER_IDLE_SECONDS'         'configure' 'Seconds a worker stays empty before the pool shrinks'         'O|number'
+    'ONEAPP_WORKER_MAX_SESSIONS'         'configure' 'Sessions a worker takes before the pool grows'                'O|number'
+    'ONEAPP_POOL_RANGE'                  'configure' 'Worker address range, first-last, for a portal outside a OneFlow service' 'O|text'
+    # Two more values the scripts read at boot. The image template declares no reference for
+    # them, so they reach a VM through its CONTEXT and not through a top-level attribute in
+    # the vm_template_contents of a role.
+    'ONEAPP_OOD_SSL_EMAIL'               'configure' "Contact address for Let's Encrypt"                            'O|text'
+    'ONEAPP_EESSI_VERSION'               'configure' 'EESSI release to load in sessions'                            'O|text'
 )
 
 ### Appliance metadata #######################################################
@@ -62,12 +84,12 @@ OneFlow and grows the pool of compute VMs with the number of open sessions.
 
 Scientific software comes from EESSI over CernVM-FS, cached by the storage role, so a notebook
 loads the same modules a user would find at a EuroHPC centre and the image does not age with
-the software it serves. Five interactive applications ship with it: JupyterLab, Octave, a C++
-notebook, RStudio and VS Code.
+the software it serves. Six interactive applications ship with it, JupyterLab, Octave, a C++
+notebook, RStudio, VS Code and an Xfce desktop.
 
-After deployment the portal answers on https://<ONEAPP_OOD_SERVERNAME>/ and the initial users
-are the ones given in ONEAPP_LDAP_USERS. Adding a user later is one entry in the directory on
-the portal role, and their home and their sessions follow from it.
+After deployment the portal answers on https://<ONEAPP_PORTAL_HOST_NAME>/ and the initial
+users are the ones given in ONEAPP_AUTH_LOCAL_USERS. Adding a user later is one entry in the
+directory on the portal role, and their home and their sessions follow from it.
 
 Each role records what it did at boot in /var/log/ood-appliance-configure.log, and
 /etc/one-ondemand/build.env records what the image was built from.
@@ -112,8 +134,8 @@ service_configure()
     if [[ "${ONEAPP_ROLE}" == "portal" ]]; then
         cat > "${ONE_SERVICE_REPORT}" <<REPORT
 [Open OnDemand]
-portal      = https://${ONEAPP_OOD_SERVERNAME:-$(hostname -f)}/
-users       = ${ONEAPP_LDAP_USERS:-demo1:demo1pass:10001}
+portal      = $(cat /etc/one-ondemand/portal-url 2>/dev/null || printf 'https://%s/\n' "${ONEAPP_PORTAL_HOST_NAME:-$(hostname -I | awk '{print $1}')}")
+users       = ${ONEAPP_AUTH_LOCAL_USERS:-demo1:demo1pass:10001}
 directory   = ldap://$(hostname -I | awk '{print $NF}')/${ONEAPP_LDAP_BASE:-dc=ood,dc=local}
 oidc_secret = /etc/ood/config/.oidc_crypto_passphrase
 boot_log    = /var/log/ood-appliance-configure.log
@@ -292,10 +314,12 @@ cat > "${SRC}/appliance/configure.sh" <<'ONEOND_APPLIANCE_CONFIGURE_SH_'
 # Variables common to all the roles:
 #   ONEAPP_ROLE            portal | storage | worker (mandatory)
 # Per role, the ones each script documents:
-#   portal    ONEAPP_NFS_HOST, ONEAPP_OOD_SERVERNAME, ONEAPP_POOL_RANGE, ONEAPP_CVMFS_PROXY,
-#             ONEAPP_SLURM_CONTROLLER (optional)
-#   storage   nothing, it takes the network from its NIC and the portal from OneGate
-#   worker    ONEAPP_NFS_HOST, ONEAPP_LDAP_HOST, ONEAPP_CVMFS_PROXY
+#   portal    ONEAPP_NFS_HOST and ONEAPP_CVMFS_PROXY from the service, then the wizard
+#             inputs ONEAPP_PORTAL_*, ONEAPP_AUTH_*, ONEAPP_HOME_NFS_* and
+#             ONEAPP_SLURM_CONTROLLER_*, all optional, and ONEAPP_POOL_RANGE when the
+#             compute network is larger than a /24
+#   storage   ONEAPP_HOME_NFS_EXPORT, the rest comes from its NIC and from OneGate
+#   worker    ONEAPP_NFS_HOST, ONEAPP_LDAP_HOST, ONEAPP_CVMFS_PROXY, ONEAPP_HOME_NFS_*
 #
 # Usage:  ONEAPP_ROLE=worker /usr/local/sbin/ood-appliance-configure
 
@@ -349,10 +373,17 @@ storage)
     run "site Squid for EESSI" bash "${DIR}/storage/20-install-squid.sh"
     ;;
 portal)
-    [[ -n "${ONEAPP_NFS_SERVER:-}${ONEAPP_NFS_HOST:-}" ]] \
-        || die "the portal role needs ONEAPP_NFS_HOST, or ONEAPP_NFS_SERVER for a server of your own"
+    # The home server is checked first so a missing address fails at the top of the log.
+    # The worker range is not required, 90-configure-vm-pool.sh derives it from the compute
+    # interface when ONEAPP_POOL_RANGE is empty.
+    if is_yes "$ONEAPP_HOME_NFS_ENABLED"; then
+        [[ -n "$ONEAPP_HOME_NFS_SERVER" ]] \
+            || die "the portal role needs ONEAPP_HOME_NFS_SERVER when ONEAPP_HOME_NFS_ENABLED is YES"
+    else
+        [[ -n "${ONEAPP_NFS_HOST:-}" ]] \
+            || die "the portal role needs ONEAPP_NFS_HOST, the address of the storage role"
+    fi
     : "${ONEAPP_CVMFS_PROXY:?the portal role needs ONEAPP_CVMFS_PROXY}"
-    : "${ONEAPP_POOL_RANGE:?the portal role needs ONEAPP_POOL_RANGE with the range reserved for the workers}"
     # The metrics publisher belongs to the worker role. On the portal it would only spend
     # OneGate calls to publish zero sessions, and it would confuse the reading of the panel.
     systemctl disable --now ood-publish-load.service >/dev/null 2>&1 || true
@@ -755,46 +786,78 @@ cat > "${SRC}/scripts/00-lib.sh" <<'ONEOND_SCRIPTS_00_LIB_SH_'
 
 set -uo pipefail
 
-# --- portal parameters --------------------------------------------------------
+# is_yes VALUE: true for yes, true and 1, in any case. A switch of the instantiate wizard
+# arrives in the CONTEXT as the string YES or NO, and this is the only place that spelling
+# is compared, so every script reads a switch through it and never the raw string.
+is_yes() {
+    case "${1:-}" in
+        [Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|1) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# --- portal parameters (tab PORTAL of the wizard) ------------------------------------
 ONEAPP_OOD_VERSION="${ONEAPP_OOD_VERSION:-4.2}"
 ONEAPP_OOD_RELEASE_DEB="${ONEAPP_OOD_RELEASE_DEB:-ondemand-release-web_4.2.0-noble_all.deb}"
 ONEAPP_OOD_APT_BASE="${ONEAPP_OOD_APT_BASE:-https://apt.osc.edu/ondemand}"
 # Empty by default. A published image must not carry the name of the site it was built
 # on, so when it is not given the portal names itself after its own address.
-ONEAPP_OOD_SERVERNAME="${ONEAPP_OOD_SERVERNAME:-}"
-ONEAPP_OOD_SSL_MODE="${ONEAPP_OOD_SSL_MODE:-letsencrypt}"   # letsencrypt | selfsigned
+ONEAPP_PORTAL_HOST_NAME="${ONEAPP_PORTAL_HOST_NAME:-}"
+# Two switches instead of a list. The default is a self-signed certificate, the first switch
+# asks Let's Encrypt for one, and the second installs the chain and the key given below.
+ONEAPP_PORTAL_LETSENCRYPT_ENABLED="${ONEAPP_PORTAL_LETSENCRYPT_ENABLED:-NO}"
+ONEAPP_PORTAL_CERTIFICATE_ENABLED="${ONEAPP_PORTAL_CERTIFICATE_ENABLED:-NO}"
+ONEAPP_PORTAL_CERTIFICATE_CHAIN="${ONEAPP_PORTAL_CERTIFICATE_CHAIN:-}"
+ONEAPP_PORTAL_CERTIFICATE_KEY="${ONEAPP_PORTAL_CERTIFICATE_KEY:-}"
 ONEAPP_OOD_SSL_EMAIL="${ONEAPP_OOD_SSL_EMAIL:-}"
+# The certificate mode is derived here, once, and it is the only thing the portal reads.
+# With both switches on the customer certificate is installed, not the Let's Encrypt one,
+# and 30-configure-portal.sh checks that the chain and the key are there when it installs
+# them.
+if is_yes "$ONEAPP_PORTAL_CERTIFICATE_ENABLED"; then
+    SSL_MODE=custom
+elif is_yes "$ONEAPP_PORTAL_LETSENCRYPT_ENABLED"; then
+    SSL_MODE=letsencrypt
+else
+    SSL_MODE=selfsigned
+fi
 
-# --- identity parameters -------------------------------------------------------
+# --- identity parameters (tab AUTH of the wizard) -------------------------------------
 ONEAPP_LDAP_DOMAIN="${ONEAPP_LDAP_DOMAIN:-ood.local}"
 ONEAPP_LDAP_BASE="${ONEAPP_LDAP_BASE:-dc=ood,dc=local}"
 # Empty by default. A published image must not ship a password, so when none is given the
 # portal generates one the first time it configures the directory and keeps it root only in
 # /etc/one-ondemand/ldap-admin.pass. ldap_admin_pass below resolves it.
 ONEAPP_LDAP_ADMIN_PASS="${ONEAPP_LDAP_ADMIN_PASS:-}"
-ONEAPP_LDAP_USERS="${ONEAPP_LDAP_USERS:-demo1:demo1pass:10001 demo2:demo2pass:10002}"
+ONEAPP_AUTH_LOCAL_USERS="${ONEAPP_AUTH_LOCAL_USERS:-demo1:demo1pass:10001}"
+# An OpenID Connect provider beside the local directory, only when its switch is on. With
+# the switch off the four values below are ignored even if they are filled in.
+ONEAPP_AUTH_OIDC_ENABLED="${ONEAPP_AUTH_OIDC_ENABLED:-NO}"
+ONEAPP_AUTH_OIDC_ISSUER="${ONEAPP_AUTH_OIDC_ISSUER:-}"
+ONEAPP_AUTH_OIDC_CLIENT_ID="${ONEAPP_AUTH_OIDC_CLIENT_ID:-}"
+ONEAPP_AUTH_OIDC_CLIENT_SECRET="${ONEAPP_AUTH_OIDC_CLIENT_SECRET:-}"
+ONEAPP_AUTH_OIDC_NAME="${ONEAPP_AUTH_OIDC_NAME:-Institutional login}"
 
-# --- observability -----------------------------------------------------------------
+# --- home parameters (tab HOME of the wizard) ----------------------------------------
+# The home comes from the storage role of the service, ONEAPP_NFS_HOST, unless the switch
+# points the portal and the workers at an NFS server the site already runs. The export path
+# is both what the storage role exports and what the portal and the workers mount.
+ONEAPP_HOME_NFS_ENABLED="${ONEAPP_HOME_NFS_ENABLED:-NO}"
+ONEAPP_HOME_NFS_SERVER="${ONEAPP_HOME_NFS_SERVER:-}"
+ONEAPP_HOME_NFS_EXPORT="${ONEAPP_HOME_NFS_EXPORT:-/export/home}"
+
+# --- batch cluster (tab SLURM of the wizard) -----------------------------------------
+# A Slurm controller that shares the users and the home, only when its switch is on.
+ONEAPP_SLURM_CONTROLLER_ENABLED="${ONEAPP_SLURM_CONTROLLER_ENABLED:-NO}"
+ONEAPP_SLURM_CONTROLLER_HOST="${ONEAPP_SLURM_CONTROLLER_HOST:-}"
+
+# --- advanced attributes, not in the wizard -------------------------------------------
+# An operator sets these in the vm_template_contents of a role or in the CONTEXT of a
+# standalone VM. ONEAPP_POOL_RANGE has no default because pool_range below derives it, and
+# ONEAPP_WORKER_IDLE_SECONDS is read from the context by worker/publish-load.sh alone.
 ONEAPP_METRICS_PORT="${ONEAPP_METRICS_PORT:-9101}"
 # Sessions a worker takes before the pool grows, and the cap the portal respects.
 ONEAPP_WORKER_MAX_SESSIONS="${ONEAPP_WORKER_MAX_SESSIONS:-4}"
-
-# --- batch cluster ---------------------------------------------------------------------
-# A Slurm controller that shares the users and the home, empty when there is none.
-ONEAPP_SLURM_CONTROLLER="${ONEAPP_SLURM_CONTROLLER:-}"
-
-# --- external identity provider ------------------------------------------------------
-# All three empty by default, the portal signs users in against its own directory.
-ONEAPP_OIDC_ISSUER="${ONEAPP_OIDC_ISSUER:-}"
-ONEAPP_OIDC_CLIENT_ID="${ONEAPP_OIDC_CLIENT_ID:-}"
-ONEAPP_OIDC_CLIENT_SECRET="${ONEAPP_OIDC_CLIENT_SECRET:-}"
-ONEAPP_OIDC_NAME="${ONEAPP_OIDC_NAME:-Institutional login}"
-
-# --- home parameters ----------------------------------------------------------------
-# The home comes from the storage role unless ONEAPP_NFS_SERVER names an NFS server the
-# site already runs. Both the portal and the workers read these two.
-ONEAPP_NFS_SERVER="${ONEAPP_NFS_SERVER:-}"
-ONEAPP_NFS_EXPORT="${ONEAPP_NFS_EXPORT:-/export/home}"
 
 # --- target parameters ---------------------------------------------------------
 # EESSI catalogue version and the module with JupyterLab and ipykernel for the kernel.
@@ -802,8 +865,8 @@ ONEAPP_EESSI_VERSION="${ONEAPP_EESSI_VERSION:-2025.06}"
 ONEAPP_EESSI_JUPYTER_MODULE="${ONEAPP_EESSI_JUPYTER_MODULE:-JupyterLab/4.4.9-GCCcore-14.3.0}"
 
 export ONEAPP_OOD_VERSION ONEAPP_OOD_RELEASE_DEB ONEAPP_OOD_APT_BASE \
-       ONEAPP_OOD_SERVERNAME ONEAPP_OOD_SSL_MODE ONEAPP_OOD_SSL_EMAIL \
-       ONEAPP_LDAP_DOMAIN ONEAPP_LDAP_BASE ONEAPP_LDAP_ADMIN_PASS ONEAPP_LDAP_USERS
+       ONEAPP_PORTAL_HOST_NAME ONEAPP_OOD_SSL_EMAIL \
+       ONEAPP_LDAP_DOMAIN ONEAPP_LDAP_BASE ONEAPP_LDAP_ADMIN_PASS ONEAPP_AUTH_LOCAL_USERS
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -872,11 +935,11 @@ backup_once() {
     return 0
 }
 
-# ldap_users_each: splits each entry of ONEAPP_LDAP_USERS and calls the given
+# ldap_users_each: splits each entry of ONEAPP_AUTH_LOCAL_USERS and calls the given
 # function with user, password and uid.
 ldap_users_each() {
     local fn="$1" entry user pass uid
-    for entry in $ONEAPP_LDAP_USERS; do
+    for entry in $ONEAPP_AUTH_LOCAL_USERS; do
         IFS=: read -r user pass uid <<<"$entry"
         "$fn" "$user" "$pass" "$uid"
     done
@@ -912,6 +975,38 @@ compute_net_cidr() {
             "${!ip}" "${!mask:-255.255.255.0}" 2>/dev/null
         return
     done
+}
+
+# compute_addr: the address of this VM on the compute network and where it came from, as
+# "ethN a.b.c.d". It is the last NIC in the context, for the same reason as compute_net_cidr,
+# or the last address of hostname -I on a VM with no context. Empty when there is none.
+# Call it in a command substitution, because it sources the context environment.
+compute_addr() {
+    [[ -r /var/run/one-context/one_env ]] && . /var/run/one-context/one_env
+    local i ip
+    for i in 3 2 1 0; do
+        ip="ETH${i}_IP"
+        [[ -n "${!ip:-}" ]] || continue
+        printf 'eth%s %s\n' "$i" "${!ip}"
+        return
+    done
+    ip="$(hostname -I | tr ' ' '\n' | grep -E '^[0-9]+(\.[0-9]+){3}$' | tail -1)"
+    [[ -n "$ip" ]] && printf 'hostname-I %s\n' "$ip"
+}
+
+# pool_range: sets POOL_RANGE, the address range reserved for the workers as "first-last".
+# It is ONEAPP_POOL_RANGE when that is given. Otherwise the portal takes the whole /24
+# around its own compute address, x.y.z.1 to x.y.z.254, and says so in the log. The
+# exclusion list of 90-configure-vm-pool.sh already takes the portal and the storage out of
+# it. A compute network larger than a /24 needs an explicit ONEAPP_POOL_RANGE.
+pool_range() {
+    POOL_RANGE="${ONEAPP_POOL_RANGE:-}"
+    [[ -n "$POOL_RANGE" ]] && return 0
+    local iface ip
+    read -r iface ip < <(compute_addr)
+    [[ -n "${ip:-}" ]] || die "ONEAPP_POOL_RANGE is empty and this VM has no IPv4 address to derive it from"
+    POOL_RANGE="${ip%.*}.1-${ip%.*}.254"
+    msg "worker range ${POOL_RANGE} derived from ${iface} (${ip}), ONEAPP_POOL_RANGE not given"
 }
 
 # wait_for SECS CMD...: repeats CMD until it returns 0 or SECS seconds elapse.
@@ -1208,17 +1303,24 @@ cat > "${SRC}/scripts/25-mount-home.sh" <<'ONEOND_SCRIPTS_25_MOUNT_HOME_SH_'
 # nothing beyond checking it.
 #
 # Variables:
-#   ONEAPP_NFS_HOST     private IP of the storage VM (required)
-#   ONEAPP_NFS_SERVER   an NFS server the site already runs, it replaces the storage VM
-#   ONEAPP_NFS_EXPORT   path of the export (/export/home)
+#   ONEAPP_NFS_HOST          private IP of the storage VM (required unless the switch is on)
+#   ONEAPP_HOME_NFS_ENABLED  YES to mount an NFS server the site already runs instead
+#   ONEAPP_HOME_NFS_SERVER   address of that server (required when the switch is on)
+#   ONEAPP_HOME_NFS_EXPORT   path of the export (/export/home)
 #
 # Usage:  ONEAPP_NFS_HOST=172.20.0.221 ./25-mount-home.sh
 
 source "$(dirname "${BASH_SOURCE[0]}")/00-lib.sh"
 require_root
 
-NFS_HOST="${ONEAPP_NFS_SERVER:-${ONEAPP_NFS_HOST:?ONEAPP_NFS_HOST is missing, set it to the private IP of the NFS server}}"
-HOME_EXPORT="$ONEAPP_NFS_EXPORT"
+# The home comes from the storage role of the service, or from a server of the site when
+# the switch is on, and then that address has to be given.
+if is_yes "$ONEAPP_HOME_NFS_ENABLED"; then
+    NFS_HOST="${ONEAPP_HOME_NFS_SERVER:?ONEAPP_HOME_NFS_ENABLED is YES, set ONEAPP_HOME_NFS_SERVER to the address of the NFS server}"
+else
+    NFS_HOST="${ONEAPP_NFS_HOST:?ONEAPP_NFS_HOST is missing, set it to the private IP of the storage VM}"
+fi
+HOME_EXPORT="$ONEAPP_HOME_NFS_EXPORT"
 STATE_DIR=/etc/one-ondemand
 FSTAB_LINE="${NFS_HOST}:${HOME_EXPORT} /home nfs4 _netdev,hard,noatime 0 0"
 
@@ -1302,7 +1404,7 @@ require_root
 
 PORTAL_YML=/etc/ood/config/ood_portal.yml
 CERT_DIR=/etc/ood/ssl
-SERVERNAME="$ONEAPP_OOD_SERVERNAME"
+SERVERNAME="$ONEAPP_PORTAL_HOST_NAME"
 BASE="$ONEAPP_LDAP_BASE"
 ONEAPP_LDAP_ADMIN_PASS="$(ldap_admin_pass)"
 
@@ -1311,8 +1413,8 @@ ONEAPP_LDAP_ADMIN_PASS="$(ldap_admin_pass)"
 # https, with the certificate carrying it as an IP entry rather than a DNS one.
 if [[ -z "$SERVERNAME" ]]; then
     SERVERNAME="$(hostname -I | tr ' ' '\n' | grep -E '^[0-9]+(\.[0-9]+){3}$' | head -1)"
-    [[ -n "$SERVERNAME" ]] || die "ONEAPP_OOD_SERVERNAME is missing and this VM has no IPv4 address"
-    warn "no ONEAPP_OOD_SERVERNAME, the portal answers on ${SERVERNAME}"
+    [[ -n "$SERVERNAME" ]] || die "ONEAPP_PORTAL_HOST_NAME is missing and this VM has no IPv4 address"
+    warn "no ONEAPP_PORTAL_HOST_NAME, the portal answers on ${SERVERNAME}"
 fi
 # The address users type. configure.sh publishes it to OneGate as OOD_URL of this VM, so
 # it shows in the attributes of the portal VM in Sunstone and in onevm show.
@@ -1327,16 +1429,13 @@ fi
 # The origin allowed to use the per user key. It is the compute network, taken from the
 # range reserved for the workers rather than from a constant, because the adapter opens a
 # session on those VMs with this same key and their addresses are whatever the deployment
-# gives them.
-POOL_FIRST="${ONEAPP_POOL_RANGE:-}"
-POOL_FIRST="${POOL_FIRST%%-*}"
-if [[ "$POOL_FIRST" =~ ^[0-9]+(\.[0-9]+){3}$ ]]; then
-    POOL_CIDR="${POOL_FIRST%.*}.0/24"
-else
-    POOL_CIDR="$(hostname -I | tr ' ' '\n' | grep -E '^[0-9]+(\.[0-9]+){3}$' | tail -1)"
-    POOL_CIDR="${POOL_CIDR%.*}.0/24"
-    warn "no usable ONEAPP_POOL_RANGE, allowing the key from ${POOL_CIDR}"
-fi
+# gives them. pool_range reads ONEAPP_POOL_RANGE, or derives the range from the compute
+# interface of this VM when that is empty.
+pool_range
+POOL_FIRST="${POOL_RANGE%%-*}"
+[[ "$POOL_FIRST" =~ ^[0-9]+(\.[0-9]+){3}$ ]] \
+    || die "ONEAPP_POOL_RANGE must be \"first-last\", for example 172.20.0.50-172.20.0.249"
+POOL_CIDR="${POOL_FIRST%.*}.0/24"
 
 # --- certificate ------------------------------------------------------------------
 mkdir -p "$CERT_DIR"
@@ -1356,21 +1455,34 @@ issue_selfsigned() {
 
 if [[ -f "$cert" && -f "$key" ]]; then
     ok "a certificate for ${SERVERNAME} already exists"
-elif [[ "$ONEAPP_OOD_SSL_MODE" == "custom" ]]; then
+elif [[ "$SSL_MODE" == "custom" ]]; then
     # A certificate the customer already owns, given as two base64 encoded PEM inputs, which
     # is how a text64 user input reaches the context. A value that already starts with the
-    # PEM header is taken as is.
+    # PEM header is taken as is. SSL_MODE comes from 00-lib.sh, custom when the switch
+    # ONEAPP_PORTAL_CERTIFICATE_ENABLED is on.
+    #
+    # Both inputs are decoded into temporary files and checked there, and only a pair that
+    # passes reaches ${cert} and ${key}. A rejected input written straight to those paths
+    # would count as an existing certificate on the next run, so the corrected input would
+    # never be installed and Apache would fail to start on a file that is not PEM.
     pem_input() {
         if [[ "$1" == "-----BEGIN"* ]]; then printf '%s\n' "$1"; else printf '%s' "$1" | base64 -d; fi
     }
-    [[ -n "${ONEAPP_OOD_SSL_CERT:-}" && -n "${ONEAPP_OOD_SSL_KEY:-}" ]] \
-        || die "ONEAPP_OOD_SSL_MODE=custom needs ONEAPP_OOD_SSL_CERT and ONEAPP_OOD_SSL_KEY"
-    pem_input "$ONEAPP_OOD_SSL_CERT" > "$cert"
-    (umask 077; pem_input "$ONEAPP_OOD_SSL_KEY" > "$key")
-    openssl x509 -in "$cert" -noout >/dev/null 2>&1 || die "ONEAPP_OOD_SSL_CERT is not a PEM certificate"
-    openssl pkey -in "$key" -noout >/dev/null 2>&1 || die "ONEAPP_OOD_SSL_KEY is not a PEM private key"
+    [[ -n "$ONEAPP_PORTAL_CERTIFICATE_CHAIN" && -n "$ONEAPP_PORTAL_CERTIFICATE_KEY" ]] \
+        || die "ONEAPP_PORTAL_CERTIFICATE_ENABLED is YES, so ONEAPP_PORTAL_CERTIFICATE_CHAIN and ONEAPP_PORTAL_CERTIFICATE_KEY are required"
+    tmp_cert="$(mktemp)"
+    tmp_key="$(mktemp)"
+    trap 'rm -f "$tmp_cert" "$tmp_key"' EXIT
+    pem_input "$ONEAPP_PORTAL_CERTIFICATE_CHAIN" > "$tmp_cert"
+    pem_input "$ONEAPP_PORTAL_CERTIFICATE_KEY" > "$tmp_key"
+    openssl x509 -in "$tmp_cert" -noout >/dev/null 2>&1 || die "ONEAPP_PORTAL_CERTIFICATE_CHAIN is not a PEM certificate"
+    openssl pkey -in "$tmp_key" -noout >/dev/null 2>&1 || die "ONEAPP_PORTAL_CERTIFICATE_KEY is not a PEM private key"
+    install -m 644 "$tmp_cert" "$cert"
+    install -m 600 "$tmp_key" "$key"
+    rm -f "$tmp_cert" "$tmp_key"
+    trap - EXIT
     ok "customer certificate installed at ${cert}"
-elif [[ "$ONEAPP_OOD_SSL_MODE" == "letsencrypt" ]]; then
+elif [[ "$SSL_MODE" == "letsencrypt" ]]; then
     apt_install certbot
     msg "requesting a Let's Encrypt certificate for ${SERVERNAME}"
     # The HTTP-01 challenge arrives through the host redirection, which is already
@@ -1413,13 +1525,14 @@ fi
 #
 # The fix is to make the system trust the certificate, because the system trust store is
 # where mod_auth_openidc looks. Disabling validation would leave the portal accepting any
-# certificate in the exchange that decides who each user is.
+# certificate in the exchange that decides who each user is. A customer certificate goes
+# through the same step, which is harmless for one that is already trusted.
 if [[ ! -L "$cert" ]]; then
     trust=/usr/local/share/ca-certificates/one-ondemand-portal.crt
     if ! cmp -s "$cert" "$trust"; then
         install -m 644 "$cert" "$trust"
         update-ca-certificates >/dev/null 2>&1 || die "could not update the certificate store"
-        ok "the system now trusts the self-signed certificate of the portal"
+        ok "the system now trusts the ${SSL_MODE} certificate of the portal"
     fi
 fi
 
@@ -1442,26 +1555,34 @@ msg "writing ${PORTAL_YML}"
 backup_once "$PORTAL_YML"
 
 # An external identity provider, through the OIDC connector of Dex, beside the local LDAP.
-# It is added only when the issuer, the client id and the client secret are all given. The
+# It is added only when the switch ONEAPP_AUTH_OIDC_ENABLED is on, and then the issuer and
+# the client id are required. The secret may be empty for a provider that allows public
+# clients, and it is written as given. With the switch off the four values are ignored. The
 # user still needs an account in the directory under the same name, because a session runs
 # as a Unix user with a home; the claim used as the name is preferred_username, or the part
-# of the email before the at sign, which user_map_match already keeps. Untested against a
-# live provider, there was none at hand, so a site enabling it checks the login once.
+# of the email before the at sign, which user_map_match already keeps.
 # The account name the portal maps to a Unix user is the preferred_username claim of the
 # provider. Not every provider sends one (Google does not), so claimMapping falls back to
 # the email, and user_map_match below keeps the part before the at sign. userNameKey is
 # left at its default, name, because setting it to preferred_username makes Dex refuse
 # every provider that omits that claim.
+# The check runs here and not inside oidc_connector, because that function runs in a
+# command substitution where die would only end the subshell.
+if is_yes "$ONEAPP_AUTH_OIDC_ENABLED"; then
+    [[ -n "$ONEAPP_AUTH_OIDC_ISSUER" && -n "$ONEAPP_AUTH_OIDC_CLIENT_ID" ]] \
+        || die "ONEAPP_AUTH_OIDC_ENABLED is YES, so ONEAPP_AUTH_OIDC_ISSUER and ONEAPP_AUTH_OIDC_CLIENT_ID are required"
+    ok "OpenID Connect provider ${ONEAPP_AUTH_OIDC_NAME} at ${ONEAPP_AUTH_OIDC_ISSUER} on the login page"
+fi
 oidc_connector() {
-    [[ -n "${ONEAPP_OIDC_ISSUER:-}" && -n "${ONEAPP_OIDC_CLIENT_ID:-}" && -n "${ONEAPP_OIDC_CLIENT_SECRET:-}" ]] || return 0
+    is_yes "$ONEAPP_AUTH_OIDC_ENABLED" || return 0
     cat <<CONN
     - type: oidc
       id: oidc
-      name: ${ONEAPP_OIDC_NAME:-Institutional login}
+      name: ${ONEAPP_AUTH_OIDC_NAME:-Institutional login}
       config:
-        issuer: ${ONEAPP_OIDC_ISSUER}
-        clientID: ${ONEAPP_OIDC_CLIENT_ID}
-        clientSecret: ${ONEAPP_OIDC_CLIENT_SECRET}
+        issuer: ${ONEAPP_AUTH_OIDC_ISSUER}
+        clientID: ${ONEAPP_AUTH_OIDC_CLIENT_ID}
+        clientSecret: ${ONEAPP_AUTH_OIDC_CLIENT_SECRET}
         redirectURI: https://${SERVERNAME}/dex/callback
         insecureSkipEmailVerified: true
         scopes: [openid, profile, email]
@@ -2059,18 +2180,21 @@ cat > "${SRC}/scripts/80-configure-slurm.sh" <<'ONEOND_SCRIPTS_80_CONFIGURE_SLUR
 #!/usr/bin/env bash
 # Declares a Slurm cluster as a second target of the portal, for batch jobs.
 #
-# Runs on the portal when ONEAPP_SLURM_CONTROLLER names the controller of a Slurm cluster
-# that shares the portal's users, over LDAP, and its home, over NFS, which is what the
-# official OneSlurm service does when it is given the portal and the storage addresses.
+# Runs on the portal when the switch ONEAPP_SLURM_CONTROLLER_ENABLED is on and
+# ONEAPP_SLURM_CONTROLLER_HOST names the controller of a Slurm cluster that shares the
+# portal's users, over LDAP, and its home, over NFS, which is what the official OneSlurm
+# service does when it is given the portal and the storage addresses.
 # The portal installs no Slurm client: a proxy sends each command to the controller over
 # SSH as the user, with the key the portal keeps in the user's home, and the Job Composer
 # and Active Jobs then show the cluster beside the VM pool.
 #
 # It is idempotent. Variables:
-#   ONEAPP_SLURM_CONTROLLER   address or host name of the Slurm controller (empty disables it)
-#   ONEAPP_SLURM_TITLE        name of the cluster in the portal (Slurm)
+#   ONEAPP_SLURM_CONTROLLER_ENABLED  YES to declare the cluster, anything else removes it
+#   ONEAPP_SLURM_CONTROLLER_HOST     address or host name of the Slurm controller (required
+#                                    when the switch is on, ignored otherwise)
+#   ONEAPP_SLURM_TITLE               name of the cluster in the portal (Slurm)
 #
-# Usage:  ONEAPP_SLURM_CONTROLLER=172.20.0.100 ./80-configure-slurm.sh
+# Usage:  ONEAPP_SLURM_CONTROLLER_ENABLED=YES ONEAPP_SLURM_CONTROLLER_HOST=172.20.0.100 ./80-configure-slurm.sh
 
 source "$(dirname "${BASH_SOURCE[0]}")/00-lib.sh"
 require_root
@@ -2079,14 +2203,16 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLUSTER_FILE=/etc/ood/config/clusters.d/slurm.yml
 PROXY_DIR=/opt/one-ondemand/bin/slurm
 STATE_DIR=/etc/one-ondemand
-CONTROLLER="${ONEAPP_SLURM_CONTROLLER:-}"
+CONTROLLER="$ONEAPP_SLURM_CONTROLLER_HOST"
 TITLE="${ONEAPP_SLURM_TITLE:-Slurm}"
 
-if [[ -z "$CONTROLLER" ]]; then
+if ! is_yes "$ONEAPP_SLURM_CONTROLLER_ENABLED"; then
     rm -f "$CLUSTER_FILE" "${STATE_DIR}/slurm_controller"
-    ok "no Slurm controller given, the portal offers the VM pool only"
+    ok "no Slurm cluster enabled, the portal offers the VM pool only"
     exit 0
 fi
+[[ -n "$CONTROLLER" ]] \
+    || die "ONEAPP_SLURM_CONTROLLER_ENABLED is YES, so ONEAPP_SLURM_CONTROLLER_HOST is required"
 
 install -d -m 755 "$STATE_DIR" "$PROXY_DIR"
 printf '%s\n' "$CONTROLLER" > "${STATE_DIR}/slurm_controller"
@@ -2135,28 +2261,33 @@ cat > "${SRC}/scripts/90-configure-vm-pool.sh" <<'ONEOND_SCRIPTS_90_CONFIGURE_VM
 # is left without a host and the session is taken as finished straight away.
 #
 # It is idempotent. Variables:
-#   ONEAPP_POOL_RANGE       range RESERVED FOR THE WORKERS, "first-last" (required),
-#                           for example "172.20.0.230-172.20.0.249". Everything else
-#                           depends on this contract, because the portal takes any live
-#                           machine inside that range for a worker, so nothing else can
-#                           be there.
-#                           In the OneFlow service it is the compute network of the role,
-#                           in a manual installation it has to be reserved.
+#   ONEAPP_POOL_RANGE       range RESERVED FOR THE WORKERS, "first-last", for example
+#                           "172.20.0.230-172.20.0.249". Everything else depends on this
+#                           contract, because the portal takes any live machine inside
+#                           that range for a worker, so nothing else can be there.
+#                           Empty by default. Then the portal takes the whole /24 around
+#                           its own compute address, which is the compute network of the
+#                           OneFlow service, and a compute network larger than a /24
+#                           needs the range given here. In a manual installation the
+#                           range has to be reserved.
 #   ONEAPP_POOL_EXCLUDE_IPS addresses inside the range that are NOT workers, separated by
-#                           spaces. The portal and the storage addresses are added
-#                           automatically.
+#                           spaces. The portal, the storage and the Slurm controller
+#                           addresses are added automatically.
 #   ONEAPP_POOL_PREFIX      name prefix of each worker (ood-worker-)
 #   ONEAPP_POOL_DOMAIN      domain of the pool VMs (ood.local)
 #   ONEAPP_POOL_MAX         cap on generated entries (256), as a safety net
 #   ONEAPP_POOL_SUBMIT_HOST fallback host that receives jobs if the roster is stale.
 #                           By default, the first one in the range that responds.
+#   ONEAPP_WORKER_MAX_SESSIONS  sessions a worker takes before the pool grows (4)
+#   ONEAPP_AUTH_LOCAL_USERS     the first user of the list checks the login to a worker
 #
 # Usage:  ONEAPP_POOL_RANGE="172.20.0.50-172.20.0.249" ./90-configure-vm-pool.sh
 
 source "$(dirname "${BASH_SOURCE[0]}")/00-lib.sh"
 require_root
 
-POOL_RANGE="${ONEAPP_POOL_RANGE:?ONEAPP_POOL_RANGE with the compute network range is missing}"
+# pool_range sets POOL_RANGE from ONEAPP_POOL_RANGE, or derives it from the compute interface.
+pool_range
 POOL_PREFIX="${ONEAPP_POOL_PREFIX:-ood-worker-}"
 POOL_DOMAIN="${ONEAPP_POOL_DOMAIN:-ood.local}"
 POOL_MAX="${ONEAPP_POOL_MAX:-256}"
@@ -2180,12 +2311,14 @@ count=$(( hi - lo + 1 ))
 # --- what is in the range and is not a worker -----------------------------------------------
 # The portal and the storage have SSH open just like a worker, so without this list the
 # roster would take them for valid destinations and a user session could run on the
-# portal itself.
+# portal itself. The Slurm controller counts only when its switch is on.
+slurm_host=""
+is_yes "$ONEAPP_SLURM_CONTROLLER_ENABLED" && slurm_host="$ONEAPP_SLURM_CONTROLLER_HOST"
 install -d -m 755 /etc/one-ondemand
 {
     printf '# Generated by one-ondemand/scripts/90-configure-vm-pool.sh\n'
     printf '# Addresses inside the pool range that are not workers.\n'
-    for ip in ${ONEAPP_POOL_EXCLUDE_IPS:-} ${ONEAPP_LDAP_HOST:-} ${ONEAPP_NFS_HOST:-} ${ONEAPP_SLURM_CONTROLLER:-} $(hostname -I); do
+    for ip in ${ONEAPP_POOL_EXCLUDE_IPS:-} ${ONEAPP_LDAP_HOST:-} ${ONEAPP_NFS_HOST:-} ${slurm_host} $(hostname -I); do
         [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
         [[ "${ip%.*}" == "$net" ]] || continue
         printf '%s%s.%s\n' "$POOL_PREFIX" "${ip##*.}" "$POOL_DOMAIN"
@@ -2272,7 +2405,7 @@ fi
 
 # --- verification -------------------------------------------------------------------------------
 msg "checking that the portal logs into ${submit_host} as a user"
-first_user="$(cut -d: -f1 <<<"${ONEAPP_LDAP_USERS%% *}")"
+first_user="$(cut -d: -f1 <<<"${ONEAPP_AUTH_LOCAL_USERS%% *}")"
 if runuser -u "$first_user" -- ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 "$submit_host" \
         'command -v tmux >/dev/null && command -v apptainer >/dev/null && test -s /opt/ood/linuxhost.sif && echo listo' 2>/dev/null | grep -q listo; then
     ok "${first_user} logs into ${submit_host} and finds tmux, apptainer and the SIF"
@@ -2280,7 +2413,7 @@ else
     warn "${first_user} does not log into ${submit_host} yet, if they have not signed in to the portal their key does not exist"
 fi
 
-for u in $(cut -d: -f1 <<<"$(tr ' ' '\n' <<<"$ONEAPP_LDAP_USERS")"); do
+for u in $(cut -d: -f1 <<<"$(tr ' ' '\n' <<<"$ONEAPP_AUTH_LOCAL_USERS")"); do
     /opt/ood/nginx_stage/sbin/nginx_stage nginx_clean -u "$u" -f >/dev/null 2>&1 || true
 done
 ok "VM pool declared"
@@ -2760,10 +2893,12 @@ cat > "${SRC}/storage/10-install-nfs.sh" <<'ONEOND_STORAGE_10_INSTALL_NFS_SH_'
 # across services (README, "Keeping the home").
 #
 # Variables:
-#   ONEAPP_NFS_NET        network with read and write access, by default the one of the last NIC
-#   ONEAPP_NFS_ADMIN_IPS  IPs with no_root_squash, space separated; in the service the portal
-#                         address comes from OneGate instead, see export-refresh.sh
-#   ONEAPP_NFS_EXPORT     path of the export (/export/home)
+#   ONEAPP_NFS_NET          network with read and write access, by default the one of the
+#                           last NIC
+#   ONEAPP_NFS_ADMIN_IPS    IPs with no_root_squash, space separated; in the service the
+#                           portal address comes from OneGate instead, see export-refresh.sh
+#   ONEAPP_HOME_NFS_EXPORT  path of the export (/export/home), the same path the portal and
+#                           the workers mount
 #
 # Usage:  ONEAPP_NFS_ADMIN_IPS="172.20.0.220" ./10-install-nfs.sh
 
@@ -2774,7 +2909,7 @@ require_root
 # address comes from OneGate later, or from ONEAPP_NFS_ADMIN_IPS on a VM outside a service.
 NFS_NET="${ONEAPP_NFS_NET:-$(compute_net_cidr)}"
 NFS_ADMIN_IPS="${ONEAPP_NFS_ADMIN_IPS:-}"
-HOME_EXPORT="${ONEAPP_NFS_EXPORT:-/export/home}"
+HOME_EXPORT="$ONEAPP_HOME_NFS_EXPORT"
 EXPORTS_FILE=/etc/exports.d/one-ondemand.exports
 STATE_DIR=/etc/one-ondemand
 
@@ -3146,18 +3281,23 @@ cat > "${SRC}/worker/configure.sh" <<'ONEOND_WORKER_CONFIGURE_SH_'
 # of failing halfway, and it is idempotent.
 #
 # Variables:
-#   ONEAPP_NFS_HOST        private IP of the storage VM (required)
-#   ONEAPP_LDAP_HOST       private IP of the portal, where the LDAP listens (required)
-#   ONEAPP_CVMFS_PROXY     URL of the site's Squid (required)
-#   ONEAPP_POOL_DOMAIN     domain the portal uses to name the pool VMs (ood.local)
-#   ONEAPP_POOL_NET_PREFIX prefix of the private compute network (172.20.)
-#   ONEAPP_POOL_PREFIX     prefix of each worker's name (ood-worker-). The name is completed
-#                          with the last octet of its private IP, and the portal uses the
-#                          same rule.
-#   ONEAPP_LDAP_BASE       base of the LDAP tree (dc=ood,dc=local)
-#   ONEAPP_WORKER_SELFTEST if it is "1", it also loads EESSI's JupyterLab inside the SIF as a
-#                          deep check. It costs minutes with a cold cache, so by default it
-#                          is not done at boot.
+#   ONEAPP_NFS_HOST          private IP of the storage VM (required)
+#   ONEAPP_HOME_NFS_ENABLED  YES to mount an NFS server the site already runs instead
+#   ONEAPP_HOME_NFS_SERVER   address of that server (required when the switch is on)
+#   ONEAPP_HOME_NFS_EXPORT   path of the home export (/export/home)
+#   ONEAPP_LDAP_HOST         private IP of the portal, where the LDAP listens (required)
+#   ONEAPP_AUTH_LOCAL_USERS  the first user of the list checks that sssd resolves the
+#                            portal users
+#   ONEAPP_CVMFS_PROXY       URL of the site's Squid (required)
+#   ONEAPP_POOL_DOMAIN       domain the portal uses to name the pool VMs (ood.local)
+#   ONEAPP_POOL_NET_PREFIX   prefix of the private compute network (172.20.)
+#   ONEAPP_POOL_PREFIX       prefix of each worker's name (ood-worker-). The name is
+#                            completed with the last octet of its private IP, and the
+#                            portal uses the same rule.
+#   ONEAPP_LDAP_BASE         base of the LDAP tree (dc=ood,dc=local)
+#   ONEAPP_WORKER_SELFTEST   if it is "1", it also loads EESSI's JupyterLab inside the SIF
+#                            as a deep check. It costs minutes with a cold cache, so by
+#                            default it is not done at boot.
 #
 # Usage:  ONEAPP_NFS_HOST=172.20.0.222 ONEAPP_LDAP_HOST=172.20.0.220 \
 #         ONEAPP_CVMFS_PROXY=http://172.20.0.222:3128 ./configure.sh
@@ -3172,8 +3312,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # here, that VM would end in configure_failure with the motd in red, and the harness checks
 # would pass anyway because they only read what was baked in. Each block below skips itself
 # and warns.
-NFS_HOST="${ONEAPP_NFS_SERVER:-${ONEAPP_NFS_HOST:-}}"
-HOME_EXPORT="$ONEAPP_NFS_EXPORT"
+if is_yes "$ONEAPP_HOME_NFS_ENABLED"; then
+    # The operator asked for a server of the site, so its address is not optional.
+    NFS_HOST="$ONEAPP_HOME_NFS_SERVER"
+    [[ -n "$NFS_HOST" ]] || die "ONEAPP_HOME_NFS_ENABLED is YES, so ONEAPP_HOME_NFS_SERVER is required"
+else
+    NFS_HOST="${ONEAPP_NFS_HOST:-}"
+fi
+HOME_EXPORT="$ONEAPP_HOME_NFS_EXPORT"
 LDAP_HOST="${ONEAPP_LDAP_HOST:-}"
 CVMFS_PROXY="${ONEAPP_CVMFS_PROXY:-}"
 BASE="${ONEAPP_LDAP_BASE:-dc=ood,dc=local}"
@@ -3297,7 +3443,7 @@ EOF
     chmod 600 /etc/sssd/sssd.conf
     systemctl enable sssd >/dev/null 2>&1
     systemctl restart sssd || die "sssd does not start"
-    first_user="$(cut -d: -f1 <<<"${ONEAPP_LDAP_USERS%% *}")"
+    first_user="$(cut -d: -f1 <<<"${ONEAPP_AUTH_LOCAL_USERS%% *}")"
     wait_for 90 bash -c "getent passwd ${first_user} >/dev/null 2>&1" \
         || die "sssd does not resolve ${first_user} against ${LDAP_HOST}"
     ok "portal users visible: $(getent passwd "$first_user" | cut -d: -f1,3)"

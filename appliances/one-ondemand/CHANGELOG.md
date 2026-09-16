@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.0.0-20260916
+
+Redesign of the service inputs, 16 September 2026. The instantiate wizard showed four tabs
+named after variable fragments, the only required field in "others", the OpenID Connect
+provider split across two tabs and two empty PEM boxes for everyone.
+
+- No required input. `ONEAPP_POOL_RANGE` leaves the wizard. The portal derives the worker
+  range from its compute interface, the whole /24 around its address, and the variable
+  stays as an advanced context attribute for a standalone portal or a compute network
+  larger than a /24.
+- Four tabs, Portal, Users and login, Home directories and Slurm, each with a title and a
+  description, and every optional feature in its own section behind an `_ENABLED` switch,
+  so an unused feature shows one switch and nothing else. The names follow the tabs.
+  `ONEAPP_PORTAL_HOST_NAME` replaces `ONEAPP_OOD_SERVERNAME`. `ONEAPP_AUTH_LOCAL_USERS`
+  replaces `ONEAPP_LDAP_USERS`. `ONEAPP_AUTH_OIDC_ENABLED` with `ONEAPP_AUTH_OIDC_ISSUER`,
+  `ONEAPP_AUTH_OIDC_CLIENT_ID`, `ONEAPP_AUTH_OIDC_CLIENT_SECRET` and `ONEAPP_AUTH_OIDC_NAME`
+  replace `ONEAPP_OIDC_ISSUER`, `ONEAPP_OIDC_CLIENT_ID`, `ONEAPP_OIDC_CLIENT_SECRET` and
+  `ONEAPP_OIDC_NAME`. `ONEAPP_HOME_NFS_ENABLED` with `ONEAPP_HOME_NFS_SERVER` and
+  `ONEAPP_HOME_NFS_EXPORT` replace `ONEAPP_NFS_SERVER` and `ONEAPP_NFS_EXPORT`.
+  `ONEAPP_SLURM_CONTROLLER_ENABLED` with `ONEAPP_SLURM_CONTROLLER_HOST` replace
+  `ONEAPP_SLURM_CONTROLLER`.
+- The certificate list is gone. The default is a self-signed certificate,
+  `ONEAPP_PORTAL_LETSENCRYPT_ENABLED` requests one from Let's Encrypt, and
+  `ONEAPP_PORTAL_CERTIFICATE_ENABLED` installs the chain and the key given in
+  `ONEAPP_PORTAL_CERTIFICATE_CHAIN` and `ONEAPP_PORTAL_CERTIFICATE_KEY`. They replace
+  `ONEAPP_OOD_SSL_MODE`, `ONEAPP_OOD_SSL_CERT` and `ONEAPP_OOD_SSL_KEY`.
+- Worker tuning leaves the wizard. `ONEAPP_WORKER_IDLE_SECONDS` and
+  `ONEAPP_WORKER_MAX_SESSIONS` keep their names and defaults as advanced context
+  attributes, set in the `vm_template_contents` of a role.
+- No backward compatibility with the previous names. The appliance is unreleased, and this
+  entry is the record of the rename.
+
 ## 1.0.0-20260915
 
 First release.
