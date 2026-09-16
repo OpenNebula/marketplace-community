@@ -108,12 +108,13 @@ opennebula_template:
     oneapp_home_nfs_export: 'O|text|Path of the home export||/export/home'
     oneapp_slurm_controller_enabled: 'O|boolean|Submit batch jobs to a Slurm cluster that shares the users and the home||NO'
     oneapp_slurm_controller_host: 'O|text|Address of the Slurm controller||'
-  # Titles and descriptions of the tabs (APP) and the sections (GROUP) of the wizard.
+  # Titles of the tabs (APP) and titles and descriptions of the sections (GROUP) of the wizard.
+  # A tab carries no description on purpose: FireEdge paints it as an info alert whose text is
+  # unreadable in the dark theme, while a section description shows as a readable tooltip.
   user_inputs_metadata:
   - name: PORTAL
     type: APP
     title: Portal
-    description: Public name and TLS certificate of the web portal
   - name: HOST
     type: GROUP
     title: Host name
@@ -129,7 +130,6 @@ opennebula_template:
   - name: AUTH
     type: APP
     title: Users and login
-    description: Who can sign in to the portal
   - name: LOCAL
     type: GROUP
     title: Local users
@@ -141,7 +141,6 @@ opennebula_template:
   - name: HOME
     type: APP
     title: Home directories
-    description: Where the files of the users live
   - name: NFS
     type: GROUP
     title: NFS server of your own
@@ -149,7 +148,6 @@ opennebula_template:
   - name: SLURM
     type: APP
     title: Slurm
-    description: Batch jobs on a Slurm cluster
   - name: CONTROLLER
     type: GROUP
     title: Controller

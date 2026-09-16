@@ -171,13 +171,13 @@ opennebula_template:
     ONEAPP_HOME_NFS_EXPORT: 'O|text|Path of the home export||/export/home'
     ONEAPP_SLURM_CONTROLLER_ENABLED: 'O|boolean|Submit batch jobs to a Slurm cluster that shares the users and the home||NO'
     ONEAPP_SLURM_CONTROLLER_HOST: 'O|text|Address of the Slurm controller||'
-  # Titles and descriptions of the tabs (APP) and the sections (GROUP) of the wizard. OneFlow
-  # keeps this key in the service template body, and FireEdge reads it.
+  # Titles of the tabs (APP) and titles and descriptions of the sections (GROUP) of the wizard.
+  # OneFlow keeps this key in the service template body, and FireEdge reads it. A tab carries no
+  # description on purpose, see the image template.
   user_inputs_metadata:
   - name: PORTAL
     type: APP
     title: Portal
-    description: Public name and TLS certificate of the web portal
   - name: HOST
     type: GROUP
     title: Host name
@@ -193,7 +193,6 @@ opennebula_template:
   - name: AUTH
     type: APP
     title: Users and login
-    description: Who can sign in to the portal
   - name: LOCAL
     type: GROUP
     title: Local users
@@ -205,7 +204,6 @@ opennebula_template:
   - name: HOME
     type: APP
     title: Home directories
-    description: Where the files of the users live
   - name: NFS
     type: GROUP
     title: NFS server of your own
@@ -213,7 +211,6 @@ opennebula_template:
   - name: SLURM
     type: APP
     title: Slurm
-    description: Batch jobs on a Slurm cluster
   - name: CONTROLLER
     type: GROUP
     title: Controller
