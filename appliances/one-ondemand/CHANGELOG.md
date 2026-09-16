@@ -10,8 +10,14 @@ provider split across two tabs and two empty PEM boxes for everyone.
   range from its compute interface, the whole /24 around its address, and the variable
   stays as an advanced context attribute for a standalone portal or a compute network
   larger than a /24.
-- Four tabs, Portal, Users and login, Home directories and Slurm, each with a title and a
-  description, and every optional feature in its own section behind an `_ENABLED` switch,
+- A check that stops a role at boot is published through OneGate as the `ERROR` attribute
+  of the VM, so Sunstone shows it on the VM and `onevm show` lists it, without opening a
+  console. A switch turned on with its field empty is the usual case.
+- `ONEAPP_AUTH_LOCAL_USERS` is validated before the directory is seeded. A duplicate user
+  name or uid, a missing password, a uid under 1000 or a name with capitals stops the portal
+  with a message that names the entry.
+- Four tabs, Portal, Users and login, Home directories and Slurm, each with a title, and
+  every optional feature in its own section behind an `_ENABLED` switch,
   so an unused feature shows one switch and nothing else. The names follow the tabs.
   `ONEAPP_PORTAL_HOST_NAME` replaces `ONEAPP_OOD_SERVERNAME`. `ONEAPP_AUTH_LOCAL_USERS`
   replaces `ONEAPP_LDAP_USERS`. `ONEAPP_AUTH_OIDC_ENABLED` with `ONEAPP_AUTH_OIDC_ISSUER`,

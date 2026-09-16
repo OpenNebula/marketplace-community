@@ -357,6 +357,21 @@ run() {
 }
 
 t0=$(date +%s)
+# A check that stops the role is reported through OneGate as well, as the ERROR attribute of
+# the VM, so the operator reads it in Sunstone or in onevm show without opening a console.
+# The message is the last ERROR line of the log, which is what the failing script printed.
+# The onegate client splits its data on commas and a double quote would end the value, so
+# both are replaced before publishing.
+report_failure() {
+    local rc=$? msg
+    (( rc == 0 )) && return 0
+    msg="$(grep -E '\] ERROR: ' "$LOG" | tail -1 | sed 's/^\[[^]]*\] ERROR: //; s/"/'"'"'/g; s/,/;/g')"
+    if . /etc/one-ondemand/onegate-lib.sh 2>/dev/null && onegate_ready; then
+        onegate_call vm update --data "ERROR=\"one-ondemand ${ROLE}: ${msg:-configuration failed, see ${LOG}}\"" \
+            >/dev/null 2>&1 || true
+    fi
+}
+trap report_failure EXIT
 # The portal and the storage VM take their role as host name, so logs, certificates and the
 # prompt say what the machine is instead of carrying the name of the VM the image was built
 # on. The worker derives its own from its address in worker/configure.sh.
@@ -935,10 +950,29 @@ backup_once() {
     return 0
 }
 
+# ldap_users_check: stops on an entry of ONEAPP_AUTH_LOCAL_USERS that would leave the
+# directory inconsistent, with a message that names the entry, so a typo in the wizard shows
+# as the ERROR of the VM instead of as two users sharing files.
+ldap_users_check() {
+    local entry user pass uid seen_users=" " seen_uids=" "
+    for entry in $ONEAPP_AUTH_LOCAL_USERS; do
+        IFS=: read -r user pass uid <<<"$entry"
+        [[ "$user" =~ ^[a-z_][a-z0-9_-]*$ ]] \
+            || die "ONEAPP_AUTH_LOCAL_USERS: '${entry}' has no valid user name (lowercase letters, digits, _ and -)"
+        [[ -n "$pass" ]] || die "ONEAPP_AUTH_LOCAL_USERS: '${entry}' has no password"
+        [[ "$uid" =~ ^[0-9]+$ && "$uid" -ge 1000 ]] \
+            || die "ONEAPP_AUTH_LOCAL_USERS: '${entry}' needs a numeric uid of 1000 or more"
+        [[ "$seen_users" == *" ${user} "* ]] && die "ONEAPP_AUTH_LOCAL_USERS: user ${user} appears twice"
+        [[ "$seen_uids" == *" ${uid} "* ]] && die "ONEAPP_AUTH_LOCAL_USERS: uid ${uid} is given to two users"
+        seen_users+="${user} "; seen_uids+="${uid} "
+    done
+}
+
 # ldap_users_each: splits each entry of ONEAPP_AUTH_LOCAL_USERS and calls the given
 # function with user, password and uid.
 ldap_users_each() {
     local fn="$1" entry user pass uid
+    ldap_users_check
     for entry in $ONEAPP_AUTH_LOCAL_USERS; do
         IFS=: read -r user pass uid <<<"$entry"
         "$fn" "$user" "$pass" "$uid"
