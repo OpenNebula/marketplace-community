@@ -1,6 +1,6 @@
 ---
 name: Open OnDemand Service
-version: 1.0.0-20260916
+version: 1.1.0-20260916
 publisher: OpenNebula Systems
 publisher_email: contact@opennebula.io
 description: |-
@@ -14,13 +14,14 @@ description: |-
      [EESSI](https://www.eessi.io/) software catalogue over CernVM-FS.
   2. **portal** runs Open OnDemand with its own LDAP directory, so adding a user is one
      directory entry and their home appears on first login.
-  3. **worker** runs the user sessions. Each session opens over SSH inside an Apptainer
-     container, with the scientific software loaded from EESSI.
+  3. **worker** runs the user sessions and the batch jobs as jobs of the Slurm cluster of
+     the service, with the scientific software loaded from EESSI.
 
-  The worker role is elastic. Every worker reports its open session count to OneGate, and
-  OneFlow adds a VM when the average passes the threshold and removes one after a quiet
-  period. The portal sends each new session to the least loaded worker, so a VM added by
-  the autoscaler receives work immediately instead of sitting idle.
+  The portal runs the Slurm controller and the accounting, and every worker joins the
+  cluster on its own when it boots. A session asks for cores, memory and GPUs and gets them
+  exclusively. The worker role is elastic. The workers publish the queue of the cluster to
+  OneGate, OneFlow adds a VM when a job waits for one and, after a quiet period, the oldest
+  worker drains and OneFlow removes it.
 
   Requires
   [OneFlow](https://docs.opennebula.io/7.4/product/operation_references/opennebula_services_configuration/oneflow/)
@@ -30,7 +31,7 @@ description: |-
 
   Based on the VM template
   - [Open OnDemand](https://community-marketplace.opennebula.io/appliance/b65a3b9d-1463-4e3d-87d6-6df37fa23361)
-short_description: Open OnDemand with an elastic pool of compute VMs, orchestrated by OneFlow
+short_description: Open OnDemand with its own elastic Slurm cluster, orchestrated by OneFlow
 tags:
 - open-ondemand
 - hpc
@@ -117,27 +118,23 @@ opennebula_template:
       ONEAPP_LDAP_HOST = "${portal.TEMPLATE.CONTEXT.ETH1_IP}"
       ONEAPP_CVMFS_PROXY = "http://${storage.TEMPLATE.CONTEXT.ETH1_IP}:3128"
     cooldown: 120
+    # Every session is a Slurm job, and the workers publish the queue of the cluster to
+    # OneGate. A job waiting for resources adds a worker: two 30 s periods filter the
+    # seconds between a submit and its allocation, and the 300 s cooldown covers the boot
+    # of the new VM, so one pending job adds one worker.
     elasticity_policies:
     - type: CHANGE
       adjust: 1
-      expression: 'ACTIVE_SESSIONS > 1'
-      period_number: 1
+      expression: 'SLURM_PENDING > 0'
+      period_number: 2
       period: 30
-      cooldown: 120
-    # Every worker at its session cap, ONEAPP_WORKER_MAX_SESSIONS, grows the pool too.
-    - type: CHANGE
-      adjust: 1
-      expression: 'AT_CAPACITY > 0.99'
-      period_number: 1
-      period: 30
-      cooldown: 120
+      cooldown: 300
     # Scale down one worker at a time. OneFlow evaluates the average of the attribute across
-    # the VMs of the role and when reducing it terminates the oldest one without draining it,
-    # so a condition on the number of sessions would power off a busy worker as soon as
-    # another one was free. Every worker publishes OLDEST_IDLE, 1 when the oldest worker of
-    # the role has had no session for ONEAPP_WORKER_IDLE_SECONDS, so the average is 1 only
-    # when all of them agree that the VM OneFlow is about to remove is empty. The portal
-    # sends new sessions to the youngest worker among the least loaded, so the oldest drains.
+    # the VMs of the role and when reducing it terminates the oldest one without draining it.
+    # The oldest worker drains its own Slurm node after ONEAPP_WORKER_IDLE_SECONDS without a
+    # job, so nothing more lands on it, and every worker publishes OLDEST_IDLE, 1 only while
+    # that node is drained and empty, so the average is 1 only when the VM OneFlow is about
+    # to remove holds no session and accepts none.
     - type: CHANGE
       adjust: -1
       expression: 'OLDEST_IDLE > 0.99'
@@ -152,8 +149,10 @@ opennebula_template:
   # order of the tabs in the instantiate wizard, one tab per second token of the name and
   # one section per third token, with the other inputs of a section shown only while its
   # _ENABLED switch is on. The portal derives the worker range from its compute interface,
-  # so no range is asked. ONEAPP_WORKER_IDLE_SECONDS, ONEAPP_WORKER_MAX_SESSIONS and
-  # ONEAPP_POOL_RANGE are advanced attributes for the vm_template_contents of a role.
+  # so no range is asked. ONEAPP_WORKER_IDLE_SECONDS, ONEAPP_WORKER_DRAIN_SECONDS,
+  # ONEAPP_POOL_RANGE and the ONEAPP_SLURM_* attributes (the state export, the default
+  # memory per core, and a second Slurm cluster of the site) are advanced attributes for the
+  # vm_template_contents of a role.
   custom_attrs:
     ONEAPP_PORTAL_HOST_NAME: 'O|text|Public host name of the portal, empty to use its address||'
     ONEAPP_PORTAL_LETSENCRYPT_ENABLED: 'O|boolean|Request a Let''s Encrypt certificate for the host name||NO'
@@ -169,8 +168,6 @@ opennebula_template:
     ONEAPP_HOME_NFS_ENABLED: 'O|boolean|Use an NFS server of your own instead of the storage role||NO'
     ONEAPP_HOME_NFS_SERVER: 'O|text|Address of the NFS server||'
     ONEAPP_HOME_NFS_EXPORT: 'O|text|Path of the home export||/export/home'
-    ONEAPP_SLURM_CONTROLLER_ENABLED: 'O|boolean|Submit batch jobs to a Slurm cluster that shares the users and the home||NO'
-    ONEAPP_SLURM_CONTROLLER_HOST: 'O|text|Address of the Slurm controller||'
   # Titles of the tabs (APP) and titles and descriptions of the sections (GROUP) of the wizard.
   # OneFlow keeps this key in the service template body, and FireEdge reads it. A tab carries no
   # description on purpose, see the image template.
@@ -208,12 +205,5 @@ opennebula_template:
     type: GROUP
     title: NFS server of your own
     description: By default the storage role exports the home directories; with a server of your own the storage role only keeps the software cache
-  - name: SLURM
-    type: APP
-    title: Slurm
-  - name: CONTROLLER
-    type: GROUP
-    title: Controller
-    description: A OneSlurm service on the same compute network, see the Slurm page of the documentation
 logo: logos/openondemand.png
 images: []

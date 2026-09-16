@@ -7,7 +7,7 @@
 #
 #   portal   the web portal, with its own LDAP directory and Dex authentication
 #   storage  the shared home over NFS and the site cache for the EESSI catalogue
-#   worker   a compute VM that runs user sessions inside Apptainer containers
+#   worker   a compute VM that runs user sessions as jobs of the Slurm cluster of the service
 #
 # One image instead of three because there is one thing to build, publish and document, and
 # the OneKS appliance takes the same approach for its control plane and its nodes.
@@ -52,13 +52,16 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_HOME_NFS_ENABLED'            'configure' 'Use an NFS server of your own instead of the storage role'    'O|boolean'
     'ONEAPP_HOME_NFS_SERVER'             'configure' 'Address of the NFS server'                                    'O|text'
     'ONEAPP_HOME_NFS_EXPORT'             'configure' 'Path of the home export'                                      'O|text'
-    'ONEAPP_SLURM_CONTROLLER_ENABLED'    'configure' 'Submit batch jobs to a Slurm cluster that shares the users and the home' 'O|boolean'
-    'ONEAPP_SLURM_CONTROLLER_HOST'       'configure' 'Address of the Slurm controller'                              'O|text'
     # Advanced attributes, set in the vm_template_contents of a role or in the CONTEXT of a
     # standalone VM, never asked by the wizard.
-    'ONEAPP_WORKER_IDLE_SECONDS'         'configure' 'Seconds a worker stays empty before the pool shrinks'         'O|number'
-    'ONEAPP_WORKER_MAX_SESSIONS'         'configure' 'Sessions a worker takes before the pool grows'                'O|number'
+    'ONEAPP_SLURM_CONTROLLER_ENABLED'    'configure' 'Submit batch jobs to a second Slurm cluster of the site as well' 'O|boolean'
+    'ONEAPP_SLURM_CONTROLLER_HOST'       'configure' 'Address of the controller of that cluster'                    'O|text'
+    'ONEAPP_WORKER_IDLE_SECONDS'         'configure' 'Seconds the oldest worker stays empty before it drains and the pool shrinks' 'O|number'
+    'ONEAPP_WORKER_DRAIN_SECONDS'        'configure' 'Seconds a drained worker waits for its removal before it returns to service' 'O|number'
     'ONEAPP_POOL_RANGE'                  'configure' 'Worker address range, first-last, for a portal outside a OneFlow service' 'O|text'
+    'ONEAPP_SLURM_STATE_EXPORT'          'configure' 'Export of the storage role that keeps the Slurm controller state' 'O|text'
+    'ONEAPP_SLURM_DEF_MEM_PER_CPU'       'configure' 'Memory in MB a job gets per core when it asks for none'      'O|number'
+    'ONEAPP_SLURM_TITLE'                 'configure' 'Name of the external Slurm cluster in the portal'             'O|text'
     # Two more values the scripts read at boot. The image template declares no reference for
     # them, so they reach a VM through its CONTEXT and not through a top-level attribute in
     # the vm_template_contents of a role.
@@ -77,7 +80,7 @@ Open OnDemand on OpenNebula. One image, three roles, chosen with ONEAPP_ROLE.
 
   portal   the web portal, with its own LDAP directory and Dex authentication
   storage  the shared home over NFS and the site cache for the EESSI catalogue
-  worker   a compute VM that runs user sessions inside Apptainer containers
+  worker   a compute VM that runs user sessions as jobs of the Slurm cluster of the service
 
 Deploy it with the Open OnDemand Service appliance, which wires the three roles together with
 OneFlow and grows the pool of compute VMs with the number of open sessions.
@@ -202,7 +205,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/../scripts/00-lib.sh"
 require_root
 
 msg "stopping the role services"
-for unit in apache2 ondemand-dex slapd nfs-server nfs-kernel-server squid sssd ood-publish-load; do
+# The accounting database first, while MariaDB still answers.
+mysql -e "DROP DATABASE IF EXISTS slurm_acct_db" >/dev/null 2>&1 || true
+for unit in apache2 ondemand-dex slapd nfs-server nfs-kernel-server squid sssd ood-slurm-elastic \
+            munge slurmd slurmctld slurmdbd mariadb ood-slurm-reconcile.timer ood-slurm-backup.timer \
+            ood-export-refresh.timer; do
     systemctl disable --now "$unit" >/dev/null 2>&1 || true
 done
 ok "no role service is left started or enabled"
@@ -211,7 +218,8 @@ msg "removing the configuration of this deployment"
 # Mounts first, an image with /home mounted over NFS does not boot if the server is not there.
 umount -l /home 2>/dev/null || true
 umount -l /cvmfs/software.eessi.io 2>/dev/null || true
-sed -i '\#:/export/home /home nfs4 #d;\# /cvmfs/software.eessi.io cvmfs #d' /etc/fstab
+umount -l /var/lib/one-ondemand/slurm 2>/dev/null || true
+sed -i '\#:/export/home /home nfs4 #d;\# /cvmfs/software.eessi.io cvmfs #d;\# /var/lib/one-ondemand/slurm nfs4 #d' /etc/fstab
 rm -f /etc/cvmfs/default.local
 rm -rf /var/lib/cvmfs/shared /var/lib/cvmfs/software.eessi.io
 ok "fstab, CernVM-FS proxy and cache cleaned"
@@ -220,9 +228,19 @@ ok "fstab, CernVM-FS proxy and cache cleaned"
 systemctl stop sssd >/dev/null 2>&1 || true
 rm -f /etc/sssd/sssd.conf
 rm -rf /var/lib/sss/db/* /var/lib/sss/mc/*
-sed -i '/# one-ondemand worker$/d;/# one-ondemand pool$/d' /etc/hosts
-rm -f /etc/one-ondemand/pool-exclude
+sed -i '/# one-ondemand worker$/d;/# one-ondemand portal$/d' /etc/hosts
 ok "identity and pool names removed"
+
+# Slurm, the key of the service, the configuration the portal renders, the state of the
+# controller and the accounting database seeded by the build.
+rm -f /etc/munge/munge.key /etc/slurm/slurm.conf /etc/slurm/cgroup.conf /etc/slurm/gres.conf \
+      /etc/slurm/slurmdbd.conf /etc/one-ondemand/slurmdbd.pass /etc/one-ondemand/ldap-admin.pass \
+      /etc/one-ondemand/nfs.env /etc/one-ondemand/nfs_host /etc/one-ondemand/portal-url
+# The package file, with its option commented out, is what marks a VM as no Slurm node.
+printf '# Additional options that are passed to the slurmd daemon\n#SLURMD_OPTIONS=""\n' > /etc/default/slurmd
+rm -rf /var/lib/one-ondemand/slurm /var/spool/slurmctld /var/spool/slurmd /var/lib/ood-slurm \
+       /etc/systemd/system/slurmctld.service.d 2>/dev/null || true
+ok "munge key, Slurm configuration, state and accounting removed"
 
 # Portal role, the LDAP tree with the seeded users, the site configuration of Open OnDemand and
 # its certificate. The tree is created again at boot (scripts/20-install-identity.sh).
@@ -231,7 +249,6 @@ rm -rf /etc/ood/config/clusters.d/* /etc/ood/config/ondemand.d/* \
        /etc/ood/config/apps/dashboard/initializers/* 2>/dev/null || true
 rm -f  /etc/ood/config/ood_portal.yml
 rm -rf /etc/letsencrypt /etc/ssl/one-ondemand 2>/dev/null || true
-rm -rf /var/lib/ood-pool 2>/dev/null || true
 ok "LDAP tree, Open OnDemand site configuration and certificates removed"
 
 # Storage role, the exports and the proxy cache.
@@ -276,15 +293,20 @@ for req in /etc/one-ondemand/build.env /etc/one-ondemand/ood-app-lib.sh \
            /opt/ood/linuxhost.sif /opt/one-ondemand/worker/configure.sh \
            /opt/one-ondemand/scripts/30-configure-portal.sh \
            /opt/one-ondemand/storage/10-install-nfs.sh \
+           /opt/one-ondemand/scripts/40-configure-slurm-controller.sh \
+           /opt/one-ondemand/config/slurm/slurm.conf.tpl \
            /usr/local/sbin/ood-appliance-configure \
-           /usr/local/bin/ood-publish-load.sh \
+           /usr/local/bin/ood-slurm-elastic.sh \
            /opt/ood/ood-portal-generator/sbin/update_ood_portal; do
     [[ -e "$req" ]] || die "${req} is missing, the cleanup took away something that had to stay"
 done
-for cmd in apptainer cvmfs_config exportfs squid slapadd; do
+for secret in /etc/one-ondemand/ldap-admin.pass /etc/one-ondemand/slurmdbd.pass /etc/munge/munge.key; do
+    [[ -e "$secret" ]] && die "${secret} is still there, the image would ship a secret"
+done
+for cmd in apptainer cvmfs_config exportfs squid slapadd slurmd slurmctld slurmdbd munged mariadbd; do
     command -v "$cmd" >/dev/null || die "${cmd} has disappeared from the image"
 done
-for pkg in ondemand ondemand-dex nfs-kernel-server squid slapd; do
+for pkg in ondemand ondemand-dex nfs-kernel-server squid slapd slurmd slurmctld slurmdbd slurm-client munge mariadb-server; do
     dpkg -s "$pkg" >/dev/null 2>&1 || die "the package ${pkg} has disappeared from the image"
 done
 ok "the three roles are still complete in the image"
@@ -315,9 +337,9 @@ cat > "${SRC}/appliance/configure.sh" <<'ONEOND_APPLIANCE_CONFIGURE_SH_'
 #   ONEAPP_ROLE            portal | storage | worker (mandatory)
 # Per role, the ones each script documents:
 #   portal    ONEAPP_NFS_HOST and ONEAPP_CVMFS_PROXY from the service, then the wizard
-#             inputs ONEAPP_PORTAL_*, ONEAPP_AUTH_*, ONEAPP_HOME_NFS_* and
-#             ONEAPP_SLURM_CONTROLLER_*, all optional, and ONEAPP_POOL_RANGE when the
-#             compute network is larger than a /24
+#             inputs ONEAPP_PORTAL_*, ONEAPP_AUTH_* and ONEAPP_HOME_NFS_*, all optional,
+#             ONEAPP_POOL_RANGE when the compute network is larger than a /24, and the
+#             ONEAPP_SLURM_* advanced attributes
 #   storage   ONEAPP_HOME_NFS_EXPORT, the rest comes from its NIC and from OneGate
 #   worker    ONEAPP_NFS_HOST, ONEAPP_LDAP_HOST, ONEAPP_CVMFS_PROXY, ONEAPP_HOME_NFS_*
 #
@@ -382,15 +404,15 @@ if [[ "$ROLE" != "worker" && "$(hostname)" != "ood-${ROLE}" ]]; then
 fi
 case "$ROLE" in
 storage)
-    # The load publisher belongs to the worker role, see the portal case below.
-    systemctl disable --now ood-publish-load.service >/dev/null 2>&1 || true
+    # The elasticity publisher belongs to the worker role, see the portal case below.
+    systemctl disable --now ood-slurm-elastic.service >/dev/null 2>&1 || true
     run "home NFS server"      bash "${DIR}/storage/10-install-nfs.sh"
     run "site Squid for EESSI" bash "${DIR}/storage/20-install-squid.sh"
     ;;
 portal)
     # The home server is checked first so a missing address fails at the top of the log.
-    # The worker range is not required, 90-configure-vm-pool.sh derives it from the compute
-    # interface when ONEAPP_POOL_RANGE is empty.
+    # The worker range is not required, pool_range derives it from the compute interface
+    # when ONEAPP_POOL_RANGE is empty.
     if is_yes "$ONEAPP_HOME_NFS_ENABLED"; then
         [[ -n "$ONEAPP_HOME_NFS_SERVER" ]] \
             || die "the portal role needs ONEAPP_HOME_NFS_SERVER when ONEAPP_HOME_NFS_ENABLED is YES"
@@ -399,23 +421,24 @@ portal)
             || die "the portal role needs ONEAPP_NFS_HOST, the address of the storage role"
     fi
     : "${ONEAPP_CVMFS_PROXY:?the portal role needs ONEAPP_CVMFS_PROXY}"
-    # The metrics publisher belongs to the worker role. On the portal it would only spend
-    # OneGate calls to publish zero sessions, and it would confuse the reading of the panel.
-    systemctl disable --now ood-publish-load.service >/dev/null 2>&1 || true
+    # The elasticity publisher belongs to the worker role. On the portal it would only spend
+    # OneGate calls, and it would confuse the reading of the panel.
+    systemctl disable --now ood-slurm-elastic.service >/dev/null 2>&1 || true
     run "Open OnDemand"         bash "${DIR}/scripts/10-install-ood.sh"
     run "LDAP and Dex identity" bash "${DIR}/scripts/20-install-identity.sh"
     run "shared home"           bash "${DIR}/scripts/25-mount-home.sh"
+    run "Slurm controller"      bash "${DIR}/scripts/40-configure-slurm-controller.sh"
     run "portal configuration"  bash "${DIR}/scripts/30-configure-portal.sh"
     run "application catalog"   bash "${DIR}/scripts/60-install-apps.sh"
     run "EESSI on the portal"   bash "${DIR}/scripts/70-install-cvmfs.sh"
-    run "worker pool"           bash "${DIR}/scripts/90-configure-vm-pool.sh"
-    run "Slurm cluster"         bash "${DIR}/scripts/80-configure-slurm.sh"
+    run "Slurm target"          bash "${DIR}/scripts/90-configure-slurm-target.sh"
+    run "external Slurm cluster" bash "${DIR}/scripts/80-configure-external-slurm.sh"
     ;;
 worker)
     # The three addresses are optional on purpose. A worker without them is a standalone
     # machine with Apptainer, and that is what the marketplace certification harness
     # instantiates. worker/configure.sh skips each block and says so in the log.
-    run "pool VM" bash "${DIR}/worker/configure.sh"
+    run "Slurm node" bash "${DIR}/worker/configure.sh"
     ;;
 *)
     die "ONEAPP_ROLE=${ROLE} is not a role of this appliance (portal, storage or worker)"
@@ -441,6 +464,8 @@ if . /etc/one-ondemand/onegate-lib.sh 2>/dev/null && onegate_ready; then
     onegate_call vm update --data "READY=YES" >/dev/null 2>&1 \
         && ok "READY=YES published to ${ONEGATE_ENDPOINT}" \
         || warn "could not publish READY=YES to ${ONEGATE_ENDPOINT}"
+    # A configure that succeeds after a failed one clears the ERROR the failure left.
+    onegate_call vm update --erase ERROR >/dev/null 2>&1 || true
 else
     warn "OneGate does not answer, READY is left to the one-context hook"
 fi
@@ -492,6 +517,16 @@ systemctl stop unattended-upgrades.service apt-daily.timer apt-daily-upgrade.tim
 wait_apt_lock
 apt-get update -qq || die "apt-get update failed"
 apt_install apt-transport-https ca-certificates wget curl gnupg python3
+
+# --- Slurm, the scheduler of every session ------------------------------------------------
+# Every worker runs slurmd and the portal runs the controller and the accounting. The
+# packages come from Ubuntu 24.04 (Slurm 23.11), without their recommends, which are every
+# plugin of the scheduler and its development files. The munge package generates a key and
+# starts munged with it; the key is removed with the image and the configure of each role
+# installs the one of the service.
+msg "=== Slurm ==="
+APT_NO_RECOMMENDS=1 apt_install slurmd slurm-client munge slurmctld slurmdbd mariadb-server
+ok "slurm $(dpkg-query -W -f='${Version}' slurmd 2>/dev/null), munge $(dpkg-query -W -f='${Version}' munge 2>/dev/null), mariadb $(dpkg-query -W -f='${Version}' mariadb-server 2>/dev/null)"
 
 # --- worker role --------------------------------------------------------------------------
 # It installs the most and it was already written, so it is reused as is, with packages,
@@ -555,11 +590,12 @@ ok "entry point at /usr/local/sbin/ood-appliance-configure"
 # that starts Apache with an empty LDAP is a free attack surface, and a portal that exports
 # NFS is a mistake that is hard to see. The configure of the role enables them.
 msg "=== leaving the role services stopped ==="
-for unit in apache2 ondemand-dex slapd nfs-server nfs-kernel-server squid sssd; do
+for unit in apache2 ondemand-dex slapd nfs-server nfs-kernel-server squid sssd \
+            munge slurmd slurmctld slurmdbd mariadb; do
     systemctl disable --now "$unit" >/dev/null 2>&1 || true
 done
-# The metrics publisher stays enabled because it belongs to the worker role, and on the
-# other two roles it starts, finds no sessions and publishes zero, which does no harm, so
+# The elasticity publisher stays enabled because it belongs to the worker role, and on the
+# other two roles it starts, finds no cluster and publishes nothing, which does no harm, so
 # the configure of those roles stops it.
 ok "role services disabled, they are enabled per role at boot"
 
@@ -594,16 +630,18 @@ ok "appliance built in $(( $(date +%s) - t0 ))s, for the portal, storage and wor
 ONEOND_APPLIANCE_INSTALL_SH_
 
 install -d -m 755 "${SRC}/config/clusters.d"
-cat > "${SRC}/config/clusters.d/slurm.yml" <<'ONEOND_CONFIG_CLUSTERS_D_SLURM_YML_'
-# Definition of a Slurm cluster as an Open OnDemand target, for batch jobs.
-# Installed at /etc/ood/config/clusters.d/slurm.yml by scripts/80-configure-slurm.sh
+cat > "${SRC}/config/clusters.d/external-slurm.yml" <<'ONEOND_CONFIG_CLUSTERS_D_EXTERNAL_SLURM_YML_'
+# Definition of a Slurm cluster of the site as a second Open OnDemand target, for batch jobs.
+# Installed at /etc/ood/config/clusters.d/external-slurm.yml by
+# scripts/80-configure-external-slurm.sh
 #
-# The portal carries no Slurm client. Every command goes to the controller over SSH as the
-# user, through the proxy in /opt/one-ondemand/bin/slurm, the pattern the AWS and Azure
-# integrations use. The controller shares the home and the users with the portal, so the
-# key the portal already created for each user opens the session.
+# The cluster of the service runs on the portal (clusters.d/slurm.yml). This one runs
+# elsewhere, so every command goes to its controller over SSH as the user, through the proxy
+# in /opt/one-ondemand/bin/slurm, the pattern the AWS and Azure integrations use. The
+# controller shares the home and the users with the portal, so the key the portal already
+# created for each user opens the session.
 #
-# The @@ placeholders are substituted by scripts/80-configure-slurm.sh.
+# The @@ placeholders are substituted by scripts/80-configure-external-slurm.sh.
 v2:
   metadata:
     title: "@@TITLE@@"
@@ -621,49 +659,38 @@ v2:
       sinfo: "/opt/one-ondemand/bin/slurm/sinfo"
       sacct: "/opt/one-ondemand/bin/slurm/sacct"
       sacctmgr: "/opt/one-ondemand/bin/slurm/sacctmgr"
-ONEOND_CONFIG_CLUSTERS_D_SLURM_YML_
+ONEOND_CONFIG_CLUSTERS_D_EXTERNAL_SLURM_YML_
 
 install -d -m 755 "${SRC}/config/clusters.d"
-cat > "${SRC}/config/clusters.d/vms.yml" <<'ONEOND_CONFIG_CLUSTERS_D_VMS_YML_'
-# Definition of the OpenNebula VM pool as an Open OnDemand target.
-# Installed at /etc/ood/config/clusters.d/vms.yml
+cat > "${SRC}/config/clusters.d/slurm.yml" <<'ONEOND_CONFIG_CLUSTERS_D_SLURM_YML_'
+# The Slurm cluster of the service as the Open OnDemand target of every session.
+# Installed at /etc/ood/config/clusters.d/slurm.yml by scripts/90-configure-slurm-target.sh.
 #
-# These are OpenNebula VMs with no scheduler, neither Slurm nor Kubernetes. The
-# portal enters each VM over SSH as the user and launches every job inside an
-# Apptainer container under tmux, all of it with the stock linux_host adapter.
+# The portal is the controller, so the stock slurm adapter runs sbatch, squeue and the
+# rest locally, as the user, against /etc/slurm/slurm.conf. Every interactive app and the
+# Job Composer submit here, so Slurm sees the whole load of the pool and no two sessions
+# share a core.
 #
-# The @@ placeholders are substituted by scripts/90-configure-vm-pool.sh.
+# The @@ placeholders are substituted by scripts/90-configure-slurm-target.sh.
 v2:
   metadata:
-    title: "OpenNebula VMs"
-    # This target is offered in the job composer, because it accepts batch scripts.
+    title: "Slurm"
     hidden: false
-  # No login section, because the portal terminal already logs into the portal itself.
+  # No login section: the Shell app opens a terminal on the portal itself, where every
+  # user has their home, see the shell env in scripts/30-configure-portal.sh.
+  # No cluster key: with one local cluster the clients talk to slurmctld directly, and a
+  # pause of slurmdbd never blocks a session.
   job:
-    adapter: "linux_host"
-    # The adapter sends every job to this host. ssh_hosts is the list of hosts where
-    # it recognises sessions, and that list does not distribute the load.
-    submit_host: "@@SUBMIT_HOST@@"
-    ssh_hosts:
-@@SSH_HOSTS@@
-    # Each job runs with `apptainer exec --pid <image>` and the session script inside.
-    # As Open OnDemand documents, the image is a base of the same operating system as
-    # the VM and only isolates the processes. The VM filesystem is mounted inside it
-    # (the documented bindpath plus the home and EESSI). The session software comes
-    # from EESSI, not from the image.
-    # A wrapper that adds --nv on a VM with an NVIDIA GPU, plain apptainer otherwise.
-    singularity_bin: "/usr/local/bin/apptainer-gpu"
-    singularity_image: "/opt/ood/linuxhost.sif"
-    singularity_bindpath: "/etc,/media,/mnt,/opt,/run,/srv,/usr,/var,/home,/cvmfs"
-    tmux_bin: "/usr/bin/tmux"
-    # VMs are created and destroyed, so their host keys are not known in advance.
-    strict_host_checking: false
-    site_timeout: 43200
-    debug: false
+    adapter: "slurm"
+    bin: "/usr/bin"
+    conf: "/etc/slurm/slurm.conf"
+    # The session script sources everything it needs, so the environment of the PUN is
+    # not copied into the job.
+    copy_environment: false
   batch_connect:
     basic:
-      # The host published in the session is the private IP of the VM, because the
-      # portal proxy reaches that address and host_regex accepts it.
+      # The host published in the session is the address of the node on the compute
+      # network, the one the portal proxy reaches and host_regex accepts.
       set_host: "host=$(hostname -I | tr ' ' '\\n' | grep '^@@COMPUTE_PREFIX_RE@@' | head -1)"
     vnc:
       # The Desktop app. Same host rule, and websockify from the distribution package
@@ -671,123 +698,87 @@ v2:
       set_host: "host=$(hostname -I | tr ' ' '\\n' | grep '^@@COMPUTE_PREFIX_RE@@' | head -1)"
       websockify_cmd: "/usr/bin/websockify"
     ssh_allow: false
-ONEOND_CONFIG_CLUSTERS_D_VMS_YML_
+ONEOND_CONFIG_CLUSTERS_D_SLURM_YML_
 
-install -d -m 755 "${SRC}/config/dashboard-initializers"
-cat > "${SRC}/config/dashboard-initializers/50-submit-host-override.rb" <<'ONEOND_CONFIG_DASHBOARD_INITIALIZERS_50_SUBMIT_HOST_OVERRIDE_RB_'
-# Makes the submit_host_override key of the linux_host adapter live.
-#
-# The adapter already ships the feature. In launcher.rb:95-101 it checks
-# script.native['submit_host_override'] and, if the key is there, sends the session to
-# that host instead of to the fixed submit_host from the cluster file. A growing pool
-# needs exactly that, so every new session runs on the worker with the most room.
-#
-# The problem is that the key never arrives. The dashboard converts the keys to symbols
-# three times before building the Script, in app.rb:424 and in session.rb:304 and :330,
-# and the adapter reads it as a string, so the value that submit.yml.erb emits is
-# silently lost and every session runs on the same worker.
-#
-# This initializer prepends a module that accepts both forms of the key. It does not
-# modify the gem, because the ondemand package owns the gem and the next update would
-# restore it. The initializer lives in the site configuration directory that Rails
-# already loads (application.rb:50).
-#
-# When there is no override, or it arrives empty, the original behaviour applies.
+install -d -m 755 "${SRC}/config/slurm"
+cat > "${SRC}/config/slurm/cgroup.conf" <<'ONEOND_CONFIG_SLURM_CGROUP_CONF_'
+# Installed at /etc/slurm/cgroup.conf on the portal and served to the workers with the rest
+# of the configuration. cgroup v2 fences every job to the cores and the memory it asked for.
+CgroupPlugin=autodetect
+ConstrainCores=yes
+ConstrainRAMSpace=yes
+ConstrainDevices=yes
+ONEOND_CONFIG_SLURM_CGROUP_CONF_
 
-begin
-  require 'ood_core/job/adapters/linux_host'
-  require 'ood_core/job/adapters/linux_host/launcher'
+install -d -m 755 "${SRC}/config/slurm"
+cat > "${SRC}/config/slurm/slurm.conf.tpl" <<'ONEOND_CONFIG_SLURM_SLURM_CONF_TPL_'
+# Slurm cluster of the Open OnDemand service, served by the portal.
+# Installed at /etc/slurm/slurm.conf by scripts/40-configure-slurm-controller.sh, which
+# substitutes the @@ placeholders. The workers run slurmd in configless mode and fetch
+# this file from the portal, so it exists on the portal only and a change here is applied
+# with `scontrol reconfigure`.
+ClusterName=ood
+SlurmctldHost=ood-portal(@@PORTAL_IP@@)
+AuthType=auth/munge
+SlurmUser=slurm
+# The controller state lives on the storage VM over NFS, so a portal that OneFlow replaces
+# finds the queue and the nodes where it left them. Measured on 16 September 2026, an
+# sbatch takes 0.035 s there against 0.020 s on the local disk.
+StateSaveLocation=@@STATE_DIR@@
+SlurmdSpoolDir=/var/spool/slurmd
+# Under the runtime directories the Debian units create for each daemon.
+SlurmctldPidFile=/run/slurmctld/slurmctld.pid
+SlurmdPidFile=/run/slurm/slurmd.pid
+SlurmctldLogFile=/var/log/slurm/slurmctld.log
+SlurmdLogFile=/var/log/slurm/slurmd.log
+# Workers register themselves as dynamic nodes (slurmd -Z) and take their configuration
+# from the controller, so no node is declared here. MaxNodeCount bounds how many can exist,
+# the size of the address range the workers can take on the compute network.
+SlurmctldParameters=enable_configless
+MaxNodeCount=@@MAX_NODES@@
+ReturnToService=2
+SlurmdTimeout=60
+# Cores and memory are consumable, so two sessions never share a core and a job that grows
+# past its memory is stopped, which is what makes the cores of the pool exclusive.
+SelectType=select/cons_tres
+SelectTypeParameters=CR_Core_Memory
+DefMemPerCPU=@@DEF_MEM_PER_CPU@@
+ProctrackType=proctrack/cgroup
+TaskPlugin=task/cgroup,task/affinity
+JobAcctGatherType=jobacct_gather/cgroup
+PrologFlags=Contain
+GresTypes=gpu
+# A session is never requeued on another node: its browser connection points at the node
+# that started it.
+JobRequeue=0
+# Every task gets a runtime directory and a D-Bus of its own, see the prolog.
+TaskProlog=/opt/one-ondemand/worker/slurm-task-prolog.sh
+TaskEpilog=/opt/one-ondemand/worker/slurm-task-epilog.sh
+SchedulerType=sched/backfill
+MpiDefault=none
+MailProg=/bin/true
+AccountingStorageType=accounting_storage/slurmdbd
+AccountingStorageHost=localhost
+# One partition with every node, dynamic ones included (Nodes=ALL). The limit matches the
+# longest session the forms offer.
+PartitionName=main Nodes=ALL Default=YES MaxTime=12:00:00 DefaultTime=01:00:00 OverSubscribe=NO State=UP
+ONEOND_CONFIG_SLURM_SLURM_CONF_TPL_
 
-  module OneOnDemandPlacement
-    def submit_host(script = nil)
-      native = script.respond_to?(:native) ? script.native : nil
-      if native.respond_to?(:[])
-        override = native[:submit_host_override] || native['submit_host_override']
-        return override.to_s unless override.nil? || override.to_s.strip.empty?
-      end
-      super
-    end
-  end
-
-  OodCore::Job::Adapters::LinuxHost::Launcher.prepend(OneOnDemandPlacement)
-  Rails.logger.info('one-ondemand: submit_host_override active for the linux_host adapter')
-rescue LoadError, NameError => e
-  # With no linux_host adapter loaded there is nothing to patch, and the portal must
-  # start all the same. The failure is recorded in the log instead of breaking the
-  # user process.
-  Rails.logger.warn("one-ondemand: could not activate submit_host_override (#{e.class}: #{e.message})")
-end
-
-# Selection of the least loaded worker.
-#
-# The portal computes the roster in /var/lib/ood-pool/workers.json with a systemd timer
-# that checks which workers answer and how many sessions each one has, and this code only
-# reads that file. Tied workers are drawn at random, so two nearly simultaneous launches
-# do not always pick the same one, because the roster refreshes every half minute and does
-# not see a just-created session immediately.
-#
-# pick returns nil when the roster is missing or expired, or when no worker answers, and
-# then the adapter uses the submit_host from the cluster file, the usual behaviour. A
-# failure here never prevents launching a session.
-require 'json'
-
-module OneOnDemandPool
-  POOL_FILE = ENV.fetch('OOD_POOL_FILE', '/var/lib/ood-pool/workers.json')
-  MAX_AGE_SECONDS = 180
-
-  def self.workers
-    data = JSON.parse(File.read(POOL_FILE))
-    return [] if Time.now.to_i - data['ts'].to_i > MAX_AGE_SECONDS
-    Array(data['workers']).select { |w| w['alive'] && !w['fqdn'].to_s.empty? }
-  rescue StandardError
-    []
-  end
-
-  # The least loaded worker, and among equals the youngest one, so the oldest worker drains as
-  # its sessions end and OneFlow, which always retires the oldest VM of the role, finds it
-  # empty. Without VM ids in the roster the tie is broken at random.
-  # The roles the roster has seen, "worker" for the standard size and "worker_<x>" for
-  # any other role the service template declares, so a form can offer the sizes that exist.
-  def self.roles
-    workers.map { |w| w['role'] }.compact.uniq
-  rescue StandardError
-    []
-  end
-
-  # role narrows the choice to the workers of that role, the size the user asked for. With
-  # no worker of that role alive the choice falls back to the whole pool, so a session
-  # still runs, on a standard worker.
-  # The cap the portal was configured with, 0 when there is none.
-  def self.max_sessions
-    File.read('/var/lib/ood-pool/max_sessions').to_i
-  rescue StandardError
-    0
-  end
-
-  def self.pick(role = nil)
-    candidates = workers
-    cap = max_sessions
-    if cap > 0
-      with_room = candidates.select { |w| w['sessions'].to_i < cap }
-      # Every worker at capacity: the least loaded one takes the session all the same,
-      # and the pool grows behind it.
-      candidates = with_room unless with_room.empty?
-    end
-    if role && !role.to_s.empty?
-      of_role = candidates.select { |w| w['role'] == role.to_s }
-      candidates = of_role unless of_role.empty?
-    end
-    return nil if candidates.empty?
-    fewest = candidates.map { |w| w['sessions'].to_i }.min
-    tied = candidates.select { |w| w['sessions'].to_i == fewest }
-    with_id = tied.select { |w| w['vm_id'] }
-    return tied.sample['fqdn'] if with_id.empty?
-    with_id.max_by { |w| w['vm_id'].to_i }['fqdn']
-  rescue StandardError
-    nil
-  end
-end
-ONEOND_CONFIG_DASHBOARD_INITIALIZERS_50_SUBMIT_HOST_OVERRIDE_RB_
+install -d -m 755 "${SRC}/config/slurm"
+cat > "${SRC}/config/slurm/slurmdbd.conf.tpl" <<'ONEOND_CONFIG_SLURM_SLURMDBD_CONF_TPL_'
+# Accounting daemon of the Slurm cluster, on the portal, over the local MariaDB.
+# Installed at /etc/slurm/slurmdbd.conf by scripts/40-configure-slurm-controller.sh.
+AuthType=auth/munge
+DbdHost=localhost
+SlurmUser=slurm
+LogFile=/var/log/slurm/slurmdbd.log
+PidFile=/run/slurmdbd/slurmdbd.pid
+StorageType=accounting_storage/mysql
+StorageHost=localhost
+StorageUser=slurm
+StoragePass=@@DB_PASS@@
+StorageLoc=slurm_acct_db
+ONEOND_CONFIG_SLURM_SLURMDBD_CONF_TPL_
 
 install -d -m 755 "${SRC}/scripts"
 cat > "${SRC}/scripts/00-lib.sh" <<'ONEOND_SCRIPTS_00_LIB_SH_'
@@ -861,18 +852,20 @@ ONEAPP_HOME_NFS_ENABLED="${ONEAPP_HOME_NFS_ENABLED:-NO}"
 ONEAPP_HOME_NFS_SERVER="${ONEAPP_HOME_NFS_SERVER:-}"
 ONEAPP_HOME_NFS_EXPORT="${ONEAPP_HOME_NFS_EXPORT:-/export/home}"
 
-# --- batch cluster (tab SLURM of the wizard) -----------------------------------------
-# A Slurm controller that shares the users and the home, only when its switch is on.
-ONEAPP_SLURM_CONTROLLER_ENABLED="${ONEAPP_SLURM_CONTROLLER_ENABLED:-NO}"
-ONEAPP_SLURM_CONTROLLER_HOST="${ONEAPP_SLURM_CONTROLLER_HOST:-}"
-
 # --- advanced attributes, not in the wizard -------------------------------------------
 # An operator sets these in the vm_template_contents of a role or in the CONTEXT of a
 # standalone VM. ONEAPP_POOL_RANGE has no default because pool_range below derives it, and
-# ONEAPP_WORKER_IDLE_SECONDS is read from the context by worker/publish-load.sh alone.
+# ONEAPP_WORKER_IDLE_SECONDS is read from the context by worker/slurm-elastic.sh alone.
 ONEAPP_METRICS_PORT="${ONEAPP_METRICS_PORT:-9101}"
-# Sessions a worker takes before the pool grows, and the cap the portal respects.
-ONEAPP_WORKER_MAX_SESSIONS="${ONEAPP_WORKER_MAX_SESSIONS:-4}"
+# The Slurm cluster of the service, always on: the export of the storage role that keeps the
+# controller state, and the memory a job gets per core when it asks for none.
+ONEAPP_SLURM_STATE_EXPORT="${ONEAPP_SLURM_STATE_EXPORT:-/export/slurm}"
+ONEAPP_SLURM_DEF_MEM_PER_CPU="${ONEAPP_SLURM_DEF_MEM_PER_CPU:-1024}"
+# A second Slurm cluster of the site, beside the one of the service, for batch jobs only
+# (scripts/80-configure-external-slurm.sh). It shares the users and the home of the portal.
+ONEAPP_SLURM_CONTROLLER_ENABLED="${ONEAPP_SLURM_CONTROLLER_ENABLED:-NO}"
+ONEAPP_SLURM_CONTROLLER_HOST="${ONEAPP_SLURM_CONTROLLER_HOST:-}"
+ONEAPP_SLURM_TITLE="${ONEAPP_SLURM_TITLE:-External Slurm}"
 
 # --- target parameters ---------------------------------------------------------
 # EESSI catalogue version and the module with JupyterLab and ipykernel for the kernel.
@@ -910,7 +903,9 @@ wait_apt_lock() {
     return 0
 }
 
-# apt_install PKG...: install without prompting, and only if something is missing.
+# apt_install PKG...: install without prompting, and only if something is missing. With
+# APT_NO_RECOMMENDS=1 the recommended packages stay out, for the packages whose recommends
+# are plugins and development files the appliance never uses.
 apt_install() {
     local missing=()
     local p
@@ -923,7 +918,8 @@ apt_install() {
     fi
     wait_apt_lock
     msg "installing: ${missing[*]}"
-    apt-get install -y -o Dpkg::Options::=--force-confold "${missing[@]}" >/dev/null \
+    apt-get install -y ${APT_NO_RECOMMENDS:+--no-install-recommends} \
+        -o Dpkg::Options::=--force-confold "${missing[@]}" >/dev/null \
         || die "installation failed for: ${missing[*]}"
     ok "installed: ${missing[*]}"
 }
@@ -1471,16 +1467,11 @@ else
     SERVERNAME_SAN="DNS:${SERVERNAME}"
 fi
 
-# The origin allowed to use the per user key. It is the compute network, taken from the
-# range reserved for the workers rather than from a constant, because the adapter opens a
-# session on those VMs with this same key and their addresses are whatever the deployment
-# gives them. pool_range reads ONEAPP_POOL_RANGE, or derives the range from the compute
-# interface of this VM when that is empty.
-pool_range
-POOL_FIRST="${POOL_RANGE%%-*}"
-[[ "$POOL_FIRST" =~ ^[0-9]+(\.[0-9]+){3}$ ]] \
-    || die "ONEAPP_POOL_RANGE must be \"first-last\", for example 172.20.0.50-172.20.0.249"
-POOL_CIDR="${POOL_FIRST%.*}.0/24"
+# The origin allowed to use the per user key, besides the portal loopback: the address of
+# this VM on the compute network, because the proxy to an external Slurm cluster opens an
+# SSH session on its controller with this same key and arrives from that address.
+read -r _ PORTAL_COMPUTE_IP < <(compute_addr)
+[[ -n "${PORTAL_COMPUTE_IP:-}" ]] || die "this VM has no address on the compute network"
 
 # --- certificate ------------------------------------------------------------------
 mkdir -p "$CERT_DIR"
@@ -1763,16 +1754,18 @@ if [[ ! -d "$home" ]]; then
 fi
 
 # The portal web terminal opens an ssh to the portal itself as the user, because this
-# deployment has no login nodes, and the linux_host adapter opens another one to the
-# pool VMs. It is the same key for both, and it only works from
-# the portal (over localhost or over its IP on the compute network).
+# deployment has no login nodes, and the proxy to an external Slurm cluster opens another
+# one to its controller. It is the same key for both, and it only works from the portal,
+# over localhost or from its address on the compute network. A key created by an earlier
+# version with another origin is corrected here.
 sshdir="${home}/.ssh"
 key="${sshdir}/id_ed25519_portal"
+origin='from="127.0.0.1,::1,@@PORTAL_COMPUTE_IP@@"'
 if [[ ! -f "$key" ]]; then
     group="$(id -gn "$user")"
     install -d -m 0700 -o "$user" -g "$group" "$sshdir"
     if runuser -u "$user" -- ssh-keygen -q -t ed25519 -N "" -C "one-ondemand-portal" -f "$key" </dev/null; then
-        printf 'from="127.0.0.1,::1,@@POOL_CIDR@@" %s\n' "$(cat "${key}.pub")" >> "${sshdir}/authorized_keys"
+        printf '%s %s\n' "$origin" "$(cat "${key}.pub")" >> "${sshdir}/authorized_keys"
         grep -qs "id_ed25519_portal" "${sshdir}/config" \
             || printf 'Host *\n    IdentityFile %s\n    StrictHostKeyChecking accept-new\n' "$key" >> "${sshdir}/config"
         chown "$user:$group" "${sshdir}/authorized_keys" "${sshdir}/config"
@@ -1782,22 +1775,14 @@ if [[ ! -f "$key" ]]; then
         logger -t ood-prehook "could not create the web terminal key of ${user}"
     fi
 fi
-# The same key lets the portal open a session on the pool VMs as the user (linux_host
-# adapter), so the allowed origin includes the private compute network and the
-# client offers it to any host, not only to localhost. A key created earlier with
-# the old origin or the old scope is corrected here.
 if [[ -f "${key}.pub" && -f "${sshdir}/authorized_keys" ]]; then
     pub="$(cut -d' ' -f2 "${key}.pub")"
-    if grep -qF "$pub" "${sshdir}/authorized_keys" && ! grep -F "$pub" "${sshdir}/authorized_keys" | grep -q '@@POOL_CIDR@@'; then
-        awk -v pub="$pub" -v pre='from="127.0.0.1,::1,@@POOL_CIDR@@"' \
+    if grep -qF "$pub" "${sshdir}/authorized_keys" && ! grep -F "$pub" "${sshdir}/authorized_keys" | grep -qF "$origin"; then
+        awk -v pub="$pub" -v pre="$origin" \
             'index($0, pub) { sub(/^from="[^"]*" */, ""); $0 = pre " " $0 } { print }' \
             "${sshdir}/authorized_keys" > "${sshdir}/authorized_keys.new" \
             && cat "${sshdir}/authorized_keys.new" > "${sshdir}/authorized_keys" && rm -f "${sshdir}/authorized_keys.new"
-        logger -t ood-prehook "web terminal key origin of ${user} widened to the pool"
-    fi
-    if grep -qs '^Host localhost$' "${sshdir}/config"; then
-        sed -i 's/^Host localhost$/Host */' "${sshdir}/config"
-        logger -t ood-prehook "the web terminal key of ${user} is now offered to the pool VMs"
+        logger -t ood-prehook "web terminal key origin of ${user} set to the portal"
     fi
 fi
 
@@ -1850,11 +1835,11 @@ fi
 
 exit 0
 HOOK
-# The hook is written with a quoted heredoc, so the compute network is substituted here
+# The hook is written with a quoted heredoc, so the portal address is substituted here
 # instead of being expanded inside it.
-sed -i "s|@@POOL_CIDR@@|${POOL_CIDR}|g" /opt/one-ondemand/bin/pun_prehook
-if grep -q '@@POOL_CIDR@@' /opt/one-ondemand/bin/pun_prehook; then
-    die "the compute network was not substituted in the pre-PUN hook"
+sed -i "s|@@PORTAL_COMPUTE_IP@@|${PORTAL_COMPUTE_IP}|g" /opt/one-ondemand/bin/pun_prehook
+if grep -q '@@PORTAL_COMPUTE_IP@@' /opt/one-ondemand/bin/pun_prehook; then
+    die "the portal address was not substituted in the pre-PUN hook"
 fi
 chmod 755 /opt/one-ondemand/bin/pun_prehook
 ok "pre-PUN hook installed at /opt/one-ondemand/bin/pun_prehook"
@@ -1903,45 +1888,13 @@ dashboard_layout:
 EOF
 ok "menu and dynamic forms declared in /etc/ood/config/ondemand.d/one-ondemand.yml"
 
-# --- pool roster ----------------------------------------------------------------------
-# A timer that records which workers answer and how many sessions each one has, so the
-# launch template sends every new session to the one with the most room. Without this
-# the adapter sends everything to the same host and a worker added by elasticity stays
-# empty. Every half minute is enough, because a session takes longer than that to start.
+# --- OneGate library --------------------------------------------------------------------
+# The exporter, the Slurm reconciler and the boot phase ask OneGate about the service. The
+# image already carries the library (worker/install.sh), and this keeps it current.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# The OneGate library goes here too. When the portal is a VM of the OneFlow service, the
-# roster asks OneGate which workers the role has right now, instead of probing the whole
-# range. A portal installed by hand belongs to no service, so the library is unused and
-# the roster probes the range instead.
 install -d -m 755 /etc/one-ondemand
 install -m 644 "${REPO_ROOT}/worker/onegate-lib.sh" /etc/one-ondemand/onegate-lib.sh
 bash -n /etc/one-ondemand/onegate-lib.sh || die "onegate-lib.sh is not valid bash"
-install -m 755 "${REPO_ROOT}/scripts/ood-pool-refresh.sh" /usr/local/bin/ood-pool-refresh
-cat > /etc/systemd/system/ood-pool-refresh.service <<'UNIT'
-[Unit]
-Description=Refresh the Open OnDemand worker pool roster
-After=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/ood-pool-refresh
-UNIT
-cat > /etc/systemd/system/ood-pool-refresh.timer <<'UNIT'
-[Unit]
-Description=Refresh the Open OnDemand worker pool roster every 30 seconds
-
-[Timer]
-OnBootSec=30s
-OnUnitActiveSec=30s
-AccuracySec=5s
-
-[Install]
-WantedBy=timers.target
-UNIT
-systemctl daemon-reload
-systemctl enable --now ood-pool-refresh.timer >/dev/null 2>&1
-/usr/local/bin/ood-pool-refresh || die "the pool roster could not be generated"
-ok "pool roster active: $(cat /var/lib/ood-pool/workers.json)"
 
 # --- metrics --------------------------------------------------------------------------
 # One Prometheus endpoint for the whole service. The exporter reads what the workers
@@ -1967,21 +1920,6 @@ service_up ood-metrics-exporter
 wait_for 30 bash -c "curl -sf http://127.0.0.1:${METRICS_PORT}/metrics | grep -q ood_exporter_scrape_ok" \
     || die "the metrics exporter does not answer on port ${METRICS_PORT}"
 ok "metrics on http://<portal>:${METRICS_PORT}/metrics"
-
-# --- dashboard extensions -------------------------------------------------------------
-# Rails loads the files in this directory as initializers when the external configuration
-# is active (dashboard/config/application.rb:50). This directory is meant for site code,
-# and it survives an update of the ondemand package, unlike patching the gem in
-# /opt/ood/gems.
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [[ -d "${REPO_ROOT}/config/dashboard-initializers" ]]; then
-    install -d -m 755 /etc/ood/config/apps/dashboard/initializers
-    install -m 644 "${REPO_ROOT}"/config/dashboard-initializers/*.rb /etc/ood/config/apps/dashboard/initializers/
-    for f in "${REPO_ROOT}"/config/dashboard-initializers/*.rb; do
-        ruby -c "$f" >/dev/null 2>&1 || die "$(basename "$f") is not valid Ruby"
-    done
-    ok "dashboard extensions installed: $(ls -1 /etc/ood/config/apps/dashboard/initializers | tr '\n' ' ')"
-fi
 
 # The web terminal needs a host to open ssh to. With no login nodes that host is the
 # portal itself, where the user has their home, and the pre-PUN hook leaves them a key
@@ -2058,6 +1996,242 @@ fi
 
 ok "portal configured at https://${SERVERNAME}"
 ONEOND_SCRIPTS_30_CONFIGURE_PORTAL_SH_
+
+install -d -m 755 "${SRC}/scripts"
+cat > "${SRC}/scripts/40-configure-slurm-controller.sh" <<'ONEOND_SCRIPTS_40_CONFIGURE_SLURM_CONTROLLER_SH_'
+#!/usr/bin/env bash
+# Starts the Slurm controller of the service on the portal.
+#
+# Every session of the portal is a Slurm job, so the portal runs slurmctld, slurmdbd with
+# MariaDB for the accounting, and munge. The workers register themselves as dynamic nodes
+# and take their configuration from here (configless), so this VM holds the only copy of
+# slurm.conf and cgroup.conf, rendered from config/slurm.
+#
+# Two things outlive this VM. The controller state (the queue and the nodes) and the munge
+# key live on the storage VM, on the export /export/slurm that the storage grants to the
+# portal alone, so a portal that OneFlow replaces finds the same key and the same queue. The
+# accounting database stays local and a timer dumps it to that export every half hour, and
+# a fresh portal restores the newest dump before it starts slurmdbd.
+#
+# The key is published to OneGate as SLURM_MUNGE_KEY, the way the OneSlurm appliance does
+# it, and each worker reads it from there at boot. Anyone who can read the template of the
+# portal VM can read the key, the same exposure OneSlurm has.
+#
+# It is idempotent. Variables:
+#   ONEAPP_NFS_HOST                address of the storage role; without it the state and
+#                                  the key stay on the local disk, out loud
+#   ONEAPP_SLURM_STATE_EXPORT      export of the storage VM for the state (/export/slurm)
+#   ONEAPP_SLURM_DEF_MEM_PER_CPU   memory a job gets per core when it asks for none (1024)
+#   ONEAPP_POOL_RANGE              bounds MaxNodeCount, derived from the compute interface
+#                                  when empty (see pool_range in 00-lib.sh)
+#
+# Usage:  ONEAPP_NFS_HOST=172.20.0.221 ./40-configure-slurm-controller.sh
+
+source "$(dirname "${BASH_SOURCE[0]}")/00-lib.sh"
+require_root
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+NFS_HOST="${ONEAPP_NFS_HOST:-}"
+STATE_EXPORT="${ONEAPP_SLURM_STATE_EXPORT:-/export/slurm}"
+STATE_MOUNT=/var/lib/one-ondemand/slurm
+DEF_MEM_PER_CPU="${ONEAPP_SLURM_DEF_MEM_PER_CPU:-1024}"
+PASS_FILE=/etc/one-ondemand/slurmdbd.pass
+CLUSTER=ood
+
+[[ "$DEF_MEM_PER_CPU" =~ ^[0-9]+$ ]] || die "ONEAPP_SLURM_DEF_MEM_PER_CPU must be a number of MB"
+for pkg in slurmctld slurmdbd slurm-client munge mariadb-server; do
+    dpkg -s "$pkg" >/dev/null 2>&1 || die "the package ${pkg} is not in the image, appliance/install.sh did not run"
+done
+
+read -r iface PORTAL_IP < <(compute_addr)
+[[ -n "${PORTAL_IP:-}" ]] || die "this VM has no address on the compute network for the controller"
+pool_range
+first="${POOL_RANGE%%-*}"; last="${POOL_RANGE##*-}"
+[[ "$first" =~ ^[0-9]+(\.[0-9]+){3}$ && "$last" =~ ^[0-9]+(\.[0-9]+){3}$ ]] \
+    || die "ONEAPP_POOL_RANGE must be \"first-last\", for example 172.20.0.50-172.20.0.249"
+MAX_NODES="$(python3 -c 'import ipaddress, sys
+print(int(ipaddress.ip_address(sys.argv[2])) - int(ipaddress.ip_address(sys.argv[1])) + 1)' "$first" "$last")"
+(( MAX_NODES >= 1 )) || die "ONEAPP_POOL_RANGE ${POOL_RANGE} is backwards, the last address comes before the first"
+ok "controller at ${PORTAL_IP} (${iface}), up to ${MAX_NODES} nodes in ${POOL_RANGE}"
+
+# --- state on the storage VM ---------------------------------------------------------------
+# The storage exports /export/slurm to the portal address once OneGate tells it which VM is
+# the portal, from the same timer that grants root on the home, so the mount may have to
+# wait for it. Without a storage address the state stays here, and a replaced portal starts
+# with an empty queue and a new key, which the log says.
+install -d -m 755 /etc/one-ondemand "$STATE_MOUNT"
+if [[ -n "$NFS_HOST" ]]; then
+    msg "mounting ${NFS_HOST}:${STATE_EXPORT} on ${STATE_MOUNT}"
+    backup_once /etc/fstab
+    sed -i "\#^[^ ]*:[^ ]* ${STATE_MOUNT} nfs4 #d" /etc/fstab
+    printf '%s:%s %s nfs4 _netdev,hard,noatime 0 0\n' "$NFS_HOST" "$STATE_EXPORT" "$STATE_MOUNT" >> /etc/fstab
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    findmnt -n "$STATE_MOUNT" >/dev/null 2>&1 \
+        || wait_for 180 mount "$STATE_MOUNT" \
+        || die "could not mount ${NFS_HOST}:${STATE_EXPORT} after 180s, does the storage VM export it to this portal?"
+    wait_for 180 bash -c "touch '${STATE_MOUNT}/.probe' 2>/dev/null && rm -f '${STATE_MOUNT}/.probe'" \
+        || die "root cannot write to ${STATE_MOUNT}, the storage did not grant no_root_squash to this portal"
+    ok "state on ${NFS_HOST}:${STATE_EXPORT}"
+else
+    warn "no ONEAPP_NFS_HOST: the controller state and the munge key stay on this VM"
+fi
+install -d -m 700 -o slurm -g slurm "${STATE_MOUNT}/state"
+install -d -m 700 "${STATE_MOUNT}/etc" "${STATE_MOUNT}/backup"
+install -d -m 755 -o slurm -g slurm /var/log/slurm /var/spool/slurmd
+
+# --- munge key --------------------------------------------------------------------------------
+# Generated once and kept beside the state, installed for munged, and loaded with a
+# restart: the package starts munged with a key of its own at install time, and a running
+# munged never rereads the file.
+msg "installing the munge key"
+if [[ ! -s "${STATE_MOUNT}/etc/munge.key" ]]; then
+    (umask 077; dd if=/dev/urandom of="${STATE_MOUNT}/etc/munge.key" bs=1024 count=1 status=none) \
+        || die "could not generate the munge key"
+    ok "new munge key generated"
+else
+    ok "munge key of an earlier portal reused"
+fi
+install -d -m 700 -o munge -g munge /etc/munge
+install -m 400 -o munge -g munge "${STATE_MOUNT}/etc/munge.key" /etc/munge/munge.key
+systemctl enable munge >/dev/null 2>&1 || true
+systemctl restart munge || die "munge did not start"
+munge -n | unmunge >/dev/null 2>&1 || die "munge does not validate its own credential"
+ok "munge active with the service key"
+
+# --- configuration, before any client runs -------------------------------------------------------------------------------
+# sacctmgr and sinfo read slurm.conf, so it is written before the accounting daemon starts.
+msg "writing /etc/slurm/slurm.conf and cgroup.conf"
+sed -e "s|@@PORTAL_IP@@|${PORTAL_IP}|" -e "s|@@STATE_DIR@@|${STATE_MOUNT}/state|" \
+    -e "s|@@MAX_NODES@@|${MAX_NODES}|" -e "s|@@DEF_MEM_PER_CPU@@|${DEF_MEM_PER_CPU}|" \
+    "${REPO_DIR}/config/slurm/slurm.conf.tpl" > /etc/slurm/slurm.conf
+install -m 644 "${REPO_DIR}/config/slurm/cgroup.conf" /etc/slurm/cgroup.conf
+chmod 644 /etc/slurm/slurm.conf
+grep -qE '@@[A-Z_]+@@' /etc/slurm/slurm.conf && die "a placeholder was left in /etc/slurm/slurm.conf"
+
+# --- accounting database ----------------------------------------------------------------------
+msg "preparing the accounting database"
+service_up mariadb
+if [[ ! -s "$PASS_FILE" ]]; then
+    (umask 077; openssl rand -hex 16 > "$PASS_FILE") || die "could not write ${PASS_FILE}"
+fi
+DB_PASS="$(cat "$PASS_FILE")"
+mysql -e "CREATE DATABASE IF NOT EXISTS slurm_acct_db;
+          CREATE USER IF NOT EXISTS 'slurm'@'localhost' IDENTIFIED BY '${DB_PASS}';
+          ALTER USER 'slurm'@'localhost' IDENTIFIED BY '${DB_PASS}';
+          GRANT ALL ON slurm_acct_db.* TO 'slurm'@'localhost'; FLUSH PRIVILEGES;" \
+    || die "could not create the accounting database"
+# An empty database on a portal with a dump on the export is a replaced portal, and the
+# history comes back from the newest dump before slurmdbd creates its tables.
+if [[ "$(mysql -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='slurm_acct_db'")" == "0" ]]; then
+    # Newest first, the names carry the UTC time of the dump.
+    while read -r dump; do
+        # A dump that ends without the completion mark was cut short and is skipped.
+        gunzip -c "$dump" 2>/dev/null | tail -c 200 | grep -q '^-- Dump completed' \
+            || { warn "$(basename "$dump") is incomplete, skipped"; continue; }
+        if gunzip -c "$dump" | mysql slurm_acct_db; then
+            ok "accounting restored from $(basename "$dump")"
+        else
+            die "could not restore the accounting from ${dump}"
+        fi
+        break
+    done < <(ls -1 "${STATE_MOUNT}"/backup/slurm_acct_db-*.sql.gz 2>/dev/null | sort -r)
+fi
+sed "s|@@DB_PASS@@|${DB_PASS}|" "${REPO_DIR}/config/slurm/slurmdbd.conf.tpl" > /etc/slurm/slurmdbd.conf
+chown slurm:slurm /etc/slurm/slurmdbd.conf; chmod 600 /etc/slurm/slurmdbd.conf
+service_up slurmdbd
+wait_for 60 sacctmgr -n list cluster || die "slurmdbd does not answer"
+if ! sacctmgr -n list cluster | awk '{print $1}' | grep -qx "$CLUSTER"; then
+    sacctmgr -i add cluster "$CLUSTER" >/dev/null || die "could not register the cluster ${CLUSTER} in slurmdbd"
+fi
+ok "accounting on MariaDB, cluster ${CLUSTER} registered"
+
+# --- controller -------------------------------------------------------------------------------
+# slurmctld must not start before the state is reachable, or it would start with an empty
+# queue on the local directory that the mount later covers.
+install -d -m 755 /etc/systemd/system/slurmctld.service.d
+cat > /etc/systemd/system/slurmctld.service.d/one-ondemand.conf <<UNIT
+# Generated by one-ondemand/scripts/40-configure-slurm-controller.sh
+[Unit]
+RequiresMountsFor=${STATE_MOUNT}
+UNIT
+systemctl daemon-reload
+if systemctl is-active --quiet slurmctld; then
+    scontrol reconfigure >/dev/null 2>&1 || warn "scontrol reconfigure failed, the controller keeps its configuration"
+fi
+service_up slurmctld
+wait_for 60 sinfo || die "slurmctld does not answer"
+ok "slurmctld $(scontrol show config | awk '/^SLURM_VERSION/{print $3}') up, $(sinfo -h -o '%D' | head -1) nodes registered"
+
+# --- the key for the workers, and the timers ---------------------------------------------
+msg "publishing the munge key and installing the timers"
+if . /etc/one-ondemand/onegate-lib.sh 2>/dev/null && onegate_ready; then
+    # Base64 without its padding: OneGate splits an attribute on the first "=" only, but an
+    # "=" inside the value makes the update fail with an internal error (checked on 16
+    # September 2026), and the worker puts the padding back before decoding.
+    onegate_call vm update --data "SLURM_MUNGE_KEY=$(base64 -w0 /etc/munge/munge.key | tr -d '=')" >/dev/null 2>&1 \
+        && ok "SLURM_MUNGE_KEY published to ${ONEGATE_ENDPOINT}" \
+        || die "could not publish SLURM_MUNGE_KEY, the workers cannot join the cluster"
+else
+    warn "OneGate does not answer, the workers will not find the munge key there"
+fi
+install -m 755 "${REPO_DIR}/scripts/slurm-node-reconcile.sh" /usr/local/bin/ood-slurm-reconcile
+install -m 755 "${REPO_DIR}/scripts/slurm-backup.sh" /usr/local/bin/ood-slurm-backup
+cat > /etc/systemd/system/ood-slurm-reconcile.service <<'UNIT'
+[Unit]
+Description=Reconcile the Slurm nodes with the workers of the Open OnDemand service
+After=slurmctld.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ood-slurm-reconcile
+UNIT
+cat > /etc/systemd/system/ood-slurm-reconcile.timer <<'UNIT'
+[Unit]
+Description=Reconcile the Slurm nodes every 30 seconds
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
+UNIT
+cat > /etc/systemd/system/ood-slurm-backup.service <<UNIT
+[Unit]
+Description=Dump the Slurm accounting database to the storage VM
+After=mariadb.service
+RequiresMountsFor=${STATE_MOUNT}
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ood-slurm-backup ${STATE_MOUNT}/backup
+UNIT
+cat > /etc/systemd/system/ood-slurm-backup.timer <<'UNIT'
+[Unit]
+Description=Dump the Slurm accounting database every 30 minutes
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=30min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now ood-slurm-reconcile.timer ood-slurm-backup.timer >/dev/null 2>&1 \
+    || die "the Slurm timers do not start"
+/usr/local/bin/ood-slurm-reconcile || warn "the first reconcile run failed, the timer retries"
+ok "reconcile every 30 s, accounting dump every 30 min to ${STATE_MOUNT}/backup"
+
+# --- verification ---------------------------------------------------------------------------
+for unit in munge mariadb slurmdbd slurmctld; do
+    systemctl is-active --quiet "$unit" || die "${unit} is not active"
+done
+ss -Hltn | awk '{print $4}' | grep -qE ':6817$' || die "slurmctld does not listen on 6817"
+ok "Slurm controller ready on ${PORTAL_IP}, state in ${STATE_MOUNT}/state"
+ONEOND_SCRIPTS_40_CONFIGURE_SLURM_CONTROLLER_SH_
 
 install -d -m 755 "${SRC}/scripts"
 cat > "${SRC}/scripts/60-install-apps.sh" <<'ONEOND_SCRIPTS_60_INSTALL_APPS_SH_'
@@ -2221,39 +2395,40 @@ fi
 ONEOND_SCRIPTS_70_INSTALL_CVMFS_SH_
 
 install -d -m 755 "${SRC}/scripts"
-cat > "${SRC}/scripts/80-configure-slurm.sh" <<'ONEOND_SCRIPTS_80_CONFIGURE_SLURM_SH_'
+cat > "${SRC}/scripts/80-configure-external-slurm.sh" <<'ONEOND_SCRIPTS_80_CONFIGURE_EXTERNAL_SLURM_SH_'
 #!/usr/bin/env bash
-# Declares a Slurm cluster as a second target of the portal, for batch jobs.
+# Declares a Slurm cluster of the site as a second target of the portal, for batch jobs.
 #
-# Runs on the portal when the switch ONEAPP_SLURM_CONTROLLER_ENABLED is on and
-# ONEAPP_SLURM_CONTROLLER_HOST names the controller of a Slurm cluster that shares the
-# portal's users, over LDAP, and its home, over NFS, which is what the official OneSlurm
-# service does when it is given the portal and the storage addresses.
-# The portal installs no Slurm client: a proxy sends each command to the controller over
-# SSH as the user, with the key the portal keeps in the user's home, and the Job Composer
-# and Active Jobs then show the cluster beside the VM pool.
+# The sessions run on the cluster of the service, whose controller is this portal. Runs on
+# the portal when the advanced attribute ONEAPP_SLURM_CONTROLLER_ENABLED is on and
+# ONEAPP_SLURM_CONTROLLER_HOST names the controller of another Slurm cluster that shares
+# the portal's users, over LDAP, and its home, over NFS, which is what the official OneSlurm
+# service does when it is given the portal and the storage addresses. The commands of that
+# cluster go to its controller over SSH as the user through a proxy, with the key the portal
+# keeps in the user's home, and the Job Composer and Active Jobs then show the cluster
+# beside the one of the service.
 #
 # It is idempotent. Variables:
 #   ONEAPP_SLURM_CONTROLLER_ENABLED  YES to declare the cluster, anything else removes it
 #   ONEAPP_SLURM_CONTROLLER_HOST     address or host name of the Slurm controller (required
 #                                    when the switch is on, ignored otherwise)
-#   ONEAPP_SLURM_TITLE               name of the cluster in the portal (Slurm)
+#   ONEAPP_SLURM_TITLE               name of the cluster in the portal (External Slurm)
 #
-# Usage:  ONEAPP_SLURM_CONTROLLER_ENABLED=YES ONEAPP_SLURM_CONTROLLER_HOST=172.20.0.100 ./80-configure-slurm.sh
+# Usage:  ONEAPP_SLURM_CONTROLLER_ENABLED=YES ONEAPP_SLURM_CONTROLLER_HOST=172.20.0.100 ./80-configure-external-slurm.sh
 
 source "$(dirname "${BASH_SOURCE[0]}")/00-lib.sh"
 require_root
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CLUSTER_FILE=/etc/ood/config/clusters.d/slurm.yml
+CLUSTER_FILE=/etc/ood/config/clusters.d/external-slurm.yml
 PROXY_DIR=/opt/one-ondemand/bin/slurm
 STATE_DIR=/etc/one-ondemand
 CONTROLLER="$ONEAPP_SLURM_CONTROLLER_HOST"
-TITLE="${ONEAPP_SLURM_TITLE:-Slurm}"
+TITLE="$ONEAPP_SLURM_TITLE"
 
 if ! is_yes "$ONEAPP_SLURM_CONTROLLER_ENABLED"; then
     rm -f "$CLUSTER_FILE" "${STATE_DIR}/slurm_controller"
-    ok "no Slurm cluster enabled, the portal offers the VM pool only"
+    ok "no external Slurm cluster, the portal offers the cluster of the service only"
     exit 0
 fi
 [[ -n "$CONTROLLER" ]] \
@@ -2270,7 +2445,7 @@ ok "Slurm commands proxied to ${CONTROLLER} from ${PROXY_DIR}"
 
 msg "writing ${CLUSTER_FILE}"
 sed -e "s|@@CONTROLLER@@|${CONTROLLER}|g" -e "s|@@TITLE@@|${TITLE}|g" \
-    "${REPO_DIR}/config/clusters.d/slurm.yml" > "$CLUSTER_FILE"
+    "${REPO_DIR}/config/clusters.d/external-slurm.yml" > "$CLUSTER_FILE"
 chmod 644 "$CLUSTER_FILE"
 ruby -e "require 'yaml'; YAML.load_file('${CLUSTER_FILE}')" 2>&1 | sed 's/^/    /' \
     || die "${CLUSTER_FILE} is not valid YAML"
@@ -2283,146 +2458,52 @@ if wait_for 60 bash -c "</dev/tcp/${CONTROLLER}/22" 2>/dev/null; then
 else
     warn "controller ${CONTROLLER} does not answer on port 22 yet, the cluster is declared anyway"
 fi
-ONEOND_SCRIPTS_80_CONFIGURE_SLURM_SH_
+ONEOND_SCRIPTS_80_CONFIGURE_EXTERNAL_SLURM_SH_
 
 install -d -m 755 "${SRC}/scripts"
-cat > "${SRC}/scripts/90-configure-vm-pool.sh" <<'ONEOND_SCRIPTS_90_CONFIGURE_VM_POOL_SH_'
+cat > "${SRC}/scripts/90-configure-slurm-target.sh" <<'ONEOND_SCRIPTS_90_CONFIGURE_SLURM_TARGET_SH_'
 #!/usr/bin/env bash
-# Declares the VM pool as the portal target.
+# Declares the Slurm cluster of the service as the portal target.
 #
-# The linux_host adapter rejects a job whose host is not in ssh_hosts, and that list is
-# read only once per user process. With a pool that grows that is an ordering problem,
-# because a worker that OneFlow creates later would not exist for the portal until the
-# user process restarts.
-#
-# The fix is to declare the whole compute network range in advance. The name of each
-# worker is derived from its address with the same rule the VM itself uses in
-# worker/configure.sh, so that 172.20.0.228 is always ood-worker-228. OpenNebula
-# guarantees that two VMs do not share an address, so the name is unique without any
-# coordination, and any worker born inside the range is accepted before it exists.
-#
-# The names carry a domain because ood_core recognises the host of a job with a regular
-# expression that only accepts names with dots, so with a short name the job identifier
-# is left without a host and the session is taken as finished straight away.
+# The controller runs on this VM (scripts/40-configure-slurm-controller.sh), so the cluster
+# file only names the local configuration and the way a session publishes its address. The
+# workers register themselves with the controller, so nothing about them is declared here
+# and a worker OneFlow creates later is a target the moment it registers.
 #
 # It is idempotent. Variables:
-#   ONEAPP_POOL_RANGE       range RESERVED FOR THE WORKERS, "first-last", for example
-#                           "172.20.0.230-172.20.0.249". Everything else depends on this
-#                           contract, because the portal takes any live machine inside
-#                           that range for a worker, so nothing else can be there.
-#                           Empty by default. Then the portal takes the whole /24 around
-#                           its own compute address, which is the compute network of the
-#                           OneFlow service, and a compute network larger than a /24
-#                           needs the range given here. In a manual installation the
-#                           range has to be reserved.
-#   ONEAPP_POOL_EXCLUDE_IPS addresses inside the range that are NOT workers, separated by
-#                           spaces. The portal, the storage and the Slurm controller
-#                           addresses are added automatically.
-#   ONEAPP_POOL_PREFIX      name prefix of each worker (ood-worker-)
-#   ONEAPP_POOL_DOMAIN      domain of the pool VMs (ood.local)
-#   ONEAPP_POOL_MAX         cap on generated entries (256), as a safety net
-#   ONEAPP_POOL_SUBMIT_HOST fallback host that receives jobs if the roster is stale.
-#                           By default, the first one in the range that responds.
-#   ONEAPP_WORKER_MAX_SESSIONS  sessions a worker takes before the pool grows (4)
-#   ONEAPP_AUTH_LOCAL_USERS     the first user of the list checks the login to a worker
+#   ONEAPP_POOL_RANGE   range of the compute network, "first-last", whose first three
+#                       octets tell a session which of its addresses to publish. Empty by
+#                       default, then the /24 around the compute address of this VM.
+#   ONEAPP_AUTH_LOCAL_USERS  the first user of the list checks that a job runs
 #
-# Usage:  ONEAPP_POOL_RANGE="172.20.0.50-172.20.0.249" ./90-configure-vm-pool.sh
+# Usage:  ./90-configure-slurm-target.sh
 
 source "$(dirname "${BASH_SOURCE[0]}")/00-lib.sh"
 require_root
 
-# pool_range sets POOL_RANGE from ONEAPP_POOL_RANGE, or derives it from the compute interface.
 pool_range
-POOL_PREFIX="${ONEAPP_POOL_PREFIX:-ood-worker-}"
-POOL_DOMAIN="${ONEAPP_POOL_DOMAIN:-ood.local}"
-POOL_MAX="${ONEAPP_POOL_MAX:-256}"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CLUSTER_FILE=/etc/ood/config/clusters.d/vms.yml
-HOSTS_MARK="# one-ondemand pool"
+CLUSTER_FILE=/etc/ood/config/clusters.d/slurm.yml
 
-first="${POOL_RANGE%%-*}"; last="${POOL_RANGE##*-}"
-[[ "$first" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && "$last" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+first="${POOL_RANGE%%-*}"
+[[ "$first" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] \
     || die "ONEAPP_POOL_RANGE must be \"first-last\", for example 172.20.0.50-172.20.0.249"
-net="${first%.*}"
-# The name is built from the last octet, so the range has to fit in a /24 or two VMs from
-# different subnets would receive the same name. The check exists instead of an assumption,
-# because that failure would be silent and very hard to find.
-[[ "${last%.*}" == "$net" ]] || die "ONEAPP_POOL_RANGE has to be inside a single /24 (${first} and ${last} are not)"
-lo="${first##*.}"; hi="${last##*.}"
-(( lo <= hi )) || die "the range is backwards, ${first} comes after ${last}"
-count=$(( hi - lo + 1 ))
-(( count <= POOL_MAX )) || die "the range has ${count} addresses and the cap is ${POOL_MAX}, adjust ONEAPP_POOL_RANGE or ONEAPP_POOL_MAX"
-
-# --- what is in the range and is not a worker -----------------------------------------------
-# The portal and the storage have SSH open just like a worker, so without this list the
-# roster would take them for valid destinations and a user session could run on the
-# portal itself. The Slurm controller counts only when its switch is on.
-slurm_host=""
-is_yes "$ONEAPP_SLURM_CONTROLLER_ENABLED" && slurm_host="$ONEAPP_SLURM_CONTROLLER_HOST"
-install -d -m 755 /etc/one-ondemand
-{
-    printf '# Generated by one-ondemand/scripts/90-configure-vm-pool.sh\n'
-    printf '# Addresses inside the pool range that are not workers.\n'
-    for ip in ${ONEAPP_POOL_EXCLUDE_IPS:-} ${ONEAPP_LDAP_HOST:-} ${ONEAPP_NFS_HOST:-} ${slurm_host} $(hostname -I); do
-        [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
-        [[ "${ip%.*}" == "$net" ]] || continue
-        printf '%s%s.%s\n' "$POOL_PREFIX" "${ip##*.}" "$POOL_DOMAIN"
-    done | sort -u
-} > /etc/one-ondemand/pool-exclude
-chmod 644 /etc/one-ondemand/pool-exclude
-ok "excluded from the pool: $(grep -vc '^#' /etc/one-ondemand/pool-exclude) names"
-
-# --- resolvable names -------------------------------------------------------------------
-msg "declaring ${count} names for the compute network ${first} to ${last}"
-backup_once /etc/hosts
-sed -i "/${HOSTS_MARK}\$/d" /etc/hosts
-ssh_hosts=""
-{
-    for (( o = lo; o <= hi; o++ )); do
-        printf '%s.%s %s%s.%s %s%s %s\n' "$net" "$o" "$POOL_PREFIX" "$o" "$POOL_DOMAIN" "$POOL_PREFIX" "$o" "$HOSTS_MARK"
-    done
-} >> /etc/hosts
-for (( o = lo; o <= hi; o++ )); do
-    ssh_hosts+="      - \"${POOL_PREFIX}${o}.${POOL_DOMAIN}\"\n"
-done
-ok "${count} names from ${POOL_PREFIX}${lo}.${POOL_DOMAIN} to ${POOL_PREFIX}${hi}.${POOL_DOMAIN} in /etc/hosts"
-
-# --- fallback host -----------------------------------------------------------------------
-# The roster does the real spreading, and it sends each session to the least loaded worker
-# (config/dashboard-initializers/50-submit-host-override.rb). submit_host is only used if
-# the roster is stale or empty, so it points at a worker that has announced itself, and not
-# at an address in the range that may have no VM behind it or a different machine.
-submit_host="${ONEAPP_POOL_SUBMIT_HOST:-}"
-if [[ -z "$submit_host" ]]; then
-    submit_host="${POOL_PREFIX}${lo}.${POOL_DOMAIN}"
-fi
-ok "provisional fallback host: ${submit_host}, it will be adjusted with the roster"
+[[ -s /etc/slurm/slurm.conf ]] || die "/etc/slurm/slurm.conf is missing, the Slurm controller is not configured"
 
 # --- target definition ---------------------------------------------------------------------
 msg "writing ${CLUSTER_FILE}"
-# The session publishes the address of the worker on the compute network, which is the one
-# the range is in, so the first three octets of the range become the pattern.
-# Two backslashes survive YAML's double quotes as one, and awk halves them again, so each
-# dot becomes four backslashes here to reach grep as one.
+# The session publishes its address on the compute network, so the first three octets of
+# the range become the pattern. Two backslashes survive YAML's double quotes as one, and
+# sed halves them again, so each dot becomes four backslashes here to reach grep as one.
 prefix_re="$(printf '%s' "${first%.*}." | sed 's/\./\\\\\\\\./g')"
-awk -v sh="$submit_host" -v hosts="$(printf "$ssh_hosts")" -v pre="$prefix_re" '
-    /@@SSH_HOSTS@@/ { print hosts; next }
-    { gsub(/@@SUBMIT_HOST@@/, sh); gsub(/@@COMPUTE_PREFIX_RE@@/, pre); print }
-' "${REPO_DIR}/config/clusters.d/vms.yml" > "$CLUSTER_FILE"
+sed "s|@@COMPUTE_PREFIX_RE@@|${prefix_re}|g" "${REPO_DIR}/config/clusters.d/slurm.yml" > "$CLUSTER_FILE"
 chmod 644 "$CLUSTER_FILE"
+grep -qE '@@[A-Z_]+@@' "$CLUSTER_FILE" && die "a placeholder was left in ${CLUSTER_FILE}"
 ruby -e "require 'yaml'; YAML.load_file('${CLUSTER_FILE}')" 2>&1 | sed 's/^/    /' \
     || die "${CLUSTER_FILE} is not valid YAML"
-ok "target vms declared with ${count} accepted hosts and fallback on ${submit_host}"
-
-# --- capacity ----------------------------------------------------------------------------------
-# The dispatcher skips a worker with this many sessions, the same figure the workers use to
-# publish AT_CAPACITY, on which the pool grows.
-install -d -m 755 /var/lib/ood-pool
-printf '%s\n' "$ONEAPP_WORKER_MAX_SESSIONS" > /var/lib/ood-pool/max_sessions
-ok "a worker takes up to ${ONEAPP_WORKER_MAX_SESSIONS} sessions"
+ok "target slurm declared, sessions publish their ${first%.*}.x address"
 
 # --- the job composer in the menu -------------------------------------------------------------
-# It offers the vms cluster, the only target declared in clusters.d.
 menu=/etc/ood/config/ondemand.d/one-ondemand.yml
 if ! grep -q '"Jobs"' "$menu" 2>/dev/null; then
     sed -i 's/^  - "sessions"$/  - "Jobs"\n  - "sessions"/' "$menu"
@@ -2430,39 +2511,21 @@ fi
 grep -q '"Jobs"' "$menu" || die "could not add the Jobs group to the menu"
 ok "job composer in the menu"
 
-# --- roster ----------------------------------------------------------------------------------
-# It is refreshed now so the portal does not have to wait for the timer.
-if [[ -x /usr/local/bin/ood-pool-refresh ]]; then
-    /usr/local/bin/ood-pool-refresh || warn "the roster could not be refreshed"
-    read -r alive first < <(python3 -c "
-import json
-d=json.load(open('/var/lib/ood-pool/workers.json'))
-w=[x for x in d.get('workers',[]) if x.get('alive')]
-print(len(w), w[0]['fqdn'] if w else '')" 2>/dev/null)
-    ok "roster refreshed, ${alive:-?} live workers"
-    # The fallback host comes from the roster, because the roster knows which workers respond.
-    if [[ -n "${first:-}" && -z "${ONEAPP_POOL_SUBMIT_HOST:-}" && "$first" != "$submit_host" ]]; then
-        submit_host="$first"
-        sed -i "s|^    submit_host: .*|    submit_host: \"${submit_host}\"|" "$CLUSTER_FILE"
-        ok "fallback host adjusted to ${submit_host}"
-    fi
-fi
-
 # --- verification -------------------------------------------------------------------------------
-msg "checking that the portal logs into ${submit_host} as a user"
+# The cluster answers the same commands the adapter runs. A job is not submitted here,
+# because a worker may not have registered yet, and the portal is complete without one.
+msg "checking the cluster from the portal"
+sinfo -h -o '%P %D' | sed 's/^/    /'
 first_user="$(cut -d: -f1 <<<"${ONEAPP_AUTH_LOCAL_USERS%% *}")"
-if runuser -u "$first_user" -- ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 "$submit_host" \
-        'command -v tmux >/dev/null && command -v apptainer >/dev/null && test -s /opt/ood/linuxhost.sif && echo listo' 2>/dev/null | grep -q listo; then
-    ok "${first_user} logs into ${submit_host} and finds tmux, apptainer and the SIF"
-else
-    warn "${first_user} does not log into ${submit_host} yet, if they have not signed in to the portal their key does not exist"
-fi
+runuser -u "$first_user" -- squeue -h >/dev/null 2>&1 \
+    || die "${first_user} cannot query the cluster with squeue"
+ok "${first_user} reaches the cluster, $(sinfo -h -o '%D' | head -1) nodes registered so far"
 
 for u in $(cut -d: -f1 <<<"$(tr ' ' '\n' <<<"$ONEAPP_AUTH_LOCAL_USERS")"); do
     /opt/ood/nginx_stage/sbin/nginx_stage nginx_clean -u "$u" -f >/dev/null 2>&1 || true
 done
-ok "VM pool declared"
-ONEOND_SCRIPTS_90_CONFIGURE_VM_POOL_SH_
+ok "Slurm target declared"
+ONEOND_SCRIPTS_90_CONFIGURE_SLURM_TARGET_SH_
 
 install -d -m 755 "${SRC}/scripts"
 cat > "${SRC}/scripts/cvmfs-client.sh" <<'ONEOND_SCRIPTS_CVMFS_CLIENT_SH_'
@@ -2582,8 +2645,9 @@ cat > "${SRC}/scripts/ood-metrics-exporter.py" <<'ONEOND_SCRIPTS_OOD_METRICS_EXP
 """Prometheus metrics for an Open OnDemand service on OpenNebula, served by the portal.
 
 Every 30 seconds it reads the service through OneGate and exposes, per worker, what the
-workers publish there (ACTIVE_SESSIONS, IDLE, IDLE_SECONDS, HEALTHY), the cardinality of
-each role, and the portal's own count of running per user web servers. One endpoint, so a
+workers publish there (the jobs on the node, the Slurm queue figures, IDLE_SECONDS,
+OLDEST_IDLE, HEALTHY), the cardinality of each role, and the portal's own count of running
+per user web servers. One endpoint, so a
 Prometheus scrapes the whole service in one place. Host metrics such as CPU and memory are
 OpenNebula's and are not repeated here.
 
@@ -2604,10 +2668,13 @@ ONEGATE = ["bash", "-c",
 NGINX_STAGE = "/opt/ood/nginx_stage/sbin/nginx_stage"
 
 WORKER_GAUGES = {
-    "ACTIVE_SESSIONS": ("ood_worker_active_sessions", "Open OnDemand sessions alive on the worker"),
-    "IDLE": ("ood_worker_idle", "1 when the worker has no session"),
-    "IDLE_SECONDS": ("ood_worker_idle_seconds", "Seconds since the last session on the worker ended"),
-    "HEALTHY": ("ood_worker_healthy", "1 when the worker passed its last check of NFS, CernVM-FS and sshd"),
+    "ACTIVE_SESSIONS": ("ood_worker_active_sessions", "Slurm jobs running on the worker, sessions included"),
+    "IDLE_SECONDS": ("ood_worker_idle_seconds", "Seconds since the last job on the worker ended"),
+    "OLDEST_IDLE": ("ood_worker_oldest_idle", "1 when the oldest worker of the role is drained and empty, so OneFlow may remove it"),
+    "SLURM_PENDING": ("ood_slurm_pending", "Jobs waiting for a worker of this role, as seen by the worker"),
+    "SLURM_IDLE_NODES": ("ood_slurm_idle_nodes", "Idle nodes of the cluster, as seen by the worker"),
+    "SLURM_ALLOC_NODES": ("ood_slurm_alloc_nodes", "Nodes with a job, as seen by the worker"),
+    "HEALTHY": ("ood_worker_healthy", "1 when the worker passed its last check of NFS, CernVM-FS, munge and slurmd"),
 }
 
 state = {"text": "", "ts": 0}
@@ -2648,7 +2715,7 @@ def collect():
             lines.append("# HELP %s %s" % (name, help_text))
             lines.append("# TYPE %s gauge" % name)
             for role in service.get("roles", []):
-                if role.get("name") not in ("worker", "workers"):
+                if not str(role.get("name", "")).startswith("worker"):
                     continue
                 for node in role.get("nodes", []):
                     vm = (node.get("vm_info") or {}).get("VM", {})
@@ -2701,201 +2768,109 @@ if __name__ == "__main__":
 ONEOND_SCRIPTS_OOD_METRICS_EXPORTER_PY_
 
 install -d -m 755 "${SRC}/scripts"
-cat > "${SRC}/scripts/ood-pool-refresh.sh" <<'ONEOND_SCRIPTS_OOD_POOL_REFRESH_SH_'
+cat > "${SRC}/scripts/slurm-backup.sh" <<'ONEOND_SCRIPTS_SLURM_BACKUP_SH_'
 #!/usr/bin/env bash
-# Roster of the worker pool, computed on the portal.
+# Dumps the Slurm accounting database to the storage VM.
 #
-# It writes to /var/lib/ood-pool/workers.json which workers are alive and how many sessions
-# each one has. The launch template reads it and sends every new session to the least loaded
-# worker, so every worker OneFlow adds takes a share of the sessions.
+# Runs on the portal every 30 minutes from a timer. The database is local to the portal,
+# and a portal that OneFlow replaces restores the newest dump before it starts slurmdbd
+# (scripts/40-configure-slurm-controller.sh), so at most half an hour of history is lost.
+# The last 48 dumps are kept, one day.
 #
-# WHO IS A WORKER. When the portal belongs to a OneFlow service, OneGate decides, because it
-# knows exactly which VMs the worker roles have. Without OneGate, on a standalone portal,
-# the address range the role has reserved decides it, because then the compute network of
-# the service belongs to the workers and to nobody else.
-#
-# A probe to port 22 does not decide who is a worker, and it only says whether the address
-# is alive. On 9 September 2026, with the range set to the whole network, a roster based only
-# on port 22 gave nine live workers where there were three, because it counted the portal
-# itself, the storage and other machines that shared the network then, which also have
-# SSH open. That is why the portal and storage addresses are excluded explicitly,
-# because they are the two addresses the portal knows for certain.
-#
-# The worker cannot announce itself in the shared home either, because with root_squash it
-# can create the file but not write its content. The reason is in worker/publish-load.sh.
-#
-# WHY THE PORTAL COMPUTES IT. The portal is the only machine that sees the sessions of every
-# user, and that is the data the count needs. The count comes from the session database of
-# Open OnDemand itself. Each session stores its job identifier in the form
-# launched-by-ondemand-<uuid>@<host>, so the host is in the data and there is no need to
-# ask anyone.
-set -uo pipefail
+# Usage:  ood-slurm-backup /var/lib/one-ondemand/slurm/backup
+set -u -o pipefail
+dir="${1:?backup directory}"
+[[ -d "$dir" ]] || exit 0
+out="${dir}/slurm_acct_db-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+# The dump is kept only when mysqldump finished and wrote its completion mark, so a dump
+# cut short by a failure never replaces the last good one.
+if mysqldump --single-transaction slurm_acct_db 2>/dev/null > "${out}.sql" \
+        && tail -c 200 "${out}.sql" | grep -q '^-- Dump completed' \
+        && gzip -c "${out}.sql" > "${out}.tmp"; then
+    chmod 600 "${out}.tmp" && mv -f "${out}.tmp" "$out" && rm -f "${out}.sql"
+    ls -1t "${dir}"/slurm_acct_db-*.sql.gz 2>/dev/null | tail -n +49 | xargs -r rm -f
+else
+    rm -f "${out}.tmp" "${out}.sql"
+    logger -t ood-slurm-backup "the dump of slurm_acct_db failed"
+    exit 1
+fi
+ONEOND_SCRIPTS_SLURM_BACKUP_SH_
 
-STATE_DIR="${OOD_POOL_STATE_DIR:-/var/lib/ood-pool}"
-OUT="${STATE_DIR}/workers.json"
-CLUSTER_FILE="${OOD_VM_CLUSTER_FILE:-/etc/ood/config/clusters.d/vms.yml}"
-HOMES="${OOD_HOMES_DIR:-/home}"
-PROBE_TIMEOUT="${OOD_POOL_PROBE_TIMEOUT:-3}"
+install -d -m 755 "${SRC}/scripts"
+cat > "${SRC}/scripts/slurm-node-reconcile.sh" <<'ONEOND_SCRIPTS_SLURM_NODE_RECONCILE_SH_'
+#!/usr/bin/env bash
+# Keeps the Slurm view of the pool in step with the workers of the service.
+#
+# Runs on the portal every 30 seconds from a timer. It does two things.
+#
+# 1. It writes what the application forms read, so a form offers only what exists:
+#    /var/lib/ood-slurm/roles, one worker role per line, from the features the nodes
+#    registered with, and /var/lib/ood-slurm/shape, the largest node in cores, memory
+#    and GPUs, so nobody can ask for a session no node could run.
+#
+# 2. It removes the nodes whose VM is gone. OneFlow terminates a worker without telling
+#    Slurm, and a node that is down for good would stay in sinfo forever. Each worker
+#    publishes its node name to OneGate as SLURM_NODENAME, so a registered node that no
+#    VM of the service claims and that holds no job is deleted. A node nobody claims but
+#    that still runs a job is drained instead, because only an empty dynamic node can be
+#    deleted. Nothing is deleted when OneGate does not answer or when no worker has
+#    published its name yet, the same rule the OneSlurm appliance follows.
+set -u
+
+STATE_DIR=/var/lib/ood-slurm
 ONEGATE_LIB="${ONEGATE_LIB:-/etc/one-ondemand/onegate-lib.sh}"
-# Addresses that are inside the range but are not workers. They are left by
-# scripts/90-configure-vm-pool.sh with what it knows about the deployment.
-EXCLUDE_FILE="${OOD_POOL_EXCLUDE_FILE:-/etc/one-ondemand/pool-exclude}"
+log() { logger -t ood-slurm-reconcile "$*"; }
+slurm() { timeout 20 "$@" 2>/dev/null; }
 
 install -d -m 755 "$STATE_DIR"
-write_out() { printf '%s\n' "$1" > "${OUT}.$$.tmp"; chmod 644 "${OUT}.$$.tmp"; mv -f "${OUT}.$$.tmp" "$OUT"; }
 
-# --- candidates, the list the adapter accepts, minus what is not a worker ------------------
-# A host that is not in ssh_hosts would be rejected by the adapter even if it were alive, so
-# the roster can never propose one from outside.
-mapfile -t permitted < <(sed -n '/ssh_hosts:/,/^[^ ]/p' "$CLUSTER_FILE" 2>/dev/null \
-    | sed -n 's/^ *- *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p')
-if (( ${#permitted[@]} == 0 )); then
-    write_out "$(printf '{"workers":[],"error":"no ssh_hosts in %s","ts":%s}' "$CLUSTER_FILE" "$(date +%s)")"
-    exit 0
-fi
-
-declare -A excluded
-if [[ -r "$EXCLUDE_FILE" ]]; then
-    while read -r name; do
-        [[ -z "$name" || "$name" == \#* ]] && continue
-        excluded["$name"]=1
-    done < "$EXCLUDE_FILE"
-fi
-
-candidates=()
-for h in "${permitted[@]}"; do
-    [[ -v excluded["$h"] ]] && continue
-    candidates+=("$h")
+# --- what the forms read ---------------------------------------------------------------------
+nodes="$(slurm sinfo -h -N -o '%N %T %c %m %f %G')" || exit 0
+roles="$(awk '{print $5}' <<<"$nodes" | tr ',' '\n' | grep -E '^worker' | sort -u)"
+shape="$(awk '
+    { if ($3 > c) c = $3; if ($4 > m) m = $4;
+      n = split($6, g, ","); for (i = 1; i <= n; i++) if (g[i] ~ /^gpu:/) { split(g[i], p, ":"); v = p[length(p)] + 0; if (v > gp) gp = v } }
+    END { printf "{\"cpus\": %d, \"mem_mb\": %d, \"gpus\": %d, \"nodes\": %d}\n", c, m, gp, NR }' <<<"$nodes")"
+for pair in "roles:${roles}" "shape:${shape}"; do
+    f="${STATE_DIR}/${pair%%:*}"
+    if [[ "${pair#*:}" != "$(cat "$f" 2>/dev/null)" ]]; then
+        printf '%s\n' "${pair#*:}" > "${f}.tmp" && chmod 644 "${f}.tmp" && mv -f "${f}.tmp" "$f"
+    fi
 done
 
-# --- OneGate, when the portal belongs to the service ------------------------------------------
-# OneGate is authoritative, so if it answers it replaces the whole range, even when it lists
-# no worker yet. It knows which VMs the worker role has right now, so there is no need to
-# probe anything else, and the range must not be probed either: on 15 September 2026 a
-# portal without this rule sent a session to a Kubernetes VM that a colleague had attached to
-# the same network, because that address answered on port 22 and fell inside the range. An
-# empty roster makes the launch fail on the portal with a clear message; a foreign host makes
-# it fail with "Permission denied" from a machine that is not ours.
-source_name="rango"
-declare -A vm_ids roles
-unhealthy=()
-if [[ -r "$ONEGATE_LIB" ]]; then
-    # shellcheck source=/dev/null
-    . "$ONEGATE_LIB"
-    if onegate_ready 2>/dev/null; then
-        desde_onegate=()
-        # The VM id travels with each worker so the dispatcher can prefer the youngest among
-        # equals, which lets the oldest one drain and be the one OneFlow retires.
-        while read -r ip vmid healthy role; do
-            [[ -n "$ip" ]] || continue
-            # A worker that reports itself unhealthy is left out, so it gets no new session
-            # until its publisher sees NFS, CernVM-FS and sshd in place again.
-            [[ "$healthy" == "0" ]] && { unhealthy+=("$ip"); continue; }
-            for h in "${permitted[@]}"; do
-                [[ "$h" == *"-${ip##*.}."* ]] && { desde_onegate+=("$h"); vm_ids["$h"]="$vmid"; roles["$h"]="$role"; break; }
-            done
-        done < <(onegate_call service show --json --extended 2>/dev/null | python3 -c '
+# --- nodes whose VM is gone -----------------------------------------------------------------
+[[ -r "$ONEGATE_LIB" ]] || exit 0
+# shellcheck source=/dev/null
+. "$ONEGATE_LIB"
+onegate_ready 2>/dev/null || exit 0
+live="$(onegate_call service show --json --extended 2>/dev/null | python3 -c '
 import json, sys
 try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
 for r in d.get("SERVICE", {}).get("roles", []):
-    # Every worker role, "worker" and any "worker_<size>" the template declares. The
-    # portal and the storage are nodes of the service too and are not targets.
     if not str(r.get("name", "")).startswith("worker"):
         continue
     for n in r.get("nodes", []):
         vm = (n.get("vm_info") or {}).get("VM", {})
-        nics = vm.get("TEMPLATE", {}).get("NIC", [])
-        if isinstance(nics, dict):
-            nics = [nics]
-        # The compute network is the last NIC of every role, the management one comes first.
-        ips = [nic["IP"] for nic in nics if nic.get("IP")]
-        if ips:
-            print(ips[-1], vm.get("ID", ""), (vm.get("USER_TEMPLATE") or {}).get("HEALTHY", "") or "-", r.get("name", ""))
-' 2>/dev/null)
-        candidates=("${desde_onegate[@]}")
-        source_name="onegate"
+        name = str((vm.get("USER_TEMPLATE") or {}).get("SLURM_NODENAME", "")).strip()
+        if name:
+            print(name)
+')"
+[[ -n "$live" ]] || exit 0
+while read -r name state _; do
+    [[ -n "$name" ]] || continue
+    grep -qx "$name" <<<"$live" && continue
+    # A node with a job still finishes it; the next run finds it empty and deletes it.
+    if [[ -n "$(slurm squeue -h -w "$name" -o %i)" ]]; then
+        [[ "$state" == drain* ]] || { slurm scontrol update NodeName="$name" State=DRAIN Reason="vm gone" && log "drained ${name}, its VM is gone and it still runs a job"; }
+        continue
     fi
-fi
-
-# --- live sessions per host ---------------------------------------------------------------
-declare -A sessions
-for h in "${candidates[@]}"; do sessions["$h"]=0; done
-while read -r host; do
-    [[ -z "$host" ]] && continue
-    [[ -v sessions["$host"] ]] && sessions["$host"]=$(( ${sessions["$host"]} + 1 ))
-done < <(
-    for db in "${HOMES}"/*/ondemand/data/sys/dashboard/batch_connect/db/*; do
-        [[ -f "$db" ]] || continue
-        python3 - "$db" <<'PY' 2>/dev/null
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    sys.exit(0)
-# completed_at marks the session as finished, and those do not occupy the worker.
-if d.get('completed_at'):
-    sys.exit(0)
-jid = str(d.get('job_id', ''))
-if '@' in jid:
-    print(jid.rsplit('@', 1)[1])
-PY
-    done
-)
-
-# --- liveness check, in parallel ------------------------------------------------------------
-# The TCP probe to the SSH port proves that the address is alive and proves nothing about
-# its identity. The adapter connects the same way, so an address that does not answer would
-# fail the session it was sent. The probes run in parallel because the range can hold
-# hundreds of addresses. In series they did not fit in the timer period, probing them one
-# by one took almost three minutes.
-probe_dir="$(mktemp -d "${STATE_DIR}/.probe.XXXXXX")" || exit 1
-trap 'rm -rf "$probe_dir"' EXIT
-for h in "${candidates[@]}"; do
-    ( timeout "$PROBE_TIMEOUT" bash -c "</dev/tcp/${h}/22" 2>/dev/null && : > "${probe_dir}/${h}" ) &
-done
-wait
-
-entries=()
-alive=0
-for h in "${candidates[@]}"; do
-    # Only the live ones are published, because a reserved range can have many addresses
-    # with no VM behind them. The roster lists possible targets and does not inventory the
-    # network.
-    [[ -e "${probe_dir}/${h}" ]] || continue
-    alive=$(( alive + 1 ))
-    if [[ -n "${vm_ids[$h]:-}" ]]; then
-        entries+=("$(printf '{"fqdn":"%s","sessions":%s,"alive":true,"vm_id":%s,"role":"%s"}' "$h" "${sessions[$h]}" "${vm_ids[$h]}" "${roles[$h]:-worker}")")
-    else
-        entries+=("$(printf '{"fqdn":"%s","sessions":%s,"alive":true}' "$h" "${sessions[$h]}")")
-    fi
-done
-
-write_out "$(printf '{"ts":%s,"source":"%s","candidates":%s,"alive":%s,"unhealthy":%s,"workers":[%s]}' \
-    "$(date +%s)" "$source_name" "${#candidates[@]}" "$alive" "${#unhealthy[@]}" "$(IFS=,; echo "${entries[*]}")")"
-
-# --- fallback host of the cluster file --------------------------------------------------------
-# submit_host is only used when the roster is stale or empty, so almost never, but it still
-# has to point to a worker that exists. The worker role depends on the portal, so the portal
-# is configured before the workers. On the first boot no worker was alive and the value
-# stayed at the first address of the range, which has no VM behind it.
-#
-# It is rewritten only when the current value is not among the live ones, and the user
-# processes are not restarted. The cluster file is read once per process, so the new value
-# takes effect in the next one, and meanwhile the roster based dispatch stays in charge.
-if (( alive > 0 )); then
-    actual="$(sed -n 's/^ *submit_host: *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p' "$CLUSTER_FILE" | head -1)"
-    vivos=" $(for e in "${entries[@]}"; do sed -n 's/.*"fqdn":"\([^"]*\)".*/\1/p' <<<"$e"; done | tr '\n' ' ') "
-    if [[ "$vivos" != *" ${actual} "* ]]; then
-        nuevo="$(sed -n 's/.*"fqdn":"\([^"]*\)".*/\1/p' <<<"${entries[0]}")"
-        if [[ -n "$nuevo" ]]; then
-            sed -i "s|^\( *submit_host: \).*|\1\"${nuevo}\"|" "$CLUSTER_FILE"
-        fi
-    fi
-fi
-ONEOND_SCRIPTS_OOD_POOL_REFRESH_SH_
+    slurm scontrol delete NodeName="$name" && log "deleted ${name}, its VM is gone" \
+        || log "could not delete ${name}"
+done <<<"$nodes"
+ONEOND_SCRIPTS_SLURM_NODE_RECONCILE_SH_
 
 install -d -m 755 "${SRC}/scripts"
 cat > "${SRC}/scripts/slurm-proxy.sh" <<'ONEOND_SCRIPTS_SLURM_PROXY_SH_'
@@ -2944,6 +2919,9 @@ cat > "${SRC}/storage/10-install-nfs.sh" <<'ONEOND_STORAGE_10_INSTALL_NFS_SH_'
 #                           portal address comes from OneGate instead, see export-refresh.sh
 #   ONEAPP_HOME_NFS_EXPORT  path of the export (/export/home), the same path the portal and
 #                           the workers mount
+#   ONEAPP_SLURM_STATE_EXPORT  export that keeps the Slurm controller state, the munge key
+#                           and the accounting dumps of the portal (/export/slurm); the
+#                           portal alone mounts it, with root
 #
 # Usage:  ONEAPP_NFS_ADMIN_IPS="172.20.0.220" ./10-install-nfs.sh
 
@@ -2955,6 +2933,7 @@ require_root
 NFS_NET="${ONEAPP_NFS_NET:-$(compute_net_cidr)}"
 NFS_ADMIN_IPS="${ONEAPP_NFS_ADMIN_IPS:-}"
 HOME_EXPORT="$ONEAPP_HOME_NFS_EXPORT"
+SLURM_EXPORT="${ONEAPP_SLURM_STATE_EXPORT:-/export/slurm}"
 EXPORTS_FILE=/etc/exports.d/one-ondemand.exports
 STATE_DIR=/etc/one-ondemand
 
@@ -2973,6 +2952,9 @@ apt_install nfs-kernel-server
 ok "nfs-kernel-server installed"
 
 install -d -m 755 "$HOME_EXPORT"
+# The Slurm state is a few files the portal writes, so it lives on the root disk of this VM
+# and not on the home disk; what has to survive a new portal is here either way.
+install -d -m 755 "$SLURM_EXPORT"
 
 # --- home disk ------------------------------------------------------------------------
 # The first disk that is not the root disk and has no partitions is the home disk. The
@@ -3019,6 +3001,7 @@ install -d -m 755 /etc/exports.d "$STATE_DIR"
 {
     printf 'NFS_NET=%s\n' "$NFS_NET"
     printf 'HOME_EXPORT=%s\n' "$HOME_EXPORT"
+    printf 'SLURM_EXPORT=%s\n' "$SLURM_EXPORT"
     printf 'NFS_ADMIN_IPS=%s\n' "$NFS_ADMIN_IPS"
 } > "${STATE_DIR}/nfs.env"
 chmod 644 "${STATE_DIR}/nfs.env"
@@ -3055,7 +3038,7 @@ msg "checking that the export is visible"
 showmount -e localhost 2>&1 | sed 's/^/    /'
 showmount -e localhost 2>/dev/null | grep -q "^${HOME_EXPORT} " \
     || die "the server does not announce ${HOME_EXPORT}"
-ok "NFS server serving ${HOME_EXPORT} to ${NFS_NET}, root for the portal follows it through OneGate"
+ok "NFS server serving ${HOME_EXPORT} to ${NFS_NET} and ${SLURM_EXPORT} to the portal, which OneGate names"
 ONEOND_STORAGE_10_INSTALL_NFS_SH_
 
 install -d -m 755 "${SRC}/storage"
@@ -3151,6 +3134,9 @@ cat > "${SRC}/storage/export-refresh.sh" <<'ONEOND_STORAGE_EXPORT_REFRESH_SH_'
 # addresses with root changes. The workers keep root_squash, because they run user code, and
 # only the portal, the role that creates each home on first login, gets no_root_squash.
 #
+# The Slurm state export goes to the same addresses and to nobody else, because the
+# controller state and the munge key must not be readable from a worker.
+#
 # A storage VM outside a service keeps the addresses ONEAPP_NFS_ADMIN_IPS gave it.
 #
 # Reads /etc/one-ondemand/nfs.env, written by storage/10-install-nfs.sh.
@@ -3164,6 +3150,7 @@ ONEGATE_LIB="${ONEGATE_LIB:-/etc/one-ondemand/onegate-lib.sh}"
 # shellcheck source=/dev/null
 . "$ENV_FILE"
 : "${NFS_NET:?}" "${HOME_EXPORT:?}"
+SLURM_EXPORT="${SLURM_EXPORT:-/export/slurm}"
 
 admin="${NFS_ADMIN_IPS:-}"
 if [[ -r "$ONEGATE_LIB" ]]; then
@@ -3198,6 +3185,9 @@ content="$({
         printf '%s %s(rw,sync,no_subtree_check,no_root_squash,fsid=1)\n' "$HOME_EXPORT" "$ip"
     done
     printf '%s %s(rw,sync,no_subtree_check,root_squash,fsid=1)\n' "$HOME_EXPORT" "$NFS_NET"
+    for ip in $admin; do
+        [[ -d "$SLURM_EXPORT" ]] && printf '%s %s(rw,sync,no_subtree_check,no_root_squash,fsid=2)\n' "$SLURM_EXPORT" "$ip"
+    done
 })"
 
 if [[ "$content" != "$(cat "$EXPORTS_FILE" 2>/dev/null)" ]]; then
@@ -3211,13 +3201,13 @@ ONEOND_STORAGE_EXPORT_REFRESH_SH_
 install -d -m 755 "${SRC}/worker"
 cat > "${SRC}/worker/apptainer-gpu.sh" <<'ONEOND_WORKER_APPTAINER_GPU_SH_'
 #!/usr/bin/env bash
-# Apptainer for the session containers, with the GPU passed through when the VM has one.
+# Apptainer with the GPU passed through when the VM has one, for the containers a user runs
+# inside a session.
 #
-# The linux_host adapter builds the container command itself and has no option for the
-# --nv flag, so the cluster file points singularity_bin here. On a VM without a GPU this is
-# plain apptainer; on one with an NVIDIA device and its driver it adds --nv to exec and run,
-# which is what a worker role with a PCI passthrough needs. Prepared without a GPU to test
-# on, so a site with one should check nvidia-smi inside a session first.
+# On a VM without a GPU this is plain apptainer; on one with an NVIDIA device and its driver
+# it adds --nv to exec, run and shell, which is what a worker role with a PCI passthrough
+# needs. Prepared without a GPU to test on, so a site with one should check nvidia-smi
+# inside a session first.
 if [[ -e /dev/nvidia0 ]] && command -v nvidia-smi >/dev/null 2>&1; then
     case "${1:-}" in
         exec|run|shell) exec /usr/bin/apptainer "$1" --nv "${@:2}" ;;
@@ -3295,12 +3285,12 @@ for req in /etc/one-ondemand/build.env /etc/one-ondemand/ood-app-lib.sh \
            /etc/one-ondemand/onegate-lib.sh /etc/one-ondemand/code-server.env \
            /opt/ood/linuxhost.sif /opt/one-ondemand/worker/configure.sh \
            /usr/local/sbin/ood-worker-configure \
-           /usr/local/bin/ood-publish-load.sh /etc/systemd/system/ood-publish-load.service; do
+           /usr/local/bin/ood-slurm-elastic.sh /etc/systemd/system/ood-slurm-elastic.service; do
     [[ -e "$req" ]] || die "${req} is missing: the cleanup took away something that had to stay"
 done
 command -v apptainer >/dev/null || die "apptainer has disappeared from the image"
 command -v cvmfs_config >/dev/null || die "the CernVM-FS client has disappeared from the image"
-systemctl is-enabled ood-publish-load.service >/dev/null 2>&1 \
+systemctl is-enabled ood-slurm-elastic.service >/dev/null 2>&1 \
     || die "the metrics publisher did not stay enabled at boot"
 # The boot configuration is triggered by READY_SCRIPT_PATH from the CONTEXT, not by a unit, so
 # here we only check that the entry point is still executable.
@@ -3330,7 +3320,8 @@ cat > "${SRC}/worker/configure.sh" <<'ONEOND_WORKER_CONFIGURE_SH_'
 #   ONEAPP_HOME_NFS_ENABLED  YES to mount an NFS server the site already runs instead
 #   ONEAPP_HOME_NFS_SERVER   address of that server (required when the switch is on)
 #   ONEAPP_HOME_NFS_EXPORT   path of the home export (/export/home)
-#   ONEAPP_LDAP_HOST         private IP of the portal, where the LDAP listens (required)
+#   ONEAPP_LDAP_HOST         private IP of the portal, where the LDAP and the Slurm
+#                            controller listen (required)
 #   ONEAPP_AUTH_LOCAL_USERS  the first user of the list checks that sssd resolves the
 #                            portal users
 #   ONEAPP_CVMFS_PROXY       URL of the site's Squid (required)
@@ -3343,6 +3334,7 @@ cat > "${SRC}/worker/configure.sh" <<'ONEOND_WORKER_CONFIGURE_SH_'
 #   ONEAPP_WORKER_SELFTEST   if it is "1", it also loads EESSI's JupyterLab inside the SIF
 #                            as a deep check. It costs minutes with a cold cache, so by
 #                            default it is not done at boot.
+#   ONEAPP_SLURM_CONTROLLER_PORT  port of slurmctld on the portal (6817)
 #
 # Usage:  ONEAPP_NFS_HOST=172.20.0.222 ONEAPP_LDAP_HOST=172.20.0.220 \
 #         ONEAPP_CVMFS_PROXY=http://172.20.0.222:3128 ./configure.sh
@@ -3382,7 +3374,7 @@ EESSI_VERSION="${ONEAPP_EESSI_VERSION:-2025.06}"
 EESSI_JUPYTER_MODULE="${ONEAPP_EESSI_JUPYTER_MODULE:-JupyterLab/4.4.9-GCCcore-14.3.0}"
 SIF_PATH="${ONEAPP_SIF_PATH:-/opt/ood/linuxhost.sif}"
 # What the adapter mounts inside the image: the documented value plus the home and EESSI.
-# It has to match singularity_bindpath in clusters.d/vms.yml.
+# The deep check binds the same paths the old container target did.
 BINDPATH="${ONEAPP_SIF_BINDPATH:-/etc,/media,/mnt,/opt,/run,/srv,/usr,/var,/home,/cvmfs}"
 SELFTEST="${ONEAPP_WORKER_SELFTEST:-0}"
 
@@ -3399,20 +3391,13 @@ command -v cvmfs_config >/dev/null || die "no CernVM-FS client: this VM does not
 ok "worker image: $(sed -n 's/^BUILD_DATE=//p' /etc/one-ondemand/build.env)"
 
 # --- VM name ----------------------------------------------------------------------------------
-# The adapter wrapper checks that the VM's `hostname -A` matches an ssh_hosts entry, and
-# rejects the job if it does not. Without reverse DNS that output is empty, so the name is
-# resolved in /etc/hosts with the private IP. It carries the domain, because ood_core only
-# recognizes as a host a name with dots. With the short name the job identifier has no host
-# and the session is considered finished immediately.
-# The name is derived from the address, not from the name the VM comes with, for two reasons.
-# The first is that OneFlow names its VMs with the template $ROLE_NAME_$VM_NUMBER_(service_$ID),
-# which carries parentheses and is not valid as a host name. The second, and the one that
-# matters, is that the portal has to accept a worker that did not exist yet when it started.
-# Since the name is a function of the address and OpenNebula guarantees that two VMs do not
-# share an address, the portal can declare in advance the whole range of the compute network
-# and any worker born inside it is already accepted. The portal computes the same name with
-# the same rule in scripts/90-configure-vm-pool.sh.
-msg "making the VM name resolvable for the adapter"
+# The name is the Slurm node name, and it is derived from the address rather than taken from
+# the name the VM comes with, because OneFlow names its VMs with the template
+# $ROLE_NAME_$VM_NUMBER_(service_$ID), which carries parentheses and is not valid as a host
+# name. OpenNebula guarantees that two VMs do not share an address, so the name is unique
+# without any coordination. It is resolved in /etc/hosts with the private IP, with the
+# domain as well, so hostname -A answers on a VM with no reverse DNS.
+msg "making the VM name resolvable"
 priv_ip="$(hostname -I | tr ' ' '\n' | grep "^${NET_PREFIX}" | head -1)"
 # A VM with no address on the compute network is a worker deployed on its own, which is what
 # the marketplace certification harness instantiates, so it falls back to the first private
@@ -3497,11 +3482,94 @@ else
     first_user="root"
 fi
 
-# --- metrics publisher ------------------------------------------------------------------------
+# --- Slurm node -------------------------------------------------------------------------------
+# The portal runs the controller, so this VM joins it as a dynamic node: it takes the munge
+# key the portal published to OneGate, points slurmd at the portal (configless, the
+# configuration comes from there) and registers with its cores, its memory and its role as
+# a feature, so a form can ask for a worker size with --constraint. The node name is
+# published before slurmd starts, because the reconciler on the portal deletes any
+# registered node that no VM of the service claims.
+if [[ -n "$LDAP_HOST" ]]; then
+    msg "joining the Slurm cluster of the portal at ${LDAP_HOST}"
+    for req in /usr/sbin/slurmd /usr/sbin/munged; do
+        [[ -x "$req" ]] || die "${req} is missing: this VM does not come from an image built with appliance/install.sh"
+    done
+    sed -i '/# one-ondemand portal$/d' /etc/hosts
+    printf '%s ood-portal # one-ondemand portal\n' "$LDAP_HOST" >> /etc/hosts
+    # shellcheck source=/dev/null
+    . /etc/one-ondemand/onegate-lib.sh
+    onegate_ready || die "OneGate does not answer, the munge key of the service cannot be read"
+    munge_key() {
+        onegate_call service show --json --extended 2>/dev/null | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+for r in d.get("SERVICE", {}).get("roles", []):
+    if r.get("name") != "portal":
+        continue
+    for n in r.get("nodes", []):
+        key = ((n.get("vm_info") or {}).get("VM", {}).get("USER_TEMPLATE") or {}).get("SLURM_MUNGE_KEY", "")
+        if key:
+            print(key)
+            sys.exit(0)
+sys.exit(1)
+'
+    }
+    key=""
+    for _ in $(seq 1 36); do
+        key="$(munge_key)" && [[ -n "$key" ]] && break
+        sleep 5
+    done
+    [[ -n "$key" ]] || die "the portal has not published SLURM_MUNGE_KEY after 180s"
+    install -d -m 700 -o munge -g munge /etc/munge
+    # The portal publishes the key without the base64 padding, see 40-configure-slurm-controller.sh.
+    while (( ${#key} % 4 )); do key+="="; done
+    base64 -d <<<"$key" > /etc/munge/munge.key.new 2>/dev/null \
+        && [[ "$(stat -c %s /etc/munge/munge.key.new)" -ge 32 ]] \
+        || die "SLURM_MUNGE_KEY is not a valid base64 key"
+    install -m 400 -o munge -g munge /etc/munge/munge.key.new /etc/munge/munge.key
+    rm -f /etc/munge/munge.key.new
+    systemctl enable munge >/dev/null 2>&1 || true
+    # A restart, not a start: the package started munged with a key of its own.
+    systemctl restart munge || die "munge does not start"
+    munge -n | unmunge >/dev/null 2>&1 || die "munge does not validate a credential with the service key"
+    ok "munge key of the service installed"
+
+    role_name="$(onegate_call vm show --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    print((json.load(sys.stdin)["VM"].get("USER_TEMPLATE") or {}).get("ROLE_NAME", "worker"))
+except Exception:
+    print("worker")
+')"
+    # A tenth of the memory stays out of the allocations, for the system and the daemons.
+    real_mem=$(( $(awk '/^MemTotal:/ {print $2}' /proc/meminfo) / 1024 * 9 / 10 ))
+    node_conf="RealMemory=${real_mem} Feature=${role_name}"
+    gpus="$(ls /dev/nvidia[0-9]* 2>/dev/null | wc -l)"
+    (( gpus > 0 )) && node_conf+=" Gres=gpu:${gpus}"
+    printf "# Generated by one-ondemand/worker/configure.sh\nSLURMD_OPTIONS='--conf-server ood-portal:%s -Z --conf \"%s\"'\n" \
+        "${ONEAPP_SLURM_CONTROLLER_PORT:-6817}" "$node_conf" > /etc/default/slurmd
+    chmod 644 /etc/default/slurmd
+    install -d -m 700 -o slurm -g slurm /var/spool/slurmd
+    install -d -m 755 -o slurm -g slurm /var/log/slurm
+    onegate_call vm update --data "SLURM_NODENAME=${name}" >/dev/null 2>&1 \
+        || die "could not publish SLURM_NODENAME"
+    systemctl enable slurmd >/dev/null 2>&1 || true
+    systemctl restart slurmd || die "slurmd does not start, see journalctl -u slurmd"
+    wait_for 60 bash -c "sinfo -h -n '${name}' -o %T 2>/dev/null | grep -q ." \
+        || die "slurmd did not register ${name} with the controller at ${LDAP_HOST} in 60s"
+    ok "node ${name} registered: $(sinfo -h -n "$name" -o '%T, %c cores, %m MB, feature %f')"
+else
+    warn "no ONEAPP_LDAP_HOST: no Slurm controller to join, this VM runs no sessions"
+fi
+
+# --- elasticity publisher ---------------------------------------------------------------------
 # It already comes enabled from the image, so normally systemd started it on its own. It is
-# forced in case this VM is being reconfigured live.
-systemctl is-active --quiet ood-publish-load.service || systemctl start --no-block ood-publish-load.service
-ok "metrics publisher running"
+# restarted so it reads the node it now has.
+systemctl restart ood-slurm-elastic.service || warn "the elasticity publisher does not start"
+ok "elasticity publisher running"
 
 # --- deep check, optional ---------------------------------------------------------------------
 # Exactly what the adapter does: SINGULARITY_BINDPATH exported, apptainer exec --pid over the
@@ -3545,8 +3613,8 @@ cat > "${SRC}/worker/install.sh" <<'ONEOND_WORKER_INSTALL_SH_'
 # The split follows what each step depends on, not how long each step takes. This file holds
 # everything that only needs internet access and no address from the deployment: the packages,
 # Apptainer, the SIF image, code-server and the CernVM-FS client. Whatever needs to know where
-# the NFS, the LDAP, the Squid or the VM's own IP are stays in configure.sh, because that data
-# does not exist until OpenNebula instantiates the machine.
+# the NFS, the LDAP, the Squid, the Slurm controller or the VM's own IP are stays in
+# configure.sh, because that data does not exist until OpenNebula instantiates the machine.
 #
 # It is the same boundary that separates service_install from service_configure in one-apps,
 # and it lets us build a golden image once and boot each worker in seconds instead of
@@ -3747,36 +3815,56 @@ install -m 644 "${HERE}/ood-app-lib.sh" /etc/one-ondemand/ood-app-lib.sh
 bash -n /etc/one-ondemand/ood-app-lib.sh || die "ood-app-lib.sh is not valid bash"
 ok "/etc/one-ondemand/ood-app-lib.sh installed"
 
-# --- metrics publisher for OneFlow ------------------------------------------------------------
-# The worker publishes to OneGate how many sessions it has, and OneFlow grows the role when
-# the average exceeds the threshold, so without this signal elasticity has nothing to read.
+# --- Slurm node and the elasticity publisher --------------------------------------------------
+# slurmd registers this VM with the controller of the portal at boot (configure.sh), and the
+# publisher tells OneGate what the cluster is waiting for, so OneFlow grows the role, and
+# drains this worker before OneFlow removes it. The packages come with the common image
+# (appliance/install.sh); here the spool directory and the units.
 #
-# The unit is enabled here but not started, because in the golden image systemd starts it when
-# the VM boots. The unit is deliberately not ordered after one-context.service, because a
-# START_SCRIPT runs inside one-context and a unit ordered after it would wait for the script
-# that is starting it, leaving contextualization hung. Checked on 8 September 2026.
-msg "installing the metrics publisher for OneFlow"
+# The publisher unit is enabled here but not started, because in the golden image systemd
+# starts it when the VM boots. It is deliberately not ordered after one-context.service,
+# because a START_SCRIPT runs inside one-context and a unit ordered after it would wait for
+# the script that is starting it, leaving contextualization hung. Checked on 8 September 2026.
+# The leave unit does nothing at start and, when the VM shuts down, deletes the node from the
+# controller while slurmd and the network are still up.
+msg "installing the Slurm node pieces and the elasticity publisher"
+install -d -m 700 -o slurm -g slurm /var/spool/slurmd
 install -m 644 "${HERE}/onegate-lib.sh" /etc/one-ondemand/onegate-lib.sh
 bash -n /etc/one-ondemand/onegate-lib.sh || die "onegate-lib.sh is not valid bash"
-install -m 755 "${HERE}/publish-load.sh" /usr/local/bin/ood-publish-load.sh
-cat > /etc/systemd/system/ood-publish-load.service <<'UNIT'
+install -m 755 "${HERE}/slurm-elastic.sh" /usr/local/bin/ood-slurm-elastic.sh
+bash -n /usr/local/bin/ood-slurm-elastic.sh || die "slurm-elastic.sh is not valid bash"
+cat > /etc/systemd/system/ood-slurm-elastic.service <<'UNIT'
 [Unit]
-Description=Publish Open OnDemand worker load to OneGate
-After=network-online.target
+Description=Publish the Slurm load of the Open OnDemand pool to OneGate
+After=network-online.target slurmd.service
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/ood-publish-load.sh
+ExecStart=/usr/local/bin/ood-slurm-elastic.sh
 Restart=always
 RestartSec=15
 
 [Install]
 WantedBy=multi-user.target
 UNIT
+cat > /etc/systemd/system/ood-slurm-leave.service <<'UNIT'
+[Unit]
+Description=Remove this VM from the Slurm controller when it shuts down
+After=network-online.target slurmd.service munge.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/usr/local/bin/ood-slurm-elastic.sh --leave
+
+[Install]
+WantedBy=multi-user.target
+UNIT
 systemctl daemon-reload
-systemctl enable ood-publish-load.service >/dev/null 2>&1 \
-    || die "could not enable the metrics publisher"
-ok "metrics publisher baked in and enabled at boot"
+systemctl enable ood-slurm-elastic.service ood-slurm-leave.service >/dev/null 2>&1 \
+    || die "could not enable the elasticity publisher"
+ok "slurmd $(dpkg-query -W -f='${Version}' slurmd 2>/dev/null) in the image, publisher and leave units enabled at boot"
 
 # --- self-configuration at boot ---------------------------------------------------------------
 # The image carries its own boot phase inside, so a new VM configures itself just by receiving
@@ -4048,93 +4136,65 @@ ood_launch_jupyter() {
 ONEOND_WORKER_OOD_APP_LIB_SH_
 
 install -d -m 755 "${SRC}/worker"
-cat > "${SRC}/worker/publish-load.sh" <<'ONEOND_WORKER_PUBLISH_LOAD_SH_'
+cat > "${SRC}/worker/slurm-elastic.sh" <<'ONEOND_WORKER_SLURM_ELASTIC_SH_'
 #!/usr/bin/env bash
-# Publishes the worker load to OneGate so OneFlow can decide when to grow.
+# Publishes the load of the Slurm cluster to OneGate so OneFlow can grow and shrink the pool,
+# and drains this worker before OneFlow removes it.
 #
-# ACTIVE_SESSIONS is the number of Open OnDemand sessions alive on this VM,
-# and it is the one that triggers growth, because it matches what the user does, opening an
-# app. CPU_BUSY is published too because it costs nothing and is useful for the dashboard.
+# OneFlow evaluates a policy on the AVERAGE of an attribute across the VMs of the role, and
+# a value on the portal is invisible to the policies of the worker role, so every worker
+# publishes the cluster figures. They are the same on all of them, so the average is the
+# figure.
 #
-# IDLE exists because an average of ACTIVE_SESSIONS cannot protect a busy worker. When
-# shrinking a role, OneFlow terminates the oldest VM without draining it, and the policies are
-# evaluated on the AVERAGE of the attribute across the VMs of the role. With
-# "ACTIVE_SESSIONS < 1" and two workers, one with a live session and one empty, the average is
-# 0.5 and the condition holds. OneFlow would power off the oldest worker, exactly the one
-# accumulating sessions, and would kill somebody's work.
+# SLURM_PENDING is the number of jobs waiting for resources that this role could give them.
+# One pending job adds one worker (policy SLURM_PENDING > 0). A job nobody can run, for a
+# GPU on a pool without one, is refused at submit by Slurm, and a job that waits for
+# another role's feature is not counted, so the pool never grows for something a new
+# worker could not serve.
 #
-# IDLE is 1 if this VM has no session and 0 if it has any, so its average is the fraction of
-# idle workers. A condition "IDLE > 0.99" literally means that all of them are empty. An
-# average cannot tell "nobody is working" from "one is working and another is not" if it is
-# given the number of sessions, and with IDLE it can.
+# OLDEST_IDLE retires one worker at a time. OneFlow always removes the oldest VM of the
+# role and does not drain it, so the only safe question is whether the oldest worker is
+# empty and will stay empty. Each worker publishes IDLE_SECONDS, the time since its last
+# job ended. When this worker is the oldest of its role, nothing is pending and it has been
+# idle for ONEAPP_WORKER_IDLE_SECONDS, it drains its own node, so Slurm places nothing
+# more on it, and publishes OLDEST_IDLE=1 while it is drained and empty. The other workers
+# publish the OLDEST_IDLE of the oldest VM, read through OneGate, so the role average is 1
+# only when the VM OneFlow is about to remove holds no job and accepts none. The last
+# worker of the role never drains, and a drain that OneFlow does not act on within
+# ONEAPP_WORKER_DRAIN_SECONDS, or that a pending job makes pointless, is undone.
 #
-# OLDEST_IDLE retires one worker at a time. Since OneFlow always removes the oldest VM of the
-# role, the only safe question is "has the oldest worker been empty long enough". Each worker
-# publishes IDLE_SECONDS, the time since its last session ended, and every worker looks up the
-# oldest worker of the role through OneGate and publishes OLDEST_IDLE, 1 when that VM has been
-# empty for more than ONEAPP_WORKER_IDLE_SECONDS. All of them publish the same value, so the
-# role average is that value and "OLDEST_IDLE > 0.99" means the oldest worker can go. The
-# portal sends new sessions to the youngest worker among the least loaded, so the oldest one
-# drains as its sessions end.
+# A node that Slurm has deleted never comes back on its own, so when this worker is missing
+# from sinfo while munge and the controller answer, slurmd is restarted and registers again.
 #
-# /etc/one-ondemand/onegate-lib.sh resolves the OneGate endpoint and explains why the injected
-# one is not trusted, and the boot configuration shares that same library.
+# With --leave, run by systemd when the VM shuts down, the node is deleted from the
+# controller so a terminated VM does not linger as a down node; the reconciler on the portal
+# covers a VM that dies without shutting down.
+#
+# /etc/one-ondemand/onegate-lib.sh resolves the OneGate endpoint and explains why the
+# injected one is not trusted, and the boot configuration shares that same library.
 set -u
 
-STATE=/run/ood-publish-load
+STATE=/run/ood-slurm-elastic
 ONEGATE_LIB="${ONEGATE_LIB:-/etc/one-ondemand/onegate-lib.sh}"
 # shellcheck source=/dev/null
 . "$ONEGATE_LIB" || { echo "${ONEGATE_LIB} is missing" >&2; exit 1; }
 
-# To stderr on purpose: functions whose output is captured, such as healthy, log too.
-log() { logger -t ood-publish-load "$*"; echo "$*" >&2; }
+log() { logger -t ood-slurm-elastic "$*"; echo "$*" >&2; }
+# Every Slurm client call is bounded: with the controller down each one fails after 9 s
+# (measured 16 September 2026), and nothing here may hang on it.
+slurm() { timeout 20 "$@" 2>/dev/null; }
+NODE="$(hostname -s)"
 
-# Live Open OnDemand sessions. The linux_host adapter opens one tmux session per job, named
-# launched-by-ondemand-<uuid>, on the user's socket. Counting /tmp/tmux-* directories would
-# count users and not sessions, and the two differ as soon as someone opens two apps.
-count_sessions() {
-    local total=0 sock n
-    for sock in /tmp/tmux-*/default; do
-        [[ -S "$sock" ]] || continue
-        n="$(tmux -S "$sock" list-sessions -F '#{session_name}' 2>/dev/null | grep -c '^launched-by-ondemand-')"
-        total=$(( total + n ))
-    done
-    printf '%d' "$total"
-}
-
-# session_users: who has a session here and since when, as user:epoch entries separated by
-# commas, so onevm show answers who used the VM. The socket directory carries the uid.
-session_users() {
-    local sock uid user out=""
-    for sock in /tmp/tmux-*/default; do
-        [[ -S "$sock" ]] || continue
-        uid="${sock#/tmp/tmux-}"; uid="${uid%%/*}"
-        user="$(getent passwd "$uid" | cut -d: -f1)"
-        while read -r created; do
-            [[ -n "$created" ]] && out+="${out:+,}${user:-$uid}:${created}"
-        done < <(tmux -S "$sock" list-sessions -F '#{session_name} #{session_created}' 2>/dev/null \
-                 | awk '/^launched-by-ondemand-/ {print $2}')
-    done
-    printf '%s' "$out"
-}
-
-# Why the worker does NOT announce itself in the shared home.
-#
-# It would be the natural thing, both mount it by definition, and it was tried. It does not
-# work, and it looks like a bug without being one. The home is exported to the workers with
-# root_squash, which is correct because they run user code. With root_squash the server maps
-# root to nobody, and then root can CREATE a file in a 1777 directory but cannot write its
-# content, because creation goes through the directory's "other" permission and the write is
-# denied. Checked on 9 September 2026 on ood-worker-232, where touch works, the redirection
-# leaves the file at zero and returns "Permission denied", and the same command as demo1 works.
-#
-# The alternatives would be removing root_squash, which is exactly the protection we want, or
-# creating a service account in LDAP just for this. Neither is worth it, because the portal
-# already knows which machines are workers from the address range reserved for the role and,
-# when the portal belongs to the service, because OneGate tells it. See
-# scripts/ood-pool-refresh.sh.
-
-cpu_snapshot() { awk '/^cpu /{t=0; for (i=2; i<=NF; i++) t+=$i; print t, $5}' /proc/stat; }
+# --leave: this VM is shutting down, so its node leaves the cluster if it holds no job.
+if [[ "${1:-}" == "--leave" ]]; then
+    grep -q -- '--conf-server' /etc/default/slurmd 2>/dev/null || exit 0
+    if [[ -z "$(slurm squeue -h -w "$NODE" -o %i)" ]]; then
+        slurm scontrol delete NodeName="$NODE" && log "node ${NODE} deleted from the controller, the VM is shutting down"
+    else
+        log "node ${NODE} keeps its jobs, the reconciler on the portal removes it later"
+    fi
+    exit 0
+fi
 
 install -d -m 755 "$STATE"
 
@@ -4145,12 +4205,13 @@ fi
 printf '%s\n' "$ONEGATE_ENDPOINT" > "${STATE}/endpoint"
 log "publishing to ${ONEGATE_ENDPOINT}"
 
-# onegate_ready loaded the context environment, where ONEAPP_WORKER_IDLE_SECONDS arrives.
+# onegate_ready loaded the context environment, where the advanced attributes arrive.
 IDLE_THRESHOLD="${ONEAPP_WORKER_IDLE_SECONDS:-600}"
 [[ "$IDLE_THRESHOLD" =~ ^[0-9]+$ ]] || IDLE_THRESHOLD=600
-MAX_SESSIONS="${ONEAPP_WORKER_MAX_SESSIONS:-4}"
-[[ "$MAX_SESSIONS" =~ ^[0-9]+$ ]] || MAX_SESSIONS=4
-log "the oldest worker is retired after ${IDLE_THRESHOLD}s without a session"
+DRAIN_TIMEOUT="${ONEAPP_WORKER_DRAIN_SECONDS:-600}"
+[[ "$DRAIN_TIMEOUT" =~ ^[0-9]+$ ]] || DRAIN_TIMEOUT=600
+DRAIN_REASON="one-ondemand scale-down"
+log "the oldest worker drains after ${IDLE_THRESHOLD}s without a job and resumes after ${DRAIN_TIMEOUT}s if it is not removed"
 
 # The role this VM plays in the service, "worker" or a "worker_<size>" role, which OneFlow
 # records in the user template of the VM. Outside a service it defaults to worker.
@@ -4161,45 +4222,100 @@ try:
 except Exception:
     print("worker")
 ')"
-log "role ${ROLE_NAME}"
+log "role ${ROLE_NAME}, node ${NODE}"
 
-# oldest_idle_seconds MY_IDLE: the IDLE_SECONDS of the oldest worker of the role, read through
-# OneGate, or MY_IDLE when this VM is that worker. Empty when the VM is not in a service.
-oldest_idle_seconds() {
-    local mine="$1"
+# role_view: five values from the service document, "oldest|count|oldest_idle|min|state":
+# the VM id of the oldest worker of this role, how many VMs the role has, the OLDEST_IDLE
+# that oldest VM published (0 when absent), the min_vms of the role and the numeric state of
+# the service (2 is RUNNING). Empty outside a service.
+role_view() {
     onegate_call service show --json --extended 2>/dev/null | python3 -c '
 import json, sys
-me = sys.argv[1]
+role = sys.argv[1]
 try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
-oldest = None
-role = sys.argv[3]
-for r in d.get("SERVICE", {}).get("roles", []):
-    # Only this VM'"'"'s role: each size scales on its own oldest worker.
+svc = d.get("SERVICE", {})
+oldest, count, minimum = None, 0, 1
+for r in svc.get("roles", []):
     if r.get("name") != role:
         continue
+    minimum = int(r.get("min_vms") or 1)
     for n in r.get("nodes", []):
         vm = (n.get("vm_info") or {}).get("VM", {})
         try:
             vid = int(vm.get("ID"))
         except (TypeError, ValueError):
             continue
+        count += 1
         if oldest is None or vid < oldest[0]:
             oldest = (vid, vm.get("USER_TEMPLATE") or {})
 if oldest is None:
     sys.exit(0)
-if str(oldest[0]) == me:
-    print(sys.argv[2])
-else:
-    print(oldest[1].get("IDLE_SECONDS", "0"))
-' "${VMID:-}" "$mine" "${ROLE_NAME:-worker}"
+print("%d|%d|%s|%d|%s" % (oldest[0], count, oldest[1].get("OLDEST_IDLE", "0"), minimum, svc.get("state", "")))
+' "$ROLE_NAME"
 }
 
+# portal_addr: the address of the portal on the compute network, from the service document,
+# the last NIC of the portal VM (the roles get the management network first and the compute
+# network second). Empty outside a service or when OneGate does not answer.
+portal_addr() {
+    onegate_call service show --json --extended 2>/dev/null | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for r in d.get("SERVICE", {}).get("roles", []):
+    if r.get("name") != "portal":
+        continue
+    for n in r.get("nodes", []):
+        nics = ((n.get("vm_info") or {}).get("VM", {})).get("TEMPLATE", {}).get("NIC", [])
+        nics = [nics] if isinstance(nics, dict) else nics
+        ips = [nic.get("IP") for nic in nics if nic.get("IP")]
+        if ips:
+            print(ips[-1])
+            sys.exit(0)
+'
+}
+
+# follow_portal: a portal that OneFlow replaces usually gets another address, and this
+# worker pinned the old one at boot in /etc/hosts (ood-portal, which slurmd and the
+# controller address use) and in sssd. When the service document names another address,
+# both are rewritten and sssd and slurmd restarted, so the node registers with the new
+# controller and the users keep resolving. Nothing changes when OneGate is silent.
+follow_portal() {
+    local current new
+    current="$(awk '/# one-ondemand portal$/ {print $1}' /etc/hosts | head -1)"
+    new="$(portal_addr)"
+    [[ -n "$new" && -n "$current" && "$new" != "$current" ]] || return 0
+    log "the portal moved from ${current} to ${new}, following it"
+    sed -i "s/^${current} ood-portal # one-ondemand portal$/${new} ood-portal # one-ondemand portal/" /etc/hosts
+    sed -i "s#^ldap_uri = ldap://${current}\$#ldap_uri = ldap://${new}#" /etc/sssd/sssd.conf 2>/dev/null
+    systemctl restart sssd 2>/dev/null
+    systemctl restart slurmd
+}
+
+# pending_jobs: jobs waiting for resources this role could provide. The reason filter keeps
+# the jobs that wait for a free node, including the ones that wait because every node is
+# drained or down (ReqNodeNotAvail, which squeue follows with the node list), and leaves out
+# jobs held by a limit or a dependency; the feature filter leaves out jobs that ask for
+# another worker role.
+pending_jobs() {
+    slurm squeue -h -t PD -o '%r|%f' | awk -F'|' -v role="$ROLE_NAME" '
+        $1 ~ /^(Resources|Priority|None|ReqNodeNotAvail)/ && ($2 == "" || $2 == "(null)" || $2 == role) { n++ }
+        END { print n + 0 }'
+}
+
+# node_state: the state of this node as sinfo prints it, empty when the controller does
+# not list it or does not answer. node_reason: why it is drained, when it is.
+node_state() { slurm sinfo -h -n "$NODE" -o '%T' | head -1; }
+node_reason() { slurm sinfo -h -n "$NODE" -o '%E' | head -1; }
+
 # healthy: 1 when what a session needs is in place, the home over NFS when the worker was
-# given one, the EESSI catalogue when it was configured, and sshd for the portal to reach
-# it. The portal skips a worker that publishes 0, so a broken worker gets no new sessions.
+# given one, the EESSI catalogue when it was configured, munge and slurmd. The controller
+# is not part of it, because a controller outage must not read as every worker broken.
 healthy() {
     local failed=""
     if grep -q " /home nfs4 " /etc/fstab 2>/dev/null; then
@@ -4208,9 +4324,10 @@ healthy() {
     if [[ -f /etc/cvmfs/default.local ]]; then
         [[ -d /cvmfs/software.eessi.io/versions ]] || failed="${failed} cvmfs"
     fi
-    # The port, not the unit: on Ubuntu 24.04 ssh.service is socket activated and reads as
-    # inactive until the first connection, while the socket is already listening.
-    ss -Hltn 2>/dev/null | grep -qE '[:.]22 ' || failed="${failed} sshd"
+    if grep -q -- '--conf-server' /etc/default/slurmd 2>/dev/null; then
+        munge -n 2>/dev/null | unmunge >/dev/null 2>&1 || failed="${failed} munge"
+        systemctl is-active --quiet slurmd || failed="${failed} slurmd"
+    fi
     # The state goes in a file because this runs in a command substitution, so a variable
     # would not survive the call and every cycle would log the same thing.
     local last; last="$(cat "${STATE}/unhealthy" 2>/dev/null || true)"
@@ -4225,78 +4342,204 @@ healthy() {
     fi
 }
 
+# publish KEY=VALUE...: every attribute is tried, and the call fails at the end if one was
+# refused, so a bad value never keeps the ones the policies read from reaching OneGate. A
+# value must carry no comma and no "=", which the OneGate client and server split on.
 publish() {
-    local sessions="$1" busy="$2" idle_secs="$3" idle=1 oldest oldest_idle=0 health
-    health="$(healthy)"
-    (( sessions > 0 )) && idle=0
-    oldest="$(oldest_idle_seconds "$idle_secs")"
-    [[ "$oldest" =~ ^[0-9]+$ ]] || oldest=0
-    (( oldest > IDLE_THRESHOLD )) && oldest_idle=1
-    local kv
-    local at_capacity=0 users
-    (( sessions >= MAX_SESSIONS )) && at_capacity=1
-    users="$(session_users)"
-    for kv in "ACTIVE_SESSIONS=${sessions}" "CPU_BUSY=${busy}" "IDLE=${idle}" \
-              "IDLE_SECONDS=${idle_secs}" "OLDEST_IDLE_SECONDS=${oldest}" "OLDEST_IDLE=${oldest_idle}" \
-              "HEALTHY=${health}" "AT_CAPACITY=${at_capacity}" "SESSION_USERS=${users:--}"; do
-        onegate_call vm update --data "$kv" >/dev/null 2>&1 || return 1
+    local kv rc=0
+    for kv in "$@"; do
+        onegate_call vm update --data "$kv" >/dev/null 2>&1 || { rc=1; log "OneGate refused ${kv%%=*}"; }
     done
-    PUBLISHED="ACTIVE_SESSIONS=${sessions} CPU_BUSY=${busy} IDLE=${idle} IDLE_SECONDS=${idle_secs} OLDEST_IDLE_SECONDS=${oldest} OLDEST_IDLE=${oldest_idle} HEALTHY=${health} AT_CAPACITY=${at_capacity} SESSION_USERS=${users:--}"
+    return $rc
 }
 
+# A worker without a cluster, the standalone VM the marketplace harness boots, publishes
+# its health and nothing else. The package ships /etc/default/slurmd with the option
+# commented out, so the mark of a configured node is the controller address in it.
+if ! grep -q -- '--conf-server' /etc/default/slurmd 2>/dev/null; then
+    log "no Slurm node configured on this VM, publishing HEALTHY only"
+    while true; do
+        publish "HEALTHY=$(healthy)" || log "publish failed against ${ONEGATE_ENDPOINT}"
+        sleep 30
+    done
+fi
+
 # Initial value as soon as it starts, so a new VM is not missing from the average OneFlow
-# evaluates before it has published anything. A worker that has never had a session counts
-# its idle time from here.
+# evaluates before it has published anything. A worker that has never had a job counts its
+# idle time from here.
 last_busy=$(date +%s)
-publish 0 0 0 && log "${PUBLISHED} (initial)"
+last_restart=0
+drain_since=0
+resume_at=0
+# OneFlow reads OLDEST_IDLE every 60 s and acts two readings later, so a drain that this
+# worker undoes stays in place this long after it stops publishing 1, or OneFlow could
+# remove the VM right after a session landed on it.
+RESUME_GRACE=150
+publish "SLURM_PENDING=0" "OLDEST_IDLE=0" "IDLE_SECONDS=0" "ACTIVE_SESSIONS=0" "HEALTHY=$(healthy)" \
+    && log "initial values published"
 
 while true; do
-    read -r t0 i0 < <(cpu_snapshot)
-    sleep 10
-    read -r t1 i1 < <(cpu_snapshot)
-    dt=$(( t1 - t0 )); di=$(( i1 - i0 ))
-    busy=0
-    (( dt > 0 )) && busy=$(( (100 * (dt - di)) / dt ))
-    sessions="$(count_sessions)"
     now=$(date +%s)
-    (( sessions > 0 )) && last_busy=$now
+    follow_portal
+    state="$(node_state)"
+    # Missing from the controller while munge works: the node was deleted, or slurmd lost
+    # it, and only a restart registers it again. Once per five minutes at most.
+    if [[ -z "$state" ]] && munge -n 2>/dev/null | unmunge >/dev/null 2>&1 \
+            && slurm sinfo -h >/dev/null && (( now - last_restart > 300 )); then
+        log "node ${NODE} is not registered, restarting slurmd"
+        systemctl restart slurmd && last_restart=$now
+        sleep 5
+        state="$(node_state)"
+    fi
+
+    jobs="$(slurm squeue -h -w "$NODE" -t R -o %i | grep -c .)"
+    (( jobs > 0 )) && last_busy=$now
     idle_secs=$(( now - last_busy ))
-    if publish "$sessions" "$busy" "$idle_secs"; then
-        printf '%s\n' "$sessions" > "${STATE}/sessions"
-        log "$PUBLISHED"
+    pending="$(pending_jobs)"
+    users="$(slurm squeue -h -w "$NODE" -t R -o '%u:%S' | paste -sd';' -)"
+    idle_nodes="$(slurm sinfo -h -t idle -o %D | head -1)"
+    alloc_nodes="$(slurm sinfo -h -t alloc,mixed -o %D | head -1)"
+
+    # --- the drain of the oldest worker ------------------------------------------------
+    oldest_idle=0
+    IFS='|' read -r oldest count their_oldest_idle min_vms svc_state < <(role_view)
+    if [[ "$state" == drain* ]] && [[ "$(node_reason)" == "$DRAIN_REASON" ]]; then
+        # This worker drained itself. Putting it back needs only Slurm, so it happens even
+        # when the service document is unavailable, and it happens in two steps: first
+        # OLDEST_IDLE stops being 1, then after RESUME_GRACE the node takes jobs again, so
+        # a removal OneFlow already decided lands on a node that is still empty.
+        if (( jobs == 0 )); then
+            if (( resume_at > 0 )); then
+                if (( now >= resume_at )); then
+                    slurm scontrol update NodeName="$NODE" State=IDLE \
+                        && log "node ${NODE} back in service"
+                    resume_at=0; drain_since=0; last_busy=$now
+                fi
+            elif (( pending > 0 )) || (( now - drain_since > DRAIN_TIMEOUT )); then
+                resume_at=$(( now + RESUME_GRACE ))
+                log "node ${NODE} leaves the drain in ${RESUME_GRACE}s, $( (( pending > 0 )) && echo "${pending} jobs pending" || echo "not removed after ${DRAIN_TIMEOUT}s")"
+            else
+                [[ "${oldest:-}" == "${VMID:-none}" ]] && oldest_idle=1
+            fi
+        fi
+    elif [[ "${oldest:-}" == "${VMID:-none}" ]]; then
+        # This worker is the one OneFlow removes next. It drains only from a working state,
+        # so a node an operator drained or that is down is left alone, only while OneFlow
+        # would act (the service RUNNING and the role above its minimum) and only when
+        # nothing waits for a node.
+        if [[ "$state" == idle* || "$state" == mixed* ]] && [[ "${svc_state:-}" == "2" ]] \
+                && (( count > ${min_vms:-1} && jobs == 0 && pending == 0 && idle_secs > IDLE_THRESHOLD )); then
+            if slurm scontrol update NodeName="$NODE" State=DRAIN Reason="$DRAIN_REASON"; then
+                drain_since=$now; resume_at=0
+                log "node ${NODE} drained, idle for ${idle_secs}s and the oldest of ${count} workers of ${ROLE_NAME}"
+            fi
+        fi
+    else
+        [[ "${their_oldest_idle:-0}" == "1" ]] && oldest_idle=1
+    fi
+
+    if publish "SLURM_PENDING=${pending}" "OLDEST_IDLE=${oldest_idle}" "HEALTHY=$(healthy)" \
+               "IDLE_SECONDS=${idle_secs}" "ACTIVE_SESSIONS=${jobs}" "SLURM_IDLE_NODES=${idle_nodes:-0}" \
+               "SLURM_ALLOC_NODES=${alloc_nodes:-0}" "SESSION_USERS=${users:--}"; then
+        log "SLURM_PENDING=${pending} SLURM_IDLE_NODES=${idle_nodes:-0} SLURM_ALLOC_NODES=${alloc_nodes:-0} ACTIVE_SESSIONS=${jobs} IDLE_SECONDS=${idle_secs} OLDEST_IDLE=${oldest_idle} state=${state:-unregistered}"
     else
         log "publish failed against ${ONEGATE_ENDPOINT}"
     fi
-    sleep 20
+    sleep 30
 done
-ONEOND_WORKER_PUBLISH_LOAD_SH_
+ONEOND_WORKER_SLURM_ELASTIC_SH_
+
+install -d -m 755 "${SRC}/worker"
+cat > "${SRC}/worker/slurm-task-epilog.sh" <<'ONEOND_WORKER_SLURM_TASK_EPILOG_SH_'
+#!/usr/bin/env bash
+# Task epilog of the Slurm cluster, run as the user on the worker after each task. It removes
+# the runtime directory the task prolog created.
+rm -rf "${TMPDIR:-/tmp}/ood-runtime-${SLURM_JOB_ID:-none}"
+ONEOND_WORKER_SLURM_TASK_EPILOG_SH_
+
+install -d -m 755 "${SRC}/worker"
+cat > "${SRC}/worker/slurm-task-prolog.sh" <<'ONEOND_WORKER_SLURM_TASK_PROLOG_SH_'
+#!/usr/bin/env bash
+# Task prolog of the Slurm cluster, run as the user on the worker before each task. Its
+# standard output sets the environment of the task.
+#
+# A batch job submitted with --export=NONE, which is what Open OnDemand does, gets the login
+# environment of the user, which slurmd builds with `su -` on the worker. That su opens a
+# logind session, pam_systemd starts the user manager with its D-Bus user bus, and the
+# session closes at once, so logind stops that manager ten seconds later and kills the bus.
+# A desktop that connected to it dies with it. The task therefore gets a runtime directory
+# of its own, and no bus address, so D-Bus starts a private bus that lives as long as the
+# job. The task epilog removes the directory.
+dir="${TMPDIR:-/tmp}/ood-runtime-${SLURM_JOB_ID:-$$}"
+mkdir -p -m 700 "$dir"
+echo "export XDG_RUNTIME_DIR=${dir}"
+echo "unset DBUS_SESSION_BUS_ADDRESS"
+ONEOND_WORKER_SLURM_TASK_PROLOG_SH_
 
 install -d -m 755 "${SRC}/apps/code-server"
 cat > "${SRC}/apps/code-server/form.yml.erb" <<'ONEOND_APPS_CODE_SERVER_FORM_YML_ERB_'
 ---
 <%-
-  # The sizes come from the roster the portal keeps, one entry per worker role of the
-  # service, so the form offers what exists. With a single role the field is not shown.
-  sizes = (OneOnDemandPool.roles rescue [])
+  # What the forms may ask for comes from the cluster itself. The reconciler on the portal
+  # writes the largest registered node (cores, memory, GPUs) and the worker roles of the
+  # service, so the form cannot ask for a session no node could run, the GPU field appears
+  # only when a node has one, and the size field only when the service has more than one
+  # worker role.
+  require 'json'
+  shape = (JSON.parse(File.read('/var/lib/ood-slurm/shape')) rescue {})
+  max_cores  = [shape['cpus'].to_i, 1].max
+  max_mem_gb = [shape['mem_mb'].to_i / 1024, 1].max
+  max_gpus   = shape['gpus'].to_i
+  roles  = (File.readlines('/var/lib/ood-slurm/roles').map(&:strip).reject(&:empty?) rescue [])
   labels = { "worker" => "Standard" }
-  size_options = sizes.sort.map { |r| [labels.fetch(r) { r.sub(/^worker_?/, "").capitalize }, r] }
+  size_options = roles.sort.map { |r| [labels.fetch(r) { r.sub(/^worker_?/, "").capitalize }, r] }
 -%>
-# The target is always the OpenNebula VM pool. A session shares the whole VM with any
-# other session running on it, so core and memory fields would have no effect and the
-# form omits them.
+# Every session is a job of the Slurm cluster of the service, so it gets the cores and the
+# memory it asks for and nothing else shares them.
 cluster:
-  - "vms"
+  - "slurm"
 form:
+  - num_cores
+  - mem_gb
+<%- if max_gpus > 0 -%>
+  - num_gpus
+<%- end -%>
   - num_hours
 <%- if size_options.size > 1 -%>
   - worker_size
 <%- end -%>
 attributes:
+  num_cores:
+    widget: number_field
+    label: "Cores"
+    value: 1
+    min: 1
+    max: <%= max_cores %>
+    step: 1
+    help: "Cores reserved for the session. No other session shares them."
+  mem_gb:
+    widget: number_field
+    label: "Memory (GB)"
+    value: <%= [2, max_mem_gb].min %>
+    min: 1
+    max: <%= max_mem_gb %>
+    step: 1
+    help: "Memory reserved for the session. A process that grows past it is stopped."
+<%- if max_gpus > 0 -%>
+  num_gpus:
+    widget: number_field
+    label: "GPUs"
+    value: 0
+    min: 0
+    max: <%= max_gpus %>
+    step: 1
+    help: "GPUs reserved for the session, on a worker that has them."
+<%- end -%>
 <%- if size_options.size > 1 -%>
   worker_size:
     widget: select
     label: "Worker size"
-    help: "Which pool of VMs runs the session."
+    help: "Which kind of worker runs the session."
     options:
 <%- size_options.each do |label, role| -%>
       - ["<%= label %>", "<%= role %>"]
@@ -4314,18 +4557,17 @@ ONEOND_APPS_CODE_SERVER_FORM_YML_ERB_
 
 install -d -m 755 "${SRC}/apps/code-server"
 cat > "${SRC}/apps/code-server/info.html.erb" <<'ONEOND_APPS_CODE_SERVER_INFO_HTML_ERB_'
-<%#- Shown on the session card, from submission until the session ends. The card
-    title carries the job identifier, "launched-by-ondemand-<uuid>@<vm>", which nobody
-    launching a session can read, so this panel names the target instead. The file is
-    evaluated against the session, so cluster_id and job_id are its attributes, while
-    view.html.erb is evaluated against the connection information. The target title
-    is taken from the cluster definition in clusters.d. -%>
+<%#- Shown on the session card, from submission until the session ends. The card title
+    carries the Slurm job id, so this panel prints the target and, once the job runs, the
+    node. The file is evaluated against the session, so cluster_id, job_id and info are its
+    attributes, while view.html.erb is evaluated against the connection information. The
+    target title comes from its definition in clusters.d. -%>
 <%-
   target_cluster = (OodAppkit.clusters[cluster_id.to_s.to_sym] rescue nil)
   target = target_cluster ? target_cluster.metadata.title.to_s : cluster_id.to_s
-  target_host = job_id.to_s.include?("@") ? job_id.to_s.split("@").last : nil
+  node = (info.allocated_nodes.map(&:name).reject { |n| n.to_s.empty? }.join(", ") rescue "")
 -%>
-<p class="mb-2"><strong>Runs on:</strong> <%= target %><%= target_host ? " (#{target_host})" : "" %></p>
+<p class="mb-2"><strong>Runs on:</strong> <%= target %>, job <%= job_id %><%= node.empty? ? "" : " on #{node}" %></p>
 ONEOND_APPS_CODE_SERVER_INFO_HTML_ERB_
 
 install -d -m 755 "${SRC}/apps/code-server"
@@ -4336,30 +4578,35 @@ category: Interactive Apps
 subcategory: Development
 role: batch_connect
 description: |
-  Launches Visual Studio Code in the browser on an OpenNebula VM. The editor opens
+  Launches Visual Studio Code in the browser on a worker of the service. The editor opens
   your home directory, shared over NFS with the file browser and with every other
-  session, and its terminal runs on the VM that hosts the session.
+  session, and its terminal runs on the worker that hosts the session.
 ONEOND_APPS_CODE_SERVER_MANIFEST_YML_
 
 install -d -m 755 "${SRC}/apps/code-server"
 cat > "${SRC}/apps/code-server/submit.yml.erb" <<'ONEOND_APPS_CODE_SERVER_SUBMIT_YML_ERB_'
 ---
-# The linux_host adapter connects over SSH as the user, opens a tmux session and runs
-# the session script inside an Apptainer container. The form supplies only the session
-# time, which becomes the wall_time timeout that stops the session.
+# The slurm adapter submits the session script with sbatch, and Slurm starts it on a worker
+# with the cores and the memory the form asked for, fenced by cgroups, for the session time.
+# The script is the one generated by template/before.sh.erb, script.sh.erb and after.sh.erb.
 batch_connect:
   template: "basic"
-
-<%- worker = (OneOnDemandPool.pick((defined?(worker_size) ? worker_size : nil)) rescue nil) -%>
 script:
   # to_f, not to_i, so a fraction of an hour does not truncate to zero.
   wall_time: "<%= (num_hours.to_f * 3600).round %>"
-<%- if worker -%>
   native:
-    # The worker with the fewest sessions, taken from the roster the workers
-    # themselves refresh. Without this the adapter would send every session to the
-    # fixed submit_host, and a worker added by elasticity would never receive one.
-    submit_host_override: "<%= worker %>"
+    - "--nodes=1"
+    - "--ntasks=1"
+    - "--cpus-per-task=<%= num_cores.to_i %>"
+    - "--mem=<%= mem_gb.to_i %>G"
+    # The browser connection points at the node that started the session, so it is never
+    # requeued elsewhere.
+    - "--no-requeue"
+<%- if defined?(num_gpus) && num_gpus.to_i > 0 -%>
+    - "--gres=gpu:<%= num_gpus.to_i %>"
+<%- end -%>
+<%- if defined?(worker_size) && !worker_size.to_s.empty? -%>
+    - "--constraint=<%= worker_size %>"
 <%- end -%>
 ONEOND_APPS_CODE_SERVER_SUBMIT_YML_ERB_
 
@@ -4380,9 +4627,9 @@ ONEOND_APPS_CODE_SERVER_TEMPLATE_AFTER_SH_ERB_
 
 install -d -m 755 "${SRC}/apps/code-server/template"
 cat > "${SRC}/apps/code-server/template/before.sh.erb" <<'ONEOND_APPS_CODE_SERVER_TEMPLATE_BEFORE_SH_ERB_'
-# Sourced inside the Apptainer container on the pool VM, before the session script.
+# Sourced by the Slurm job on the worker, before the session script.
 #
-# set_host (clusters.d/vms.yml) has already set host to the private IP of the VM, the
+# set_host (clusters.d/slurm.yml) has already set host to the private IP of the VM, the
 # address the portal proxy reaches. This script picks a free port on that address and
 # generates the session password. Both are written to connection.yml, which the portal
 # reads from the shared home, and script.sh reads the password from the environment
@@ -4396,7 +4643,7 @@ ONEOND_APPS_CODE_SERVER_TEMPLATE_BEFORE_SH_ERB_
 install -d -m 755 "${SRC}/apps/code-server/template"
 cat > "${SRC}/apps/code-server/template/script.sh.erb" <<'ONEOND_APPS_CODE_SERVER_TEMPLATE_SCRIPT_SH_ERB_'
 #!/usr/bin/env bash
-# Visual Studio Code in the browser, on a pool VM.
+# Visual Studio Code in the browser, as a Slurm job on a worker.
 #
 # EESSI has no code-server, so the worker image carries it. worker/install.sh installs
 # it and records its path in /etc/one-ondemand/code-server.env. code-server serves
@@ -4450,28 +4697,66 @@ install -d -m 755 "${SRC}/apps/cpp-notebook"
 cat > "${SRC}/apps/cpp-notebook/form.yml.erb" <<'ONEOND_APPS_CPP_NOTEBOOK_FORM_YML_ERB_'
 ---
 <%-
-  # The sizes come from the roster the portal keeps, one entry per worker role of the
-  # service, so the form offers what exists. With a single role the field is not shown.
-  sizes = (OneOnDemandPool.roles rescue [])
+  # What the forms may ask for comes from the cluster itself. The reconciler on the portal
+  # writes the largest registered node (cores, memory, GPUs) and the worker roles of the
+  # service, so the form cannot ask for a session no node could run, the GPU field appears
+  # only when a node has one, and the size field only when the service has more than one
+  # worker role.
+  require 'json'
+  shape = (JSON.parse(File.read('/var/lib/ood-slurm/shape')) rescue {})
+  max_cores  = [shape['cpus'].to_i, 1].max
+  max_mem_gb = [shape['mem_mb'].to_i / 1024, 1].max
+  max_gpus   = shape['gpus'].to_i
+  roles  = (File.readlines('/var/lib/ood-slurm/roles').map(&:strip).reject(&:empty?) rescue [])
   labels = { "worker" => "Standard" }
-  size_options = sizes.sort.map { |r| [labels.fetch(r) { r.sub(/^worker_?/, "").capitalize }, r] }
+  size_options = roles.sort.map { |r| [labels.fetch(r) { r.sub(/^worker_?/, "").capitalize }, r] }
 -%>
-# The target is always the OpenNebula VM pool. A session uses the whole VM and shares
-# it with any other session running on that VM, so core and memory fields would have
-# no effect and the form does not offer them.
+# Every session is a job of the Slurm cluster of the service, so it gets the cores and the
+# memory it asks for and nothing else shares them.
 cluster:
-  - "vms"
+  - "slurm"
 form:
+  - num_cores
+  - mem_gb
+<%- if max_gpus > 0 -%>
+  - num_gpus
+<%- end -%>
   - num_hours
 <%- if size_options.size > 1 -%>
   - worker_size
 <%- end -%>
 attributes:
+  num_cores:
+    widget: number_field
+    label: "Cores"
+    value: 1
+    min: 1
+    max: <%= max_cores %>
+    step: 1
+    help: "Cores reserved for the session. No other session shares them."
+  mem_gb:
+    widget: number_field
+    label: "Memory (GB)"
+    value: <%= [2, max_mem_gb].min %>
+    min: 1
+    max: <%= max_mem_gb %>
+    step: 1
+    help: "Memory reserved for the session. A process that grows past it is stopped."
+<%- if max_gpus > 0 -%>
+  num_gpus:
+    widget: number_field
+    label: "GPUs"
+    value: 0
+    min: 0
+    max: <%= max_gpus %>
+    step: 1
+    help: "GPUs reserved for the session, on a worker that has them."
+<%- end -%>
 <%- if size_options.size > 1 -%>
   worker_size:
     widget: select
     label: "Worker size"
-    help: "Which pool of VMs runs the session."
+    help: "Which kind of worker runs the session."
     options:
 <%- size_options.each do |label, role| -%>
       - ["<%= label %>", "<%= role %>"]
@@ -4489,18 +4774,17 @@ ONEOND_APPS_CPP_NOTEBOOK_FORM_YML_ERB_
 
 install -d -m 755 "${SRC}/apps/cpp-notebook"
 cat > "${SRC}/apps/cpp-notebook/info.html.erb" <<'ONEOND_APPS_CPP_NOTEBOOK_INFO_HTML_ERB_'
-<%#- Shown on the session card from submission until the session ends. The card title
-    carries the job identifier "launched-by-ondemand-<uuid>@<vm>", which few people can
-    read, so this panel names the target in plain words. The file is evaluated against
-    the session, so cluster_id and job_id are attributes here, while view.html.erb is
-    evaluated against the connection information. The target title comes from its
-    definition in clusters.d. -%>
+<%#- Shown on the session card, from submission until the session ends. The card title
+    carries the Slurm job id, so this panel prints the target and, once the job runs, the
+    node. The file is evaluated against the session, so cluster_id, job_id and info are its
+    attributes, while view.html.erb is evaluated against the connection information. The
+    target title comes from its definition in clusters.d. -%>
 <%-
   target_cluster = (OodAppkit.clusters[cluster_id.to_s.to_sym] rescue nil)
   target = target_cluster ? target_cluster.metadata.title.to_s : cluster_id.to_s
-  target_host = job_id.to_s.include?("@") ? job_id.to_s.split("@").last : nil
+  node = (info.allocated_nodes.map(&:name).reject { |n| n.to_s.empty? }.join(", ") rescue "")
 -%>
-<p class="mb-2"><strong>Runs on:</strong> <%= target %><%= target_host ? " (#{target_host})" : "" %></p>
+<p class="mb-2"><strong>Runs on:</strong> <%= target %>, job <%= job_id %><%= node.empty? ? "" : " on #{node}" %></p>
 ONEOND_APPS_CPP_NOTEBOOK_INFO_HTML_ERB_
 
 install -d -m 755 "${SRC}/apps/cpp-notebook"
@@ -4511,7 +4795,7 @@ category: Interactive Apps
 subcategory: Notebooks
 role: batch_connect
 description: |
-  Runs a Jupyter notebook with the Cling C++ kernel on an OpenNebula compute VM. You
+  Runs a Jupyter notebook with the Cling C++ kernel on a worker of the service. You
   write and run C++ cell by cell without a compile step, which suits teaching and suits
   trying numerical code before it goes into a batch job.
 ONEOND_APPS_CPP_NOTEBOOK_MANIFEST_YML_
@@ -4519,23 +4803,27 @@ ONEOND_APPS_CPP_NOTEBOOK_MANIFEST_YML_
 install -d -m 755 "${SRC}/apps/cpp-notebook"
 cat > "${SRC}/apps/cpp-notebook/submit.yml.erb" <<'ONEOND_APPS_CPP_NOTEBOOK_SUBMIT_YML_ERB_'
 ---
-# The linux_host adapter connects over SSH as the user, starts a tmux session and runs
-# the session script inside an Apptainer container. The form carries a single field,
-# the session time, and it becomes the timeout that ends the session.
+# The slurm adapter submits the session script with sbatch, and Slurm starts it on a worker
+# with the cores and the memory the form asked for, fenced by cgroups, for the session time.
+# The script is the one generated by template/before.sh.erb, script.sh.erb and after.sh.erb.
 batch_connect:
   template: "basic"
-
-<%- worker = (OneOnDemandPool.pick((defined?(worker_size) ? worker_size : nil)) rescue nil) -%>
 script:
   # to_f, not to_i, so a fraction of an hour does not truncate to zero.
   wall_time: "<%= (num_hours.to_f * 3600).round %>"
-<%- if worker -%>
   native:
-    # The worker holding the fewest sessions right now, chosen from the roster
-    # that the workers themselves refresh. Without this override the adapter
-    # sends every session to the fixed submit_host, and a worker created by
-    # elasticity would receive none.
-    submit_host_override: "<%= worker %>"
+    - "--nodes=1"
+    - "--ntasks=1"
+    - "--cpus-per-task=<%= num_cores.to_i %>"
+    - "--mem=<%= mem_gb.to_i %>G"
+    # The browser connection points at the node that started the session, so it is never
+    # requeued elsewhere.
+    - "--no-requeue"
+<%- if defined?(num_gpus) && num_gpus.to_i > 0 -%>
+    - "--gres=gpu:<%= num_gpus.to_i %>"
+<%- end -%>
+<%- if defined?(worker_size) && !worker_size.to_s.empty? -%>
+    - "--constraint=<%= worker_size %>"
 <%- end -%>
 ONEOND_APPS_CPP_NOTEBOOK_SUBMIT_YML_ERB_
 
@@ -4556,9 +4844,9 @@ ONEOND_APPS_CPP_NOTEBOOK_TEMPLATE_AFTER_SH_ERB_
 
 install -d -m 755 "${SRC}/apps/cpp-notebook/template"
 cat > "${SRC}/apps/cpp-notebook/template/before.sh.erb" <<'ONEOND_APPS_CPP_NOTEBOOK_TEMPLATE_BEFORE_SH_ERB_'
-# Sourced inside the Apptainer container on the pool VM, before the session script.
+# Sourced by the Slurm job on the worker, before the session script.
 #
-# set_host (clusters.d/vms.yml) already set host to the private IP of the VM, the
+# set_host (clusters.d/slurm.yml) already set host to the private IP of the VM, the
 # address the portal proxy reaches. This file chooses a free port on that IP and
 # generates the session token. Both reach connection.yml, which the portal reads from
 # the shared home, and script.sh reads password from the exported environment because
@@ -4608,31 +4896,70 @@ install -d -m 755 "${SRC}/apps/desktop"
 cat > "${SRC}/apps/desktop/form.yml.erb" <<'ONEOND_APPS_DESKTOP_FORM_YML_ERB_'
 ---
 <%-
-  # The sizes come from the roster the portal keeps, one entry per worker role of the
-  # service, so the form offers what exists. With a single role the field is not shown.
-  sizes = (OneOnDemandPool.roles rescue [])
+  # What the forms may ask for comes from the cluster itself. The reconciler on the portal
+  # writes the largest registered node (cores, memory, GPUs) and the worker roles of the
+  # service, so the form cannot ask for a desktop no node could run, the GPU field appears
+  # only when a node has one, and the size field only when the service has more than one
+  # worker role.
+  require 'json'
+  shape = (JSON.parse(File.read('/var/lib/ood-slurm/shape')) rescue {})
+  max_cores  = [shape['cpus'].to_i, 1].max
+  max_mem_gb = [shape['mem_mb'].to_i / 1024, 1].max
+  max_gpus   = shape['gpus'].to_i
+  roles  = (File.readlines('/var/lib/ood-slurm/roles').map(&:strip).reject(&:empty?) rescue [])
   labels = { "worker" => "Standard" }
-  size_options = sizes.sort.map { |r| [labels.fetch(r) { r.sub(/^worker_?/, "").capitalize }, r] }
+  size_options = roles.sort.map { |r| [labels.fetch(r) { r.sub(/^worker_?/, "").capitalize }, r] }
 -%>
-# The target is always the OpenNebula VM pool, like the other applications. bc_vnc_idle is
-# the attribute the vnc template of Open OnDemand understands as the seconds without a
-# viewer after which the desktop ends, 0 meaning never. No resolution field: the dashboard
-# hides it unless native VNC clients are enabled, TurboVNC opens at 1240x900 and noVNC
-# resizes the desktop to the browser window.
+# Every desktop is a job of the Slurm cluster of the service, so it gets the cores and the
+# memory it asks for and nothing else shares them.
 cluster:
-  - "vms"
+  - "slurm"
 form:
+  - num_cores
+  - mem_gb
+<%- if max_gpus > 0 -%>
+  - num_gpus
+<%- end -%>
   - num_hours
 <%- if size_options.size > 1 -%>
   - worker_size
 <%- end -%>
 attributes:
+  # Seconds without a viewer after which the desktop ends, 0 meaning never; the vnc
+  # template of Open OnDemand reads it. No resolution field: noVNC resizes the desktop to
+  # the browser window.
   bc_vnc_idle: 0
+  num_cores:
+    widget: number_field
+    label: "Cores"
+    value: 1
+    min: 1
+    max: <%= max_cores %>
+    step: 1
+    help: "Cores reserved for the desktop. No other desktop shares them."
+  mem_gb:
+    widget: number_field
+    label: "Memory (GB)"
+    value: <%= [2, max_mem_gb].min %>
+    min: 1
+    max: <%= max_mem_gb %>
+    step: 1
+    help: "Memory reserved for the desktop. A process that grows past it is stopped."
+<%- if max_gpus > 0 -%>
+  num_gpus:
+    widget: number_field
+    label: "GPUs"
+    value: 0
+    min: 0
+    max: <%= max_gpus %>
+    step: 1
+    help: "GPUs reserved for the desktop, on a worker that has them."
+<%- end -%>
 <%- if size_options.size > 1 -%>
   worker_size:
     widget: select
     label: "Worker size"
-    help: "Which pool of VMs runs the desktop."
+    help: "Which kind of worker runs the desktop."
     options:
 <%- size_options.each do |label, role| -%>
       - ["<%= label %>", "<%= role %>"]
@@ -4650,18 +4977,17 @@ ONEOND_APPS_DESKTOP_FORM_YML_ERB_
 
 install -d -m 755 "${SRC}/apps/desktop"
 cat > "${SRC}/apps/desktop/info.html.erb" <<'ONEOND_APPS_DESKTOP_INFO_HTML_ERB_'
-<%#- Shown on the session card, from submission until the session ends. The card
-    title carries the job identifier, "launched-by-ondemand-<uuid>@<vm>", so this
-    panel prints the target and the host in readable form. The file is evaluated
-    against the session, so cluster_id and job_id are its attributes, while
-    view.html.erb is evaluated against the connection information. The target
-    title comes from its definition in clusters.d. -%>
+<%#- Shown on the session card, from submission until the session ends. The card title
+    carries the Slurm job id, so this panel prints the target and, once the job runs, the
+    node. The file is evaluated against the session, so cluster_id, job_id and info are its
+    attributes, while view.html.erb is evaluated against the connection information. The
+    target title comes from its definition in clusters.d. -%>
 <%-
   target_cluster = (OodAppkit.clusters[cluster_id.to_s.to_sym] rescue nil)
   target = target_cluster ? target_cluster.metadata.title.to_s : cluster_id.to_s
-  target_host = job_id.to_s.include?("@") ? job_id.to_s.split("@").last : nil
+  node = (info.allocated_nodes.map(&:name).reject { |n| n.to_s.empty? }.join(", ") rescue "")
 -%>
-<p class="mb-2"><strong>Runs on:</strong> <%= target %><%= target_host ? " (#{target_host})" : "" %></p>
+<p class="mb-2"><strong>Runs on:</strong> <%= target %>, job <%= job_id %><%= node.empty? ? "" : " on #{node}" %></p>
 ONEOND_APPS_DESKTOP_INFO_HTML_ERB_
 
 install -d -m 755 "${SRC}/apps/desktop"
@@ -4673,7 +4999,7 @@ subcategory: Desktops
 role: batch_connect
 icon: fa://desktop
 description: |
-  Launches a Linux desktop (Xfce) on an OpenNebula VM and shows it in the browser
+  Launches a Linux desktop (Xfce) on a worker of the service and shows it in the browser
   through noVNC. A terminal on the desktop has the EESSI software catalogue available
   with module load, and the desktop opens the same home directory as the notebooks.
 ONEOND_APPS_DESKTOP_MANIFEST_YML_
@@ -4681,31 +5007,40 @@ ONEOND_APPS_DESKTOP_MANIFEST_YML_
 install -d -m 755 "${SRC}/apps/desktop"
 cat > "${SRC}/apps/desktop/submit.yml.erb" <<'ONEOND_APPS_DESKTOP_SUBMIT_YML_ERB_'
 ---
-# The vnc template of Open OnDemand starts a VNC server (TurboVNC on the VM), runs the
+# The slurm adapter submits the desktop script with sbatch, and Slurm starts it on a worker
+# with the cores and the memory the form asked for, fenced by cgroups, for the session time.
+# The script is the one generated by template/before.sh.erb, script.sh.erb and after.sh.erb.
+# The vnc template of Open OnDemand starts a VNC server (TurboVNC on the worker), runs the
 # session script under its display and bridges the display to the browser with websockify.
-# The portal serves noVNC itself and proxies the websocket through /rnode. The rest is the
-# same as the other applications: the session runs over SSH inside the Apptainer container
-# on the least loaded worker, and the session time becomes the wall time.
+# The portal serves noVNC itself and proxies the websocket through /rnode.
 batch_connect:
   template: "vnc"
   websockify_cmd: "/usr/bin/websockify"
-
-<%- worker = (OneOnDemandPool.pick((defined?(worker_size) ? worker_size : nil)) rescue nil) -%>
 script:
+  # to_f, not to_i, so a fraction of an hour does not truncate to zero.
   wall_time: "<%= (num_hours.to_f * 3600).round %>"
-<%- if worker -%>
   native:
-    submit_host_override: "<%= worker %>"
+    - "--nodes=1"
+    - "--ntasks=1"
+    - "--cpus-per-task=<%= num_cores.to_i %>"
+    - "--mem=<%= mem_gb.to_i %>G"
+    # The browser connection points at the node that started the desktop, so it is never
+    # requeued elsewhere.
+    - "--no-requeue"
+<%- if defined?(num_gpus) && num_gpus.to_i > 0 -%>
+    - "--gres=gpu:<%= num_gpus.to_i %>"
+<%- end -%>
+<%- if defined?(worker_size) && !worker_size.to_s.empty? -%>
+    - "--constraint=<%= worker_size %>"
 <%- end -%>
 ONEOND_APPS_DESKTOP_SUBMIT_YML_ERB_
 
 install -d -m 755 "${SRC}/apps/desktop/template"
 cat > "${SRC}/apps/desktop/template/script.sh.erb" <<'ONEOND_APPS_DESKTOP_TEMPLATE_SCRIPT_SH_ERB_'
 #!/usr/bin/env bash
-# Desktop session for the "vms" target. The vnc template of Open OnDemand runs this script
-# with DISPLAY pointing at the TurboVNC server it started, inside the Apptainer container on
-# the pool VM. Xfce comes from the VM packages, visible in the container because /usr and
-# /etc are bound inside it. The Xfce setup lines follow the desktops/xfce.sh of the stock
+# Desktop session for the slurm target. The vnc template of Open OnDemand runs this script
+# with DISPLAY pointing at the TurboVNC server it started, as a Slurm job on a worker.
+# Xfce comes from the worker packages. The Xfce setup lines follow the desktops/xfce.sh of the stock
 # bc_desktop application of Open OnDemand. The EESSI catalogue is not initialised here:
 # the terminals are login shells, and /etc/profile.d/eessi-lazy.sh on the VM loads it on
 # the first module call, which keeps the distribution tools first in PATH.
@@ -4762,28 +5097,66 @@ install -d -m 755 "${SRC}/apps/jupyter"
 cat > "${SRC}/apps/jupyter/form.yml.erb" <<'ONEOND_APPS_JUPYTER_FORM_YML_ERB_'
 ---
 <%-
-  # The sizes come from the roster the portal keeps, one entry per worker role of the
-  # service, so the form offers what exists. With a single role the field is not shown.
-  sizes = (OneOnDemandPool.roles rescue [])
+  # What the forms may ask for comes from the cluster itself. The reconciler on the portal
+  # writes the largest registered node (cores, memory, GPUs) and the worker roles of the
+  # service, so the form cannot ask for a session no node could run, the GPU field appears
+  # only when a node has one, and the size field only when the service has more than one
+  # worker role.
+  require 'json'
+  shape = (JSON.parse(File.read('/var/lib/ood-slurm/shape')) rescue {})
+  max_cores  = [shape['cpus'].to_i, 1].max
+  max_mem_gb = [shape['mem_mb'].to_i / 1024, 1].max
+  max_gpus   = shape['gpus'].to_i
+  roles  = (File.readlines('/var/lib/ood-slurm/roles').map(&:strip).reject(&:empty?) rescue [])
   labels = { "worker" => "Standard" }
-  size_options = sizes.sort.map { |r| [labels.fetch(r) { r.sub(/^worker_?/, "").capitalize }, r] }
+  size_options = roles.sort.map { |r| [labels.fetch(r) { r.sub(/^worker_?/, "").capitalize }, r] }
 -%>
-# The target is always the OpenNebula VM pool. A session uses the whole VM and shares
-# it with any other session running there, so core and memory fields would change
-# nothing and the form omits them.
+# Every session is a job of the Slurm cluster of the service, so it gets the cores and the
+# memory it asks for and nothing else shares them.
 cluster:
-  - "vms"
+  - "slurm"
 form:
+  - num_cores
+  - mem_gb
+<%- if max_gpus > 0 -%>
+  - num_gpus
+<%- end -%>
   - num_hours
 <%- if size_options.size > 1 -%>
   - worker_size
 <%- end -%>
 attributes:
+  num_cores:
+    widget: number_field
+    label: "Cores"
+    value: 1
+    min: 1
+    max: <%= max_cores %>
+    step: 1
+    help: "Cores reserved for the session. No other session shares them."
+  mem_gb:
+    widget: number_field
+    label: "Memory (GB)"
+    value: <%= [2, max_mem_gb].min %>
+    min: 1
+    max: <%= max_mem_gb %>
+    step: 1
+    help: "Memory reserved for the session. A process that grows past it is stopped."
+<%- if max_gpus > 0 -%>
+  num_gpus:
+    widget: number_field
+    label: "GPUs"
+    value: 0
+    min: 0
+    max: <%= max_gpus %>
+    step: 1
+    help: "GPUs reserved for the session, on a worker that has them."
+<%- end -%>
 <%- if size_options.size > 1 -%>
   worker_size:
     widget: select
     label: "Worker size"
-    help: "Which pool of VMs runs the session."
+    help: "Which kind of worker runs the session."
     options:
 <%- size_options.each do |label, role| -%>
       - ["<%= label %>", "<%= role %>"]
@@ -4801,18 +5174,17 @@ ONEOND_APPS_JUPYTER_FORM_YML_ERB_
 
 install -d -m 755 "${SRC}/apps/jupyter"
 cat > "${SRC}/apps/jupyter/info.html.erb" <<'ONEOND_APPS_JUPYTER_INFO_HTML_ERB_'
-<%#- Shown on the session card, from submission until the session ends. The card
-    title carries the job identifier, "launched-by-ondemand-<uuid>@<vm>", so this
-    panel prints the target and the host in readable form. The file is evaluated
-    against the session, so cluster_id and job_id are its attributes, while
-    view.html.erb is evaluated against the connection information. The target
-    title comes from its definition in clusters.d. -%>
+<%#- Shown on the session card, from submission until the session ends. The card title
+    carries the Slurm job id, so this panel prints the target and, once the job runs, the
+    node. The file is evaluated against the session, so cluster_id, job_id and info are its
+    attributes, while view.html.erb is evaluated against the connection information. The
+    target title comes from its definition in clusters.d. -%>
 <%-
   target_cluster = (OodAppkit.clusters[cluster_id.to_s.to_sym] rescue nil)
   target = target_cluster ? target_cluster.metadata.title.to_s : cluster_id.to_s
-  target_host = job_id.to_s.include?("@") ? job_id.to_s.split("@").last : nil
+  node = (info.allocated_nodes.map(&:name).reject { |n| n.to_s.empty? }.join(", ") rescue "")
 -%>
-<p class="mb-2"><strong>Runs on:</strong> <%= target %><%= target_host ? " (#{target_host})" : "" %></p>
+<p class="mb-2"><strong>Runs on:</strong> <%= target %>, job <%= job_id %><%= node.empty? ? "" : " on #{node}" %></p>
 ONEOND_APPS_JUPYTER_INFO_HTML_ERB_
 
 install -d -m 755 "${SRC}/apps/jupyter"
@@ -4823,33 +5195,35 @@ category: Interactive Apps
 subcategory: Notebooks
 role: batch_connect
 description: |
-  Launches a JupyterLab notebook on an OpenNebula VM, with the Python from the EESSI
-  software catalogue. The notebook runs on the compute VM rather than on the portal,
+  Launches a JupyterLab notebook on a worker of the service, with the Python from the EESSI
+  software catalogue. The notebook runs on a worker rather than on the portal,
   and it opens the home directory the portal file browser shows.
 ONEOND_APPS_JUPYTER_MANIFEST_YML_
 
 install -d -m 755 "${SRC}/apps/jupyter"
 cat > "${SRC}/apps/jupyter/submit.yml.erb" <<'ONEOND_APPS_JUPYTER_SUBMIT_YML_ERB_'
 ---
-# The linux_host adapter connects over SSH as the user, opens a tmux session and runs
-# the session script inside an Apptainer container, the script being the one generated
-# by template/before.sh.erb, script.sh.erb and after.sh.erb. The pool VMs run no
-# scheduler, so the only form value the adapter uses is the session time, which becomes
-# the wall time that ends the session.
+# The slurm adapter submits the session script with sbatch, and Slurm starts it on a worker
+# with the cores and the memory the form asked for, fenced by cgroups, for the session time.
+# The script is the one generated by template/before.sh.erb, script.sh.erb and after.sh.erb.
 batch_connect:
   template: "basic"
-
-<%- worker = (OneOnDemandPool.pick((defined?(worker_size) ? worker_size : nil)) rescue nil) -%>
 script:
   # to_f, not to_i, so a fraction of an hour does not truncate to zero.
   wall_time: "<%= (num_hours.to_f * 3600).round %>"
-<%- if worker -%>
   native:
-    # The worker with the fewest sessions right now, taken from the roster that
-    # the workers themselves refresh. Without this override the adapter would
-    # send every session to the fixed submit_host, and a worker created by
-    # elasticity would receive none.
-    submit_host_override: "<%= worker %>"
+    - "--nodes=1"
+    - "--ntasks=1"
+    - "--cpus-per-task=<%= num_cores.to_i %>"
+    - "--mem=<%= mem_gb.to_i %>G"
+    # The browser connection points at the node that started the session, so it is never
+    # requeued elsewhere.
+    - "--no-requeue"
+<%- if defined?(num_gpus) && num_gpus.to_i > 0 -%>
+    - "--gres=gpu:<%= num_gpus.to_i %>"
+<%- end -%>
+<%- if defined?(worker_size) && !worker_size.to_s.empty? -%>
+    - "--constraint=<%= worker_size %>"
 <%- end -%>
 ONEOND_APPS_JUPYTER_SUBMIT_YML_ERB_
 
@@ -4870,9 +5244,9 @@ ONEOND_APPS_JUPYTER_TEMPLATE_AFTER_SH_ERB_
 
 install -d -m 755 "${SRC}/apps/jupyter/template"
 cat > "${SRC}/apps/jupyter/template/before.sh.erb" <<'ONEOND_APPS_JUPYTER_TEMPLATE_BEFORE_SH_ERB_'
-# Sourced inside the Apptainer container on the pool VM, before the session script.
+# Sourced by the Slurm job on the worker, before the session script.
 #
-# set_host (clusters.d/vms.yml) already set host to the private IP of the VM, the
+# set_host (clusters.d/slurm.yml) already set host to the private IP of the VM, the
 # address the portal proxy reaches. This file picks a free port on that IP and creates
 # the session token. Both values reach connection.yml, which the portal reads from the
 # shared home, and script.sh reads password in a separate process.
@@ -4899,8 +5273,8 @@ cat > "${SRC}/apps/jupyter/template/script.sh.erb" <<'ONEOND_APPS_JUPYTER_TEMPLA
   eessi_module  = eessi.fetch('EESSI_JUPYTER_MODULE', '')
 -%>
 #!/usr/bin/env bash
-# Session script for the "vms" target. It runs inside the Apptainer container on the
-# pool VM, with the VM filesystem mounted inside. Jupyter comes from the EESSI
+# Session script for the slurm target. It runs as a Slurm job on a worker, fenced to the
+# cores and the memory the form asked for. Jupyter comes from the EESSI
 # catalogue rather than from the container image or the VM, so the session loads the
 # same module a user at a EuroHPC centre loads.
 set -o pipefail
@@ -4972,28 +5346,66 @@ install -d -m 755 "${SRC}/apps/octave"
 cat > "${SRC}/apps/octave/form.yml.erb" <<'ONEOND_APPS_OCTAVE_FORM_YML_ERB_'
 ---
 <%-
-  # The sizes come from the roster the portal keeps, one entry per worker role of the
-  # service, so the form offers what exists. With a single role the field is not shown.
-  sizes = (OneOnDemandPool.roles rescue [])
+  # What the forms may ask for comes from the cluster itself. The reconciler on the portal
+  # writes the largest registered node (cores, memory, GPUs) and the worker roles of the
+  # service, so the form cannot ask for a session no node could run, the GPU field appears
+  # only when a node has one, and the size field only when the service has more than one
+  # worker role.
+  require 'json'
+  shape = (JSON.parse(File.read('/var/lib/ood-slurm/shape')) rescue {})
+  max_cores  = [shape['cpus'].to_i, 1].max
+  max_mem_gb = [shape['mem_mb'].to_i / 1024, 1].max
+  max_gpus   = shape['gpus'].to_i
+  roles  = (File.readlines('/var/lib/ood-slurm/roles').map(&:strip).reject(&:empty?) rescue [])
   labels = { "worker" => "Standard" }
-  size_options = sizes.sort.map { |r| [labels.fetch(r) { r.sub(/^worker_?/, "").capitalize }, r] }
+  size_options = roles.sort.map { |r| [labels.fetch(r) { r.sub(/^worker_?/, "").capitalize }, r] }
 -%>
-# The target is always the OpenNebula VM pool. A session uses the whole VM and shares
-# it with any other session running there, so core and memory fields would change
-# nothing and the form omits them.
+# Every session is a job of the Slurm cluster of the service, so it gets the cores and the
+# memory it asks for and nothing else shares them.
 cluster:
-  - "vms"
+  - "slurm"
 form:
+  - num_cores
+  - mem_gb
+<%- if max_gpus > 0 -%>
+  - num_gpus
+<%- end -%>
   - num_hours
 <%- if size_options.size > 1 -%>
   - worker_size
 <%- end -%>
 attributes:
+  num_cores:
+    widget: number_field
+    label: "Cores"
+    value: 1
+    min: 1
+    max: <%= max_cores %>
+    step: 1
+    help: "Cores reserved for the session. No other session shares them."
+  mem_gb:
+    widget: number_field
+    label: "Memory (GB)"
+    value: <%= [2, max_mem_gb].min %>
+    min: 1
+    max: <%= max_mem_gb %>
+    step: 1
+    help: "Memory reserved for the session. A process that grows past it is stopped."
+<%- if max_gpus > 0 -%>
+  num_gpus:
+    widget: number_field
+    label: "GPUs"
+    value: 0
+    min: 0
+    max: <%= max_gpus %>
+    step: 1
+    help: "GPUs reserved for the session, on a worker that has them."
+<%- end -%>
 <%- if size_options.size > 1 -%>
   worker_size:
     widget: select
     label: "Worker size"
-    help: "Which pool of VMs runs the session."
+    help: "Which kind of worker runs the session."
     options:
 <%- size_options.each do |label, role| -%>
       - ["<%= label %>", "<%= role %>"]
@@ -5011,18 +5423,17 @@ ONEOND_APPS_OCTAVE_FORM_YML_ERB_
 
 install -d -m 755 "${SRC}/apps/octave"
 cat > "${SRC}/apps/octave/info.html.erb" <<'ONEOND_APPS_OCTAVE_INFO_HTML_ERB_'
-<%#- Shown on the session card, from submission until the session ends. The card
-    title carries the job identifier, "launched-by-ondemand-<uuid>@<vm>", so this
-    panel prints the target and the host in readable form. The file is evaluated
-    against the session, so cluster_id and job_id are its attributes, while
-    view.html.erb is evaluated against the connection information. The target
-    title comes from its definition in clusters.d. -%>
+<%#- Shown on the session card, from submission until the session ends. The card title
+    carries the Slurm job id, so this panel prints the target and, once the job runs, the
+    node. The file is evaluated against the session, so cluster_id, job_id and info are its
+    attributes, while view.html.erb is evaluated against the connection information. The
+    target title comes from its definition in clusters.d. -%>
 <%-
   target_cluster = (OodAppkit.clusters[cluster_id.to_s.to_sym] rescue nil)
   target = target_cluster ? target_cluster.metadata.title.to_s : cluster_id.to_s
-  target_host = job_id.to_s.include?("@") ? job_id.to_s.split("@").last : nil
+  node = (info.allocated_nodes.map(&:name).reject { |n| n.to_s.empty? }.join(", ") rescue "")
 -%>
-<p class="mb-2"><strong>Runs on:</strong> <%= target %><%= target_host ? " (#{target_host})" : "" %></p>
+<p class="mb-2"><strong>Runs on:</strong> <%= target %>, job <%= job_id %><%= node.empty? ? "" : " on #{node}" %></p>
 ONEOND_APPS_OCTAVE_INFO_HTML_ERB_
 
 install -d -m 755 "${SRC}/apps/octave"
@@ -5033,31 +5444,35 @@ category: Interactive Apps
 subcategory: Notebooks
 role: batch_connect
 description: |
-  Launches a Jupyter notebook with the Octave kernel on an OpenNebula VM. Octave is a
+  Launches a Jupyter notebook with the Octave kernel on a worker of the service. Octave is a
   free alternative to MATLAB and comes from the EESSI software catalogue. The notebook
-  runs on the compute VM and opens the home directory the portal file browser shows.
+  runs on a worker and opens the home directory the portal file browser shows.
 ONEOND_APPS_OCTAVE_MANIFEST_YML_
 
 install -d -m 755 "${SRC}/apps/octave"
 cat > "${SRC}/apps/octave/submit.yml.erb" <<'ONEOND_APPS_OCTAVE_SUBMIT_YML_ERB_'
 ---
-# The linux_host adapter connects over SSH as the user, opens a tmux session and runs
-# the session script inside an Apptainer container. The only form value the adapter
-# uses is the session time, which becomes the wall time that ends the session.
+# The slurm adapter submits the session script with sbatch, and Slurm starts it on a worker
+# with the cores and the memory the form asked for, fenced by cgroups, for the session time.
+# The script is the one generated by template/before.sh.erb, script.sh.erb and after.sh.erb.
 batch_connect:
   template: "basic"
-
-<%- worker = (OneOnDemandPool.pick((defined?(worker_size) ? worker_size : nil)) rescue nil) -%>
 script:
   # to_f, not to_i, so a fraction of an hour does not truncate to zero.
   wall_time: "<%= (num_hours.to_f * 3600).round %>"
-<%- if worker -%>
   native:
-    # The worker with the fewest sessions right now, taken from the roster that
-    # the workers themselves refresh. Without this override the adapter would
-    # send every session to the fixed submit_host, and a worker created by
-    # elasticity would receive none.
-    submit_host_override: "<%= worker %>"
+    - "--nodes=1"
+    - "--ntasks=1"
+    - "--cpus-per-task=<%= num_cores.to_i %>"
+    - "--mem=<%= mem_gb.to_i %>G"
+    # The browser connection points at the node that started the session, so it is never
+    # requeued elsewhere.
+    - "--no-requeue"
+<%- if defined?(num_gpus) && num_gpus.to_i > 0 -%>
+    - "--gres=gpu:<%= num_gpus.to_i %>"
+<%- end -%>
+<%- if defined?(worker_size) && !worker_size.to_s.empty? -%>
+    - "--constraint=<%= worker_size %>"
 <%- end -%>
 ONEOND_APPS_OCTAVE_SUBMIT_YML_ERB_
 
@@ -5078,9 +5493,9 @@ ONEOND_APPS_OCTAVE_TEMPLATE_AFTER_SH_ERB_
 
 install -d -m 755 "${SRC}/apps/octave/template"
 cat > "${SRC}/apps/octave/template/before.sh.erb" <<'ONEOND_APPS_OCTAVE_TEMPLATE_BEFORE_SH_ERB_'
-# Sourced inside the Apptainer container on the pool VM, before the session script.
+# Sourced by the Slurm job on the worker, before the session script.
 #
-# set_host (clusters.d/vms.yml) already set host to the private IP of the VM, the
+# set_host (clusters.d/slurm.yml) already set host to the private IP of the VM, the
 # address the portal proxy reaches. This file picks a free port on that IP and creates
 # the session token. Both values reach connection.yml, which the portal reads from the
 # shared home, and script.sh reads password in a separate process.
@@ -5143,28 +5558,66 @@ install -d -m 755 "${SRC}/apps/rstudio"
 cat > "${SRC}/apps/rstudio/form.yml.erb" <<'ONEOND_APPS_RSTUDIO_FORM_YML_ERB_'
 ---
 <%-
-  # The sizes come from the roster the portal keeps, one entry per worker role of the
-  # service, so the form offers what exists. With a single role the field is not shown.
-  sizes = (OneOnDemandPool.roles rescue [])
+  # What the forms may ask for comes from the cluster itself. The reconciler on the portal
+  # writes the largest registered node (cores, memory, GPUs) and the worker roles of the
+  # service, so the form cannot ask for a session no node could run, the GPU field appears
+  # only when a node has one, and the size field only when the service has more than one
+  # worker role.
+  require 'json'
+  shape = (JSON.parse(File.read('/var/lib/ood-slurm/shape')) rescue {})
+  max_cores  = [shape['cpus'].to_i, 1].max
+  max_mem_gb = [shape['mem_mb'].to_i / 1024, 1].max
+  max_gpus   = shape['gpus'].to_i
+  roles  = (File.readlines('/var/lib/ood-slurm/roles').map(&:strip).reject(&:empty?) rescue [])
   labels = { "worker" => "Standard" }
-  size_options = sizes.sort.map { |r| [labels.fetch(r) { r.sub(/^worker_?/, "").capitalize }, r] }
+  size_options = roles.sort.map { |r| [labels.fetch(r) { r.sub(/^worker_?/, "").capitalize }, r] }
 -%>
-# The target is always the OpenNebula VM pool. A session shares the whole VM with any
-# other session running on it, so core and memory fields would have no effect and the
-# form omits them.
+# Every session is a job of the Slurm cluster of the service, so it gets the cores and the
+# memory it asks for and nothing else shares them.
 cluster:
-  - "vms"
+  - "slurm"
 form:
+  - num_cores
+  - mem_gb
+<%- if max_gpus > 0 -%>
+  - num_gpus
+<%- end -%>
   - num_hours
 <%- if size_options.size > 1 -%>
   - worker_size
 <%- end -%>
 attributes:
+  num_cores:
+    widget: number_field
+    label: "Cores"
+    value: 1
+    min: 1
+    max: <%= max_cores %>
+    step: 1
+    help: "Cores reserved for the session. No other session shares them."
+  mem_gb:
+    widget: number_field
+    label: "Memory (GB)"
+    value: <%= [2, max_mem_gb].min %>
+    min: 1
+    max: <%= max_mem_gb %>
+    step: 1
+    help: "Memory reserved for the session. A process that grows past it is stopped."
+<%- if max_gpus > 0 -%>
+  num_gpus:
+    widget: number_field
+    label: "GPUs"
+    value: 0
+    min: 0
+    max: <%= max_gpus %>
+    step: 1
+    help: "GPUs reserved for the session, on a worker that has them."
+<%- end -%>
 <%- if size_options.size > 1 -%>
   worker_size:
     widget: select
     label: "Worker size"
-    help: "Which pool of VMs runs the session."
+    help: "Which kind of worker runs the session."
     options:
 <%- size_options.each do |label, role| -%>
       - ["<%= label %>", "<%= role %>"]
@@ -5182,18 +5635,17 @@ ONEOND_APPS_RSTUDIO_FORM_YML_ERB_
 
 install -d -m 755 "${SRC}/apps/rstudio"
 cat > "${SRC}/apps/rstudio/info.html.erb" <<'ONEOND_APPS_RSTUDIO_INFO_HTML_ERB_'
-<%#- Shown on the session card, from submission until the session ends. The card
-    title carries the job identifier, "launched-by-ondemand-<uuid>@<vm>", which nobody
-    launching a session can read, so this panel names the target instead. The file is
-    evaluated against the session, so cluster_id and job_id are its attributes, while
-    view.html.erb is evaluated against the connection information. The target title
-    is taken from the cluster definition in clusters.d. -%>
+<%#- Shown on the session card, from submission until the session ends. The card title
+    carries the Slurm job id, so this panel prints the target and, once the job runs, the
+    node. The file is evaluated against the session, so cluster_id, job_id and info are its
+    attributes, while view.html.erb is evaluated against the connection information. The
+    target title comes from its definition in clusters.d. -%>
 <%-
   target_cluster = (OodAppkit.clusters[cluster_id.to_s.to_sym] rescue nil)
   target = target_cluster ? target_cluster.metadata.title.to_s : cluster_id.to_s
-  target_host = job_id.to_s.include?("@") ? job_id.to_s.split("@").last : nil
+  node = (info.allocated_nodes.map(&:name).reject { |n| n.to_s.empty? }.join(", ") rescue "")
 -%>
-<p class="mb-2"><strong>Runs on:</strong> <%= target %><%= target_host ? " (#{target_host})" : "" %></p>
+<p class="mb-2"><strong>Runs on:</strong> <%= target %>, job <%= job_id %><%= node.empty? ? "" : " on #{node}" %></p>
 ONEOND_APPS_RSTUDIO_INFO_HTML_ERB_
 
 install -d -m 755 "${SRC}/apps/rstudio"
@@ -5204,7 +5656,7 @@ category: Interactive Apps
 subcategory: Development
 role: batch_connect
 description: |
-  Launches RStudio Server on an OpenNebula VM, with R from the EESSI software
+  Launches RStudio Server on a worker of the service, with R from the EESSI software
   catalogue. Your home directory is the same one the file browser shows, shared over
   NFS with every other session.
 ONEOND_APPS_RSTUDIO_MANIFEST_YML_
@@ -5212,22 +5664,27 @@ ONEOND_APPS_RSTUDIO_MANIFEST_YML_
 install -d -m 755 "${SRC}/apps/rstudio"
 cat > "${SRC}/apps/rstudio/submit.yml.erb" <<'ONEOND_APPS_RSTUDIO_SUBMIT_YML_ERB_'
 ---
-# The linux_host adapter connects over SSH as the user, opens a tmux session and runs
-# the session script inside an Apptainer container. The form supplies only the session
-# time, which becomes the wall_time timeout that stops the session.
+# The slurm adapter submits the session script with sbatch, and Slurm starts it on a worker
+# with the cores and the memory the form asked for, fenced by cgroups, for the session time.
+# The script is the one generated by template/before.sh.erb, script.sh.erb and after.sh.erb.
 batch_connect:
   template: "basic"
-
-<%- worker = (OneOnDemandPool.pick((defined?(worker_size) ? worker_size : nil)) rescue nil) -%>
 script:
   # to_f, not to_i, so a fraction of an hour does not truncate to zero.
   wall_time: "<%= (num_hours.to_f * 3600).round %>"
-<%- if worker -%>
   native:
-    # The worker with the fewest sessions, taken from the roster the workers
-    # themselves refresh. Without this the adapter would send every session to the
-    # fixed submit_host, and a worker added by elasticity would never receive one.
-    submit_host_override: "<%= worker %>"
+    - "--nodes=1"
+    - "--ntasks=1"
+    - "--cpus-per-task=<%= num_cores.to_i %>"
+    - "--mem=<%= mem_gb.to_i %>G"
+    # The browser connection points at the node that started the session, so it is never
+    # requeued elsewhere.
+    - "--no-requeue"
+<%- if defined?(num_gpus) && num_gpus.to_i > 0 -%>
+    - "--gres=gpu:<%= num_gpus.to_i %>"
+<%- end -%>
+<%- if defined?(worker_size) && !worker_size.to_s.empty? -%>
+    - "--constraint=<%= worker_size %>"
 <%- end -%>
 ONEOND_APPS_RSTUDIO_SUBMIT_YML_ERB_
 
@@ -5248,9 +5705,9 @@ ONEOND_APPS_RSTUDIO_TEMPLATE_AFTER_SH_ERB_
 
 install -d -m 755 "${SRC}/apps/rstudio/template"
 cat > "${SRC}/apps/rstudio/template/before.sh.erb" <<'ONEOND_APPS_RSTUDIO_TEMPLATE_BEFORE_SH_ERB_'
-# Sourced inside the Apptainer container on the pool VM, before the session script.
+# Sourced by the Slurm job on the worker, before the session script.
 #
-# set_host (clusters.d/vms.yml) has already set host to the private IP of the VM, the
+# set_host (clusters.d/slurm.yml) has already set host to the private IP of the VM, the
 # address the portal proxy reaches. This script picks a free port on that address and
 # generates the session password. Both are written to connection.yml, which the portal
 # reads from the shared home, and script.sh reads the password from the environment
@@ -5274,7 +5731,7 @@ cat > "${SRC}/apps/rstudio/template/script.sh.erb" <<'ONEOND_APPS_RSTUDIO_TEMPLA
   end
 -%>
 #!/usr/bin/env bash
-# RStudio Server on a pool VM, with R from EESSI.
+# RStudio Server as a Slurm job on a worker, with R from EESSI.
 #
 # rserver expects to run as a system service, so this script gives it a data directory,
 # a database and a cookie key of its own, all under a temporary session directory.

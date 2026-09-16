@@ -1,6 +1,6 @@
 ---
 name: Open OnDemand
-version: 1.0.0-20260916
+version: 1.1.0-20260916
 publisher: OpenNebula Systems
 publisher_email: contact@opennebula.io
 description: |-
@@ -14,14 +14,17 @@ description: |-
   - **portal**, the Open OnDemand web portal with its own LDAP directory and Dex
     authentication.
   - **storage**, the shared home over NFS and the site cache for the software catalogue.
-  - **worker**, a compute VM that runs user sessions inside Apptainer containers.
+  - **worker**, a compute VM that joins the Slurm cluster of the portal and runs the
+    user sessions and batch jobs as Slurm jobs.
 
   Scientific software comes from [EESSI](https://www.eessi.io/) over CernVM-FS, so a
   notebook here loads the same modules a user would find at a EuroHPC centre.
 
-  Deploy it with the Open OnDemand Service appliance, which connects the three roles with
-  OneFlow and grows the pool of compute VMs with the number of open sessions.
-short_description: Open OnDemand portal, shared storage and elastic compute pool in one image
+  The portal runs the Slurm controller and the accounting, so every session gets the cores
+  and the memory it asks for and nothing else shares them. Deploy it with the Open OnDemand
+  Service appliance, which connects the three roles with OneFlow and grows the pool of
+  compute VMs when a job waits for one.
+short_description: Open OnDemand portal, shared storage and Slurm compute pool in one image
 tags:
 - open-ondemand
 - hpc
@@ -76,8 +79,11 @@ opennebula_template:
     oneapp_slurm_controller_enabled: '$ONEAPP_SLURM_CONTROLLER_ENABLED'
     oneapp_slurm_controller_host: '$ONEAPP_SLURM_CONTROLLER_HOST'
     oneapp_worker_idle_seconds: '$ONEAPP_WORKER_IDLE_SECONDS'
-    oneapp_worker_max_sessions: '$ONEAPP_WORKER_MAX_SESSIONS'
+    oneapp_worker_drain_seconds: '$ONEAPP_WORKER_DRAIN_SECONDS'
     oneapp_pool_range: '$ONEAPP_POOL_RANGE'
+    oneapp_slurm_state_export: '$ONEAPP_SLURM_STATE_EXPORT'
+    oneapp_slurm_def_mem_per_cpu: '$ONEAPP_SLURM_DEF_MEM_PER_CPU'
+    oneapp_slurm_title: '$ONEAPP_SLURM_TITLE'
   cpu: '1'
   vcpu: '2'
   memory: '4096'
@@ -90,7 +96,7 @@ opennebula_template:
   # takes the tab from the second token of the name and the section from the third, and
   # shows the other inputs of a section only while its _ENABLED switch is on.
   inputs_order: >-
-    ONEAPP_PORTAL_HOST_NAME,ONEAPP_PORTAL_LETSENCRYPT_ENABLED,ONEAPP_PORTAL_CERTIFICATE_ENABLED,ONEAPP_PORTAL_CERTIFICATE_CHAIN,ONEAPP_PORTAL_CERTIFICATE_KEY,ONEAPP_AUTH_LOCAL_USERS,ONEAPP_AUTH_OIDC_ENABLED,ONEAPP_AUTH_OIDC_ISSUER,ONEAPP_AUTH_OIDC_CLIENT_ID,ONEAPP_AUTH_OIDC_CLIENT_SECRET,ONEAPP_AUTH_OIDC_NAME,ONEAPP_HOME_NFS_ENABLED,ONEAPP_HOME_NFS_SERVER,ONEAPP_HOME_NFS_EXPORT,ONEAPP_SLURM_CONTROLLER_ENABLED,ONEAPP_SLURM_CONTROLLER_HOST
+    ONEAPP_PORTAL_HOST_NAME,ONEAPP_PORTAL_LETSENCRYPT_ENABLED,ONEAPP_PORTAL_CERTIFICATE_ENABLED,ONEAPP_PORTAL_CERTIFICATE_CHAIN,ONEAPP_PORTAL_CERTIFICATE_KEY,ONEAPP_AUTH_LOCAL_USERS,ONEAPP_AUTH_OIDC_ENABLED,ONEAPP_AUTH_OIDC_ISSUER,ONEAPP_AUTH_OIDC_CLIENT_ID,ONEAPP_AUTH_OIDC_CLIENT_SECRET,ONEAPP_AUTH_OIDC_NAME,ONEAPP_HOME_NFS_ENABLED,ONEAPP_HOME_NFS_SERVER,ONEAPP_HOME_NFS_EXPORT
   user_inputs:
     oneapp_portal_host_name: 'O|text|Public host name of the portal, empty to use its address||'
     oneapp_portal_letsencrypt_enabled: 'O|boolean|Request a Let''s Encrypt certificate for the host name||NO'
@@ -106,8 +112,6 @@ opennebula_template:
     oneapp_home_nfs_enabled: 'O|boolean|Use an NFS server of your own instead of the storage role||NO'
     oneapp_home_nfs_server: 'O|text|Address of the NFS server||'
     oneapp_home_nfs_export: 'O|text|Path of the home export||/export/home'
-    oneapp_slurm_controller_enabled: 'O|boolean|Submit batch jobs to a Slurm cluster that shares the users and the home||NO'
-    oneapp_slurm_controller_host: 'O|text|Address of the Slurm controller||'
   # Titles of the tabs (APP) and titles and descriptions of the sections (GROUP) of the wizard.
   # A tab carries no description on purpose: FireEdge paints it as an info alert whose text is
   # unreadable in the dark theme, while a section description shows as a readable tooltip.
@@ -145,13 +149,6 @@ opennebula_template:
     type: GROUP
     title: NFS server of your own
     description: By default the storage role exports the home directories; with a server of your own the storage role only keeps the software cache
-  - name: SLURM
-    type: APP
-    title: Slurm
-  - name: CONTROLLER
-    type: GROUP
-    title: Controller
-    description: A OneSlurm service on the same compute network, see the Slurm page of the documentation
 logo: logos/openondemand.png
 images:
 - name: one-ondemand
@@ -159,7 +156,7 @@ images:
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 1552285696
+  size: 1611988992
   checksum:
-    md5: 933722b8561c638cd645f458292d766f
-    sha256: 72f04bf0d91225daef2905d3dcfe9c6c97929ec4ea9cfd8e2ae0e4ba9ea2013b
+    md5: 4356db026edb0aff56ce89d58626b736
+    sha256: 67213bcfc3cd656de8a4d4479844d891643800f3e03e17b1a57c53639eb9c077

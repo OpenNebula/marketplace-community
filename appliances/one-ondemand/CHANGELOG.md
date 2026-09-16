@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.1.0-20260916
+
+The Slurm cluster moves inside the service, 16 September 2026. The VM pool had no
+scheduler, a worker held every session that landed on it and shared the whole VM among
+them, and the portal spread the sessions with a dashboard initializer that patched the
+`linux_host` adapter.
+
+- Slurm 23.11 inside the service. The portal runs `slurmctld`, `slurmdbd` and MariaDB
+  beside Open OnDemand, every worker runs `slurmd` and joins as a dynamic node at boot,
+  configless, with the munge key the portal publishes to OneGate as `SLURM_MUNGE_KEY`, and
+  the controller state and the key live on the storage role, on the export `/export/slurm`
+  granted to the portal alone. The stock `slurm` adapter and `config/clusters.d/slurm.yml`
+  replace `linux_host`, the worker roster, the placement initializer, the tmux session
+  counting and `ONEAPP_WORKER_MAX_SESSIONS`.
+- Every session is a Slurm job with the cores and the memory it asked for, and nothing
+  else shares them. The six forms ask for cores, memory, GPUs when a node has one and the
+  session hours, with maxima taken from the largest registered node, and cgroup v2 fences
+  the process, so two sessions never share a core and a process that grows past its memory
+  is stopped. A session on a full pool shows "Queued" on its card and starts when a worker
+  is free.
+- Elasticity on the queue. The workers publish `SLURM_PENDING`, `OLDEST_IDLE`,
+  `ACTIVE_SESSIONS`, `IDLE_SECONDS`, `SLURM_IDLE_NODES` and `SLURM_ALLOC_NODES`, one
+  pending job adds one worker (`SLURM_PENDING > 0`), and `AT_CAPACITY` and `IDLE` are gone.
+  A job no worker could serve never grows the pool.
+- The oldest worker drains before OneFlow removes it. After `ONEAPP_WORKER_IDLE_SECONDS`
+  without a job it drains its own node and publishes `OLDEST_IDLE=1`, so the VM OneFlow
+  terminates holds no session, and `ONEAPP_WORKER_DRAIN_SECONDS` undoes a drain OneFlow
+  does not act on. A reconciler on the portal deletes the node of a VM that left the
+  service and writes what the forms may ask for.
+- A task prolog gives each job a runtime directory and a D-Bus of its own, so the desktop
+  outlives the login session `slurmd` opens to build the job environment.
+- The Slurm tab leaves the wizard, which has three tabs. `ONEAPP_SLURM_CONTROLLER_ENABLED`,
+  `ONEAPP_SLURM_CONTROLLER_HOST` and `ONEAPP_SLURM_TITLE` stay as advanced context
+  attributes of the portal role and declare a Slurm cluster of the site as a second target
+  for batch jobs, cluster `external-slurm`, over the SSH proxy as before.
+  `ONEAPP_SLURM_STATE_EXPORT` and `ONEAPP_SLURM_DEF_MEM_PER_CPU` join the advanced
+  attributes.
+- Accounting on MariaDB, with a dump to the storage export every 30 minutes that a replaced
+  portal restores. Ports 6817 and 6818 on the compute network.
+- `tests/slurm-acceptance.sh <service id> [--scale]`, run from the front-end, checks the
+  controller, the nodes, the published attributes, a job accounted, exclusive cores, a
+  refused GPU request and, with `--scale`, a worker added and removed by hand.
+
 ## 1.0.0-20260916
 
 Redesign of the service inputs, 16 September 2026. The instantiate wizard showed four tabs

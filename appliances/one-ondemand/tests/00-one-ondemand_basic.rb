@@ -37,6 +37,18 @@ describe 'Appliance Certification' do
         @info[:vm].ssh('command -v slapadd').expect_success
     end
 
+    it 'carries the Slurm cluster software for the portal and the workers' do
+        %w[slurmctld slurmdbd slurmd slurm-client munge mariadb-server].each do |pkg|
+            @info[:vm].ssh("dpkg -s #{pkg}").expect_success
+        end
+        @info[:vm].ssh('test -x /opt/one-ondemand/scripts/40-configure-slurm-controller.sh').expect_success
+        @info[:vm].ssh('test -x /opt/one-ondemand/worker/slurm-task-prolog.sh').expect_success
+        @info[:vm].ssh('test -x /usr/local/bin/ood-slurm-elastic.sh').expect_success
+        # The key of a service is generated at boot and must never travel inside the image.
+        @info[:vm].ssh('test -e /etc/munge/munge.key').expect_fail
+        @info[:vm].ssh('id slurm && id munge').expect_success
+    end
+
     it 'has the role switch and its own copy of the appliance code' do
         @info[:vm].ssh('test -x /usr/local/sbin/ood-appliance-configure').expect_success
         @info[:vm].ssh('test -x /opt/one-ondemand/worker/configure.sh').expect_success
@@ -55,7 +67,7 @@ describe 'Appliance Certification' do
         # One image serves three roles, so none of their services may start on its own: a
         # worker running Apache and an empty directory would be attack surface for nothing,
         # and a portal exporting NFS would be a mistake that is hard to see.
-        %w[apache2 ondemand-dex slapd nfs-server squid].each do |unit|
+        %w[apache2 ondemand-dex slapd nfs-server squid slurmctld slurmdbd slurmd mariadb].each do |unit|
             @info[:vm].ssh("systemctl is-enabled #{unit}").expect_fail
         end
     end
