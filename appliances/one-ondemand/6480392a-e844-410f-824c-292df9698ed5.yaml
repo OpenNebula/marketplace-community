@@ -10,24 +10,24 @@ description: |-
 
   Three roles start in order:
 
-  1. **storage** exports the shared home over NFS and runs the site cache that serves the
-     [EESSI](https://www.eessi.io/) software catalogue over CernVM-FS.
+  1. **storage** exports the shared home over NFS. It also runs the site cache that serves
+     the [EESSI](https://www.eessi.io/) software catalogue over CernVM-FS.
   2. **portal** runs Open OnDemand with its own LDAP directory, so adding a user is one
-     directory entry and their home appears on first login.
-  3. **worker** runs the user sessions and the batch jobs as jobs of the Slurm cluster of
-     the service, with the scientific software loaded from EESSI.
+     directory entry. Their home appears on first login.
+  3. **worker** runs user sessions and batch jobs as jobs of the Slurm cluster of the
+     service. The scientific software loads from EESSI.
 
-  The portal runs the Slurm controller and the accounting, and every worker joins the
-  cluster on its own when it boots. A session asks for cores, memory and GPUs and gets them
+  The portal runs the Slurm controller and the accounting. Every worker joins the cluster
+  automatically when it boots. A session requests cores, memory and GPUs and gets them
   exclusively. The worker role is elastic. The workers publish the queue of the cluster to
-  OneGate, OneFlow adds a VM when a job waits for one and, after a quiet period, the oldest
+  OneGate. OneFlow adds a VM when a job waits for one. After a quiet period, the oldest
   worker drains and OneFlow removes it.
 
   Requires
   [OneFlow](https://docs.opennebula.io/7.4/product/operation_references/opennebula_services_configuration/oneflow/)
   and
-  [OneGate](https://docs.opennebula.io/7.4/product/virtual_machines_operation/multi-vm_workflows/onegate_usage/),
-  and OneGate must be reachable from the service network.
+  [OneGate](https://docs.opennebula.io/7.4/product/virtual_machines_operation/multi-vm_workflows/onegate_usage/).
+  OneGate must be reachable from the service network.
 
   Based on the VM template
   - [Open OnDemand](https://community-marketplace.opennebula.io/appliance/b65a3b9d-1463-4e3d-87d6-6df37fa23361)

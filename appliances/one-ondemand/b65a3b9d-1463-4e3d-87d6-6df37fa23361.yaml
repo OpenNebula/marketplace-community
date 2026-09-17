@@ -4,26 +4,26 @@ version: 1.1.0-20260916
 publisher: OpenNebula Systems
 publisher_email: contact@opennebula.io
 description: |-
-  [Open OnDemand](https://openondemand.org/) is the web portal that gives HPC users a
-  browser interface to a cluster: a file browser, a shell, job submission and interactive
+  [Open OnDemand](https://openondemand.org/) is a web portal that gives HPC users a browser
+  interface to a cluster. It has a file browser, a shell, job submission and interactive
   applications such as JupyterLab, RStudio, Octave, VS Code and an Xfce desktop.
 
-  This appliance puts the three roles of the Open OnDemand service in a single image,
-  selected at boot with the `ONEAPP_ROLE` context variable:
+  This appliance holds the three roles of the Open OnDemand service in one image. The
+  `ONEAPP_ROLE` context variable selects the role at boot:
 
   - **portal**, the Open OnDemand web portal with its own LDAP directory and Dex
     authentication.
   - **storage**, the shared home over NFS and the site cache for the software catalogue.
-  - **worker**, a compute VM that joins the Slurm cluster of the portal and runs the
-    user sessions and batch jobs as Slurm jobs.
+  - **worker**, a compute VM that joins the Slurm cluster of the portal. It runs user
+    sessions and batch jobs as Slurm jobs.
 
   Scientific software comes from [EESSI](https://www.eessi.io/) over CernVM-FS, so a
-  notebook here loads the same modules a user would find at a EuroHPC centre.
+  notebook here loads the same modules a user finds at a EuroHPC centre.
 
-  The portal runs the Slurm controller and the accounting, so every session gets the cores
-  and the memory it asks for and nothing else shares them. Deploy it with the Open OnDemand
-  Service appliance, which connects the three roles with OneFlow and grows the pool of
-  compute VMs when a job waits for one.
+  The portal runs the Slurm controller and the accounting. Every session gets the cores and
+  memory it requests, and nothing else shares them. Deploy this image with the Open OnDemand
+  Service appliance. It connects the three roles with OneFlow and grows the pool of compute
+  VMs when a job waits for one.
 short_description: Open OnDemand portal, shared storage and Slurm compute pool in one image
 tags:
 - open-ondemand
