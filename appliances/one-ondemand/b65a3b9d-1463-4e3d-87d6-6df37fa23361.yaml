@@ -1,6 +1,6 @@
 ---
 name: Open OnDemand
-version: 1.1.0-20260916
+version: 1.1.1-20260917
 publisher: OpenNebula Systems
 publisher_email: contact@opennebula.io
 description: |-
@@ -87,6 +87,11 @@ opennebula_template:
   cpu: '1'
   vcpu: '2'
   memory: '4096'
+  # The VMs see the CPU of the host, so EESSI loads the build for that CPU family and the
+  # MPI library (UCX) finds the instructions it was compiled with. With the default QEMU
+  # CPU model EESSI falls back to its generic build, whose UCX refuses to start without AVX.
+  cpu_model:
+    model: host-passthrough
   graphics:
     listen: 0.0.0.0
     type: vnc
@@ -156,7 +161,7 @@ images:
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 1611988992
+  size: 1612578816
   checksum:
-    md5: 4356db026edb0aff56ce89d58626b736
-    sha256: 67213bcfc3cd656de8a4d4479844d891643800f3e03e17b1a57c53639eb9c077
+    md5: 8bac7eab4f05431fe7657819e0eee38d
+    sha256: 88d43c020bcbf282c41b794c01815a572e2c84e88425504bf2336a744345df2f

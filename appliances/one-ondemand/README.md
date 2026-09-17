@@ -169,10 +169,14 @@ A value set in a role reaches that role only.
 The pool grows and shrinks automatically, and Slurm gives both signals. Every 30 seconds,
 every worker publishes `SLURM_PENDING` to OneGate. That value is the number of jobs waiting
 for a worker of its role. OneFlow adds one VM at a time, when `SLURM_PENDING > 0` is true
-for two periods of 30 seconds in a row. Then a cooldown of 300 seconds gives the new VM
+for two periods of 30 seconds in a row. Then a cooldown of 180 seconds gives the new VM
 time to boot. The new worker registers itself with the controller, and Slurm starts the
-waiting job on it. On the testbed, the VM was added 161 seconds after the job was
-submitted, and the job was running on it at 210 seconds. A job that no worker could serve
+waiting job on it. OneFlow evaluates the policies every 90 seconds by default
+(`autoscaler_interval` in `/etc/one/oneflow-server.conf` on the Front-end), so a pending
+job has its worker two to three minutes after it appears, and every further pending job
+about three minutes later. On the testbed, three 2 core jobs submitted to a 1 worker pool
+had their second worker 136 seconds after the submit and the third 368 seconds after that;
+each job ran about 50 seconds after its VM was created. A job that no worker could serve
 never grows the pool, for two reasons. A GPU request on a pool without GPUs is refused when
 it is submitted. A job that requests more cores than any node has waits with reason
 `PartitionConfig` and is not counted.
@@ -274,6 +278,25 @@ by default, so it never takes a whole node by accident. The output is written to
 home the notebooks use. `sacct` on the portal lists the finished jobs of a user, because
 the portal runs `slurmdbd` on MariaDB. A job that waits for a node makes the pool grow, as
 [Scaling the worker pool](#scaling-the-worker-pool) describes.
+
+### MPI jobs on several workers
+
+A batch job can use several workers at once with MPI. The EESSI catalogue provides OpenMPI,
+and the image ships the PMIx library that `srun` uses to start the processes. A job script
+loads the module and starts the program with `srun --mpi=pmix` or with `mpirun`:
+
+```
+#!/bin/bash -l
+#SBATCH -N 2 --ntasks-per-node=1 -c 1 --mem=512M -t 10
+module load OpenMPI/5.0.8-GCC-14.3.0
+srun --mpi=pmix ./hello
+```
+
+The VM template passes the CPU of the host through to the VMs (`CPU_MODEL` set to
+`host-passthrough`), so EESSI loads the software built for that CPU family and the MPI
+library finds the instructions it needs. On the testbed, a two node program compiled with
+`mpicc` from EESSI ran on both workers with `srun --mpi=pmix` and with `mpirun`. The
+interactive applications use one worker each.
 
 ### An external Slurm cluster
 

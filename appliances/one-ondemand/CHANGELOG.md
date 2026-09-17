@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.1-20260917
+
+- A worker that starts before its portal keeps trying. The `slurmd` unit of a configless
+  node fails once when the controller does not answer and stayed down, so a worker resumed
+  before the portal after a host outage never joined the cluster. The unit now restarts
+  every 20 seconds until the controller answers, and the elasticity loop restarts a dead
+  `slurmd` as well.
+- The VMs see the CPU of the host (`CPU_MODEL = host-passthrough` in the VM template), so
+  EESSI loads the build for that CPU family and MPI programs run. With the default QEMU CPU
+  model EESSI fell back to its generic build, whose UCX library refuses to start on a CPU
+  without AVX.
+- `libpmix` in the image, so `srun --mpi=pmix` starts MPI programs from EESSI on several
+  workers. Verified with a two node program compiled with `mpicc` from EESSI OpenMPI 5.0.8,
+  with `srun --mpi=pmix` and with `mpirun`.
+- The scale up cooldown goes from 300 to 180 seconds. A job was running on a new worker
+  about 50 seconds after OneFlow created it, so a further pending job now waits about three
+  minutes for its worker instead of five.
+
 ## 1.1.0-20260916
 
 The Slurm cluster moves inside the service, 16 September 2026. The VM pool had no

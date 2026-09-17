@@ -525,7 +525,7 @@ apt_install apt-transport-https ca-certificates wget curl gnupg python3
 # starts munged with it; the key is removed with the image and the configure of each role
 # installs the one of the service.
 msg "=== Slurm ==="
-APT_NO_RECOMMENDS=1 apt_install slurmd slurm-client munge slurmctld slurmdbd mariadb-server
+APT_NO_RECOMMENDS=1 apt_install slurmd slurm-client munge slurmctld slurmdbd mariadb-server libpmix2t64
 ok "slurm $(dpkg-query -W -f='${Version}' slurmd 2>/dev/null), munge $(dpkg-query -W -f='${Version}' munge 2>/dev/null), mariadb $(dpkg-query -W -f='${Version}' mariadb-server 2>/dev/null)"
 
 # --- worker role --------------------------------------------------------------------------
@@ -3829,6 +3829,19 @@ ok "/etc/one-ondemand/ood-app-lib.sh installed"
 # controller while slurmd and the network are still up.
 msg "installing the Slurm node pieces and the elasticity publisher"
 install -d -m 700 -o slurm -g slurm /var/spool/slurmd
+# A configless node fetches its configuration from the portal when it starts. If the portal
+# is still booting, as after a host outage, the package unit fails once and stays down, so
+# retry until the controller answers. Seen on 17 September 2026 on a worker resumed before
+# its portal.
+install -d /etc/systemd/system/slurmd.service.d
+cat > /etc/systemd/system/slurmd.service.d/one-ondemand.conf <<'UNIT'
+[Unit]
+StartLimitIntervalSec=0
+
+[Service]
+Restart=on-failure
+RestartSec=20
+UNIT
 install -m 644 "${HERE}/onegate-lib.sh" /etc/one-ondemand/onegate-lib.sh
 bash -n /etc/one-ondemand/onegate-lib.sh || die "onegate-lib.sh is not valid bash"
 install -m 755 "${HERE}/slurm-elastic.sh" /usr/local/bin/ood-slurm-elastic.sh
@@ -4382,11 +4395,13 @@ while true; do
     now=$(date +%s)
     follow_portal
     state="$(node_state)"
-    # Missing from the controller while munge works: the node was deleted, or slurmd lost
-    # it, and only a restart registers it again. Once per five minutes at most.
-    if [[ -z "$state" ]] && munge -n 2>/dev/null | unmunge >/dev/null 2>&1 \
+    # Missing from the controller while munge works (the node was deleted, or slurmd lost
+    # it), or slurmd itself is down: only a restart registers the node again. Once per five
+    # minutes at most.
+    if { [[ -z "$state" ]] || ! systemctl is-active --quiet slurmd; } \
+            && munge -n 2>/dev/null | unmunge >/dev/null 2>&1 \
             && slurm sinfo -h >/dev/null && (( now - last_restart > 300 )); then
-        log "node ${NODE} is not registered, restarting slurmd"
+        log "node ${NODE} is not registered or slurmd is down, restarting slurmd"
         systemctl restart slurmd && last_restart=$now
         sleep 5
         state="$(node_state)"
