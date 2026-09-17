@@ -14,9 +14,10 @@
 - `libpmix` in the image, so `srun --mpi=pmix` starts MPI programs from EESSI on several
   workers. Verified with a two node program compiled with `mpicc` from EESSI OpenMPI 5.0.8,
   with `srun --mpi=pmix` and with `mpirun`.
-- The scale up cooldown goes from 300 to 180 seconds. A job was running on a new worker
-  about 50 seconds after OneFlow created it, so a further pending job now waits about three
-  minutes for its worker instead of five.
+- The scale up cooldown goes from 300 to 120 seconds. A job was running on a new worker
+  about 50 seconds after OneFlow created it. With `autoscaler_interval` set to 30 on the
+  Front-end, a pending job has its worker about 90 seconds after it appears and each further
+  pending job about three and a half minutes later, instead of six.
 
 ## 1.1.0-20260916
 

@@ -120,16 +120,17 @@ opennebula_template:
     cooldown: 120
     # Every session is a Slurm job, and the workers publish the queue of the cluster to
     # OneGate. A job waiting for resources adds a worker: two 30 s periods filter the
-    # seconds between a submit and its allocation, and the 180 s cooldown covers the boot
-    # of the new VM (a job was running on a new worker 49 s after OneFlow created it), so
-    # one pending job adds one worker and the next pending job waits three minutes at most.
+    # seconds between a submit and its allocation, and the 120 s cooldown covers the boot
+    # of the new VM (a job was running on a new worker 50 s after OneFlow created it), so
+    # one pending job adds one worker. OneFlow reads the figures every autoscaler_interval
+    # seconds (90 by default in oneflow-server.conf); 30 makes each period 30 s long.
     elasticity_policies:
     - type: CHANGE
       adjust: 1
       expression: 'SLURM_PENDING > 0'
       period_number: 2
       period: 30
-      cooldown: 180
+      cooldown: 120
     # Scale down one worker at a time. OneFlow evaluates the average of the attribute across
     # the VMs of the role and when reducing it terminates the oldest one without draining it.
     # The oldest worker drains its own Slurm node after ONEAPP_WORKER_IDLE_SECONDS without a
