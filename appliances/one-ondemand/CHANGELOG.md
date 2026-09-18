@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.2-20260918
+
+- A CernVM-FS proxy of the site instead of the cache on the storage role.
+  `ONEAPP_SOFTWARE_PROXY_ENABLED` with `ONEAPP_SOFTWARE_PROXY_URL`, on a new **Software
+  catalogue** tab of the wizard, point the portal and the workers at that proxy, and the
+  storage role then runs no Squid. Off by default.
+
 ## 1.1.1-20260917
 
 - A worker that starts before its portal keeps trying. The `slurmd` unit of a configless

@@ -1,6 +1,6 @@
 ---
 name: Open OnDemand Service
-version: 1.1.1-20260917
+version: 1.1.2-20260918
 publisher: OpenNebula Systems
 publisher_email: contact@opennebula.io
 description: |-
@@ -170,6 +170,8 @@ opennebula_template:
     ONEAPP_HOME_NFS_ENABLED: 'O|boolean|Use an NFS server of your own instead of the storage role||NO'
     ONEAPP_HOME_NFS_SERVER: 'O|text|Address of the NFS server||'
     ONEAPP_HOME_NFS_EXPORT: 'O|text|Path of the home export||/export/home'
+    ONEAPP_SOFTWARE_PROXY_ENABLED: 'O|boolean|Use a CernVM-FS proxy of your own instead of the cache on the storage role||NO'
+    ONEAPP_SOFTWARE_PROXY_URL: 'O|text|URL of that proxy, for example http://proxy.example.org:3128||'
   # Titles of the tabs (APP) and titles and descriptions of the sections (GROUP) of the wizard.
   # OneFlow keeps this key in the service template body, and FireEdge reads it. A tab carries no
   # description on purpose, see the image template.
@@ -207,5 +209,12 @@ opennebula_template:
     type: GROUP
     title: NFS server of your own
     description: By default the storage role exports the home directories; with a server of your own the storage role only keeps the software cache
+  - name: SOFTWARE
+    type: APP
+    title: Software catalogue
+  - name: PROXY
+    type: GROUP
+    title: CernVM-FS proxy of your own
+    description: By default the EESSI software reaches the portal and the workers through a cache on the storage role. Turn this on to use a CernVM-FS proxy of your site instead, and the storage role starts no cache
 logo: logos/openondemand.png
 images: []

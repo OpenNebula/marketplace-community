@@ -52,6 +52,8 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_HOME_NFS_ENABLED'            'configure' 'Use an NFS server of your own instead of the storage role'    'O|boolean'
     'ONEAPP_HOME_NFS_SERVER'             'configure' 'Address of the NFS server'                                    'O|text'
     'ONEAPP_HOME_NFS_EXPORT'             'configure' 'Path of the home export'                                      'O|text'
+    'ONEAPP_SOFTWARE_PROXY_ENABLED'      'configure' 'Use a CernVM-FS proxy of your own instead of the storage role' 'O|boolean'
+    'ONEAPP_SOFTWARE_PROXY_URL'          'configure' 'URL of that proxy'                                             'O|text'
     # Advanced attributes, set in the vm_template_contents of a role or in the CONTEXT of a
     # standalone VM, never asked by the wizard.
     'ONEAPP_SLURM_CONTROLLER_ENABLED'    'configure' 'Submit batch jobs to a second Slurm cluster of the site as well' 'O|boolean'
@@ -337,11 +339,14 @@ cat > "${SRC}/appliance/configure.sh" <<'ONEOND_APPLIANCE_CONFIGURE_SH_'
 #   ONEAPP_ROLE            portal | storage | worker (mandatory)
 # Per role, the ones each script documents:
 #   portal    ONEAPP_NFS_HOST and ONEAPP_CVMFS_PROXY from the service, then the wizard
-#             inputs ONEAPP_PORTAL_*, ONEAPP_AUTH_* and ONEAPP_HOME_NFS_*, all optional,
+#             inputs ONEAPP_PORTAL_*, ONEAPP_AUTH_*, ONEAPP_HOME_NFS_* and
+#             ONEAPP_SOFTWARE_PROXY_*, all optional,
 #             ONEAPP_POOL_RANGE when the compute network is larger than a /24, and the
 #             ONEAPP_SLURM_* advanced attributes
-#   storage   ONEAPP_HOME_NFS_EXPORT, the rest comes from its NIC and from OneGate
-#   worker    ONEAPP_NFS_HOST, ONEAPP_LDAP_HOST, ONEAPP_CVMFS_PROXY, ONEAPP_HOME_NFS_*
+#   storage   ONEAPP_HOME_NFS_EXPORT and ONEAPP_SOFTWARE_PROXY_ENABLED, the rest comes from
+#             its NIC and from OneGate
+#   worker    ONEAPP_NFS_HOST, ONEAPP_LDAP_HOST, ONEAPP_CVMFS_PROXY, ONEAPP_HOME_NFS_*,
+#             ONEAPP_SOFTWARE_PROXY_*
 #
 # Usage:  ONEAPP_ROLE=worker /usr/local/sbin/ood-appliance-configure
 
@@ -407,7 +412,12 @@ storage)
     # The elasticity publisher belongs to the worker role, see the portal case below.
     systemctl disable --now ood-slurm-elastic.service >/dev/null 2>&1 || true
     run "home NFS server"      bash "${DIR}/storage/10-install-nfs.sh"
-    run "site Squid for EESSI" bash "${DIR}/storage/20-install-squid.sh"
+    # With a CernVM-FS proxy of the site, the portal and the workers use that one.
+    if is_yes "$ONEAPP_SOFTWARE_PROXY_ENABLED"; then
+        msg "ONEAPP_SOFTWARE_PROXY_ENABLED is YES, the storage role runs no Squid"
+    else
+        run "site Squid for EESSI" bash "${DIR}/storage/20-install-squid.sh"
+    fi
     ;;
 portal)
     # The home server is checked first so a missing address fails at the top of the log.
@@ -420,7 +430,12 @@ portal)
         [[ -n "${ONEAPP_NFS_HOST:-}" ]] \
             || die "the portal role needs ONEAPP_NFS_HOST, the address of the storage role"
     fi
-    : "${ONEAPP_CVMFS_PROXY:?the portal role needs ONEAPP_CVMFS_PROXY}"
+    if is_yes "$ONEAPP_SOFTWARE_PROXY_ENABLED"; then
+        [[ -n "$ONEAPP_SOFTWARE_PROXY_URL" ]] \
+            || die "the portal role needs ONEAPP_SOFTWARE_PROXY_URL when ONEAPP_SOFTWARE_PROXY_ENABLED is YES"
+    else
+        : "${ONEAPP_CVMFS_PROXY:?the portal role needs ONEAPP_CVMFS_PROXY}"
+    fi
     # The elasticity publisher belongs to the worker role. On the portal it would only spend
     # OneGate calls, and it would confuse the reading of the panel.
     systemctl disable --now ood-slurm-elastic.service >/dev/null 2>&1 || true
@@ -851,6 +866,12 @@ ONEAPP_AUTH_OIDC_NAME="${ONEAPP_AUTH_OIDC_NAME:-Institutional login}"
 ONEAPP_HOME_NFS_ENABLED="${ONEAPP_HOME_NFS_ENABLED:-NO}"
 ONEAPP_HOME_NFS_SERVER="${ONEAPP_HOME_NFS_SERVER:-}"
 ONEAPP_HOME_NFS_EXPORT="${ONEAPP_HOME_NFS_EXPORT:-/export/home}"
+
+# --- software catalogue parameters (tab SOFTWARE of the wizard) -----------------------
+# The EESSI catalogue comes through the cache of the storage role, ONEAPP_CVMFS_PROXY, unless
+# the switch points the portal and the workers at a CernVM-FS proxy the site already runs.
+ONEAPP_SOFTWARE_PROXY_ENABLED="${ONEAPP_SOFTWARE_PROXY_ENABLED:-NO}"
+ONEAPP_SOFTWARE_PROXY_URL="${ONEAPP_SOFTWARE_PROXY_URL:-}"
 
 # --- advanced attributes, not in the wizard -------------------------------------------
 # An operator sets these in the vm_template_contents of a role or in the CONTEXT of a
@@ -2322,7 +2343,9 @@ cat > "${SRC}/scripts/70-install-cvmfs.sh" <<'ONEOND_SCRIPTS_70_INSTALL_CVMFS_SH
 # against. If an old NFS mount is left, it removes it.
 #
 # It is idempotent. Variables:
-#   ONEAPP_CVMFS_PROXY            Squid URL (required)
+#   ONEAPP_CVMFS_PROXY            Squid URL (required unless the switch is on)
+#   ONEAPP_SOFTWARE_PROXY_ENABLED YES to use a CernVM-FS proxy the site already runs instead
+#   ONEAPP_SOFTWARE_PROXY_URL     URL of that proxy (required when the switch is on)
 #   ONEAPP_EESSI_VERSION          EESSI version (2025.06)
 #   ONEAPP_EESSI_JUPYTER_MODULE   EESSI module with JupyterLab and ipykernel
 #
@@ -2331,7 +2354,11 @@ cat > "${SRC}/scripts/70-install-cvmfs.sh" <<'ONEOND_SCRIPTS_70_INSTALL_CVMFS_SH
 source "$(dirname "${BASH_SOURCE[0]}")/00-lib.sh"
 require_root
 
-PROXY="${ONEAPP_CVMFS_PROXY:?ONEAPP_CVMFS_PROXY with the Squid URL is missing}"
+if is_yes "$ONEAPP_SOFTWARE_PROXY_ENABLED"; then
+    PROXY="${ONEAPP_SOFTWARE_PROXY_URL:?ONEAPP_SOFTWARE_PROXY_ENABLED is YES, set ONEAPP_SOFTWARE_PROXY_URL to the URL of the proxy}"
+else
+    PROXY="${ONEAPP_CVMFS_PROXY:?ONEAPP_CVMFS_PROXY with the Squid URL is missing}"
+fi
 STATE_DIR=/etc/one-ondemand
 MOUNT=/cvmfs/software.eessi.io
 EESSI_VERSION="${ONEAPP_EESSI_VERSION:-2025.06}"
@@ -3324,7 +3351,9 @@ cat > "${SRC}/worker/configure.sh" <<'ONEOND_WORKER_CONFIGURE_SH_'
 #                            controller listen (required)
 #   ONEAPP_AUTH_LOCAL_USERS  the first user of the list checks that sssd resolves the
 #                            portal users
-#   ONEAPP_CVMFS_PROXY       URL of the site's Squid (required)
+#   ONEAPP_CVMFS_PROXY       URL of the Squid on the storage VM (required)
+#   ONEAPP_SOFTWARE_PROXY_ENABLED  YES to use a CernVM-FS proxy the site already runs instead
+#   ONEAPP_SOFTWARE_PROXY_URL      URL of that proxy (required when the switch is on)
 #   ONEAPP_POOL_DOMAIN       domain the portal uses to name the pool VMs (ood.local)
 #   ONEAPP_POOL_NET_PREFIX   prefix of the private compute network (172.20.)
 #   ONEAPP_POOL_PREFIX       prefix of each worker's name (ood-worker-). The name is
@@ -3358,7 +3387,12 @@ else
 fi
 HOME_EXPORT="$ONEAPP_HOME_NFS_EXPORT"
 LDAP_HOST="${ONEAPP_LDAP_HOST:-}"
-CVMFS_PROXY="${ONEAPP_CVMFS_PROXY:-}"
+if is_yes "$ONEAPP_SOFTWARE_PROXY_ENABLED"; then
+    CVMFS_PROXY="$ONEAPP_SOFTWARE_PROXY_URL"
+    [[ -n "$CVMFS_PROXY" ]] || die "ONEAPP_SOFTWARE_PROXY_ENABLED is YES, so ONEAPP_SOFTWARE_PROXY_URL is required"
+else
+    CVMFS_PROXY="${ONEAPP_CVMFS_PROXY:-}"
+fi
 BASE="${ONEAPP_LDAP_BASE:-dc=ood,dc=local}"
 POOL_DOMAIN="${ONEAPP_POOL_DOMAIN:-ood.local}"
 # The compute network is the one the portal and the storage are on, so their addresses give
@@ -3438,7 +3472,7 @@ fi
 # The packages are already in the image. This block only writes the site proxy and mounts the
 # catalogue.
 if [[ -n "$CVMFS_PROXY" ]]; then
-    msg "pointing CernVM-FS at the Squid ${CVMFS_PROXY}"
+    msg "pointing CernVM-FS at the proxy ${CVMFS_PROXY}"
     CVMFS_STAGE=config CVMFS_PROXY="$CVMFS_PROXY" CVMFS_MOUNT=static EESSI_VERSION="$EESSI_VERSION" \
         bash "${HERE}/../scripts/cvmfs-client.sh" || die "the CernVM-FS client did not end up working"
 else
