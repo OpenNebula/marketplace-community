@@ -164,7 +164,7 @@ opennebula_template:
   - name: PROXY
     type: GROUP
     title: CernVM-FS proxy of your own
-    description: By default the storage role caches the EESSI catalogue for the portal and the workers. With a proxy of the site, they use that proxy and the storage role runs no cache
+    description: By default the EESSI software reaches the portal and the workers through a cache on the storage role. Turn this on to use a CernVM-FS proxy of your site instead, and the storage role starts no cache
 logo: logos/openondemand.png
 images:
 - name: one-ondemand
