@@ -1,0 +1,167 @@
+---
+name: Open OnDemand
+version: 1.1.1-20260917
+publisher: OpenNebula Systems
+publisher_email: contact@opennebula.io
+description: |-
+  [Open OnDemand](https://openondemand.org/) is a web portal that gives HPC users a browser
+  interface to a cluster. It has a file browser, a shell, job submission and interactive
+  applications such as JupyterLab, RStudio, Octave, VS Code and an Xfce desktop.
+
+  This appliance holds the three roles of the Open OnDemand service in one image. The
+  `ONEAPP_ROLE` context variable selects the role at boot:
+
+  - **portal**, the Open OnDemand web portal with its own LDAP directory and Dex
+    authentication.
+  - **storage**, the shared home over NFS and the site cache for the software catalogue.
+  - **worker**, a compute VM that joins the Slurm cluster of the portal. It runs user
+    sessions and batch jobs as Slurm jobs.
+
+  Scientific software comes from [EESSI](https://www.eessi.io/) over CernVM-FS, so a
+  notebook here loads the same modules a user finds at a EuroHPC centre.
+
+  The portal runs the Slurm controller and the accounting. Every session gets the cores and
+  memory it requests, and nothing else shares them. Deploy this image with the Open OnDemand
+  Service appliance. It connects the three roles with OneFlow and grows the pool of compute
+  VMs when a job waits for one.
+short_description: Open OnDemand portal, shared storage and Slurm compute pool in one image
+tags:
+- open-ondemand
+- hpc
+- jupyter
+- eessi
+- ubuntu
+- service
+format: qcow2
+creation_time: 1789556598
+os-id: Ubuntu
+os-release: '24.04 LTS'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.10, 7.0, 7.2, 7.4
+opennebula_template:
+  # Every variable a role reads is declared here, as the Lithops appliance does, because a
+  # value the service template sets at the top level of vm_template_contents only reaches
+  # the CONTEXT of the VM through a reference like these. The service fills them per role.
+  # The user_inputs below list only the service inputs. The values the service template
+  # derives per role (the role itself, the storage and portal addresses, the cache URL) stay
+  # out of user_inputs on purpose: Sunstone shows every VM template input that is not a
+  # service input in a "Roles Inputs" step and sends its value back, and an empty value
+  # from that step overrides the role expression in the service template.
+  # The worker tuning attributes and the pool range are declared here too, so an operator
+  # can set them in the vm_template_contents of a role, but they are not user inputs either.
+  context:
+    network: 'YES'
+    report_ready: 'YES'
+    token: 'YES'
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    oneapp_role: '$ONEAPP_ROLE'
+    oneapp_nfs_admin_ips: '$ONEAPP_NFS_ADMIN_IPS'
+    oneapp_nfs_net: '$ONEAPP_NFS_NET'
+    oneapp_squid_nets: '$ONEAPP_SQUID_NETS'
+    oneapp_nfs_host: '$ONEAPP_NFS_HOST'
+    oneapp_cvmfs_proxy: '$ONEAPP_CVMFS_PROXY'
+    oneapp_ldap_host: '$ONEAPP_LDAP_HOST'
+    oneapp_portal_host_name: '$ONEAPP_PORTAL_HOST_NAME'
+    oneapp_portal_letsencrypt_enabled: '$ONEAPP_PORTAL_LETSENCRYPT_ENABLED'
+    oneapp_portal_certificate_enabled: '$ONEAPP_PORTAL_CERTIFICATE_ENABLED'
+    oneapp_portal_certificate_chain: '$ONEAPP_PORTAL_CERTIFICATE_CHAIN'
+    oneapp_portal_certificate_key: '$ONEAPP_PORTAL_CERTIFICATE_KEY'
+    oneapp_auth_local_users: '$ONEAPP_AUTH_LOCAL_USERS'
+    oneapp_auth_oidc_enabled: '$ONEAPP_AUTH_OIDC_ENABLED'
+    oneapp_auth_oidc_issuer: '$ONEAPP_AUTH_OIDC_ISSUER'
+    oneapp_auth_oidc_client_id: '$ONEAPP_AUTH_OIDC_CLIENT_ID'
+    oneapp_auth_oidc_client_secret: '$ONEAPP_AUTH_OIDC_CLIENT_SECRET'
+    oneapp_auth_oidc_name: '$ONEAPP_AUTH_OIDC_NAME'
+    oneapp_home_nfs_enabled: '$ONEAPP_HOME_NFS_ENABLED'
+    oneapp_home_nfs_server: '$ONEAPP_HOME_NFS_SERVER'
+    oneapp_home_nfs_export: '$ONEAPP_HOME_NFS_EXPORT'
+    oneapp_slurm_controller_enabled: '$ONEAPP_SLURM_CONTROLLER_ENABLED'
+    oneapp_slurm_controller_host: '$ONEAPP_SLURM_CONTROLLER_HOST'
+    oneapp_worker_idle_seconds: '$ONEAPP_WORKER_IDLE_SECONDS'
+    oneapp_worker_drain_seconds: '$ONEAPP_WORKER_DRAIN_SECONDS'
+    oneapp_pool_range: '$ONEAPP_POOL_RANGE'
+    oneapp_slurm_state_export: '$ONEAPP_SLURM_STATE_EXPORT'
+    oneapp_slurm_def_mem_per_cpu: '$ONEAPP_SLURM_DEF_MEM_PER_CPU'
+    oneapp_slurm_title: '$ONEAPP_SLURM_TITLE'
+  cpu: '1'
+  vcpu: '2'
+  memory: '4096'
+  # The VMs see the CPU of the host, so EESSI loads the build for that CPU family and the
+  # MPI library (UCX) finds the instructions it was compiled with. With the default QEMU
+  # CPU model EESSI falls back to its generic build, whose UCX refuses to start without AVX.
+  cpu_model:
+    model: host-passthrough
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  os:
+    arch: x86_64
+  # The order of the inputs is the order of the tabs in the instantiate wizard. FireEdge
+  # takes the tab from the second token of the name and the section from the third, and
+  # shows the other inputs of a section only while its _ENABLED switch is on.
+  inputs_order: >-
+    ONEAPP_PORTAL_HOST_NAME,ONEAPP_PORTAL_LETSENCRYPT_ENABLED,ONEAPP_PORTAL_CERTIFICATE_ENABLED,ONEAPP_PORTAL_CERTIFICATE_CHAIN,ONEAPP_PORTAL_CERTIFICATE_KEY,ONEAPP_AUTH_LOCAL_USERS,ONEAPP_AUTH_OIDC_ENABLED,ONEAPP_AUTH_OIDC_ISSUER,ONEAPP_AUTH_OIDC_CLIENT_ID,ONEAPP_AUTH_OIDC_CLIENT_SECRET,ONEAPP_AUTH_OIDC_NAME,ONEAPP_HOME_NFS_ENABLED,ONEAPP_HOME_NFS_SERVER,ONEAPP_HOME_NFS_EXPORT
+  user_inputs:
+    oneapp_portal_host_name: 'O|text|Public host name of the portal, empty to use its address||'
+    oneapp_portal_letsencrypt_enabled: 'O|boolean|Request a Let''s Encrypt certificate for the host name||NO'
+    oneapp_portal_certificate_enabled: 'O|boolean|Use a certificate of your own||NO'
+    oneapp_portal_certificate_chain: 'O|text64|PEM certificate chain||'
+    oneapp_portal_certificate_key: 'O|text64|PEM private key||'
+    oneapp_auth_local_users: 'O|text|Initial users, user:password separated by spaces, a uid may follow as user:password:uid||demo1:demo1pass'
+    oneapp_auth_oidc_enabled: 'O|boolean|Sign in through an OpenID Connect provider as well||NO'
+    oneapp_auth_oidc_issuer: 'O|text|Issuer URL of the provider||'
+    oneapp_auth_oidc_client_id: 'O|text|Client id registered at the provider||'
+    oneapp_auth_oidc_client_secret: 'O|password|Client secret registered at the provider||'
+    oneapp_auth_oidc_name: 'O|text|Name of the provider on the login page||Institutional login'
+    oneapp_home_nfs_enabled: 'O|boolean|Use an NFS server of your own instead of the storage role||NO'
+    oneapp_home_nfs_server: 'O|text|Address of the NFS server||'
+    oneapp_home_nfs_export: 'O|text|Path of the home export||/export/home'
+  # Titles of the tabs (APP) and titles and descriptions of the sections (GROUP) of the wizard.
+  # A tab carries no description on purpose: FireEdge paints it as an info alert whose text is
+  # unreadable in the dark theme, while a section description shows as a readable tooltip.
+  user_inputs_metadata:
+  - name: PORTAL
+    type: APP
+    title: Portal
+  - name: HOST
+    type: GROUP
+    title: Host name
+    description: Users open the portal at https://<host name>; with no host name they use the management address
+  - name: LETSENCRYPT
+    type: GROUP
+    title: Let's Encrypt
+    description: Needs a host name that resolves to the portal and ports 80 and 443 reachable from the Internet when the portal boots
+  - name: CERTIFICATE
+    type: GROUP
+    title: Your own certificate
+    description: Paste the chain and the key in PEM, they replace the self-signed one
+  - name: AUTH
+    type: APP
+    title: Users and login
+  - name: LOCAL
+    type: GROUP
+    title: Local users
+    description: Accounts created in the directory of the portal at first boot
+  - name: OIDC
+    type: GROUP
+    title: OpenID Connect
+    description: An institutional login next to the local one, for example MyAccessID or Keycloak
+  - name: HOME
+    type: APP
+    title: Home directories
+  - name: NFS
+    type: GROUP
+    title: NFS server of your own
+    description: By default the storage role exports the home directories; with a server of your own the storage role only keeps the software cache
+logo: logos/openondemand.png
+images:
+- name: one-ondemand
+  url: 'https://d38nm155miqkyg.cloudfront.net/service_one-ondemand-1.0.0-20260916.qcow2'
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 1612578816
+  checksum:
+    md5: 8bac7eab4f05431fe7657819e0eee38d
+    sha256: 88d43c020bcbf282c41b794c01815a572e2c84e88425504bf2336a744345df2f

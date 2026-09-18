@@ -1,0 +1,211 @@
+---
+name: Open OnDemand Service
+version: 1.1.1-20260917
+publisher: OpenNebula Systems
+publisher_email: contact@opennebula.io
+description: |-
+  A complete [Open OnDemand](https://openondemand.org/) deployment on OpenNebula,
+  orchestrated by
+  [OneFlow](https://docs.opennebula.io/7.4/product/operation_references/opennebula_services_configuration/oneflow/).
+
+  Three roles start in order:
+
+  1. **storage** exports the shared home over NFS. It also runs the site cache that serves
+     the [EESSI](https://www.eessi.io/) software catalogue over CernVM-FS.
+  2. **portal** runs Open OnDemand with its own LDAP directory, so adding a user is one
+     directory entry. Their home appears on first login.
+  3. **worker** runs user sessions and batch jobs as jobs of the Slurm cluster of the
+     service. The scientific software loads from EESSI.
+
+  The portal runs the Slurm controller and the accounting. Every worker joins the cluster
+  automatically when it boots. A session requests cores, memory and GPUs and gets them
+  exclusively. The worker role is elastic. The workers publish the queue of the cluster to
+  OneGate. OneFlow adds a VM when a job waits for one. After a quiet period, the oldest
+  worker drains and OneFlow removes it.
+
+  Requires
+  [OneFlow](https://docs.opennebula.io/7.4/product/operation_references/opennebula_services_configuration/oneflow/)
+  and
+  [OneGate](https://docs.opennebula.io/7.4/product/virtual_machines_operation/multi-vm_workflows/onegate_usage/).
+  OneGate must be reachable from the service network.
+
+  Based on the VM template
+  - [Open OnDemand](https://community-marketplace.opennebula.io/appliance/b65a3b9d-1463-4e3d-87d6-6df37fa23361)
+short_description: Open OnDemand with its own elastic Slurm cluster, orchestrated by OneFlow
+tags:
+- open-ondemand
+- hpc
+- jupyter
+- eessi
+- ubuntu
+- service
+creation_time: 1789556598
+os-id: Ubuntu
+os-release: '24.04 LTS'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.10, 7.0, 7.2, 7.4
+type: 'SERVICE_TEMPLATE'
+roles:
+  storage: 'Open OnDemand'
+  portal: 'Open OnDemand'
+  worker: 'Open OnDemand'
+opennebula_template:
+  name: Open OnDemand
+  deployment: straight
+  description: 'Open OnDemand portal with shared storage and an elastic pool of compute VMs'
+  ready_status_gate: true
+  # A value one role takes from another goes as a plain line here and reaches the VM through
+  # the "$NAME" reference the image template declares in its CONTEXT. OneFlow resolves the
+  # ${role...} references and the network names, and copies the service inputs into every
+  # VM by itself, so they are not repeated per role.
+  roles:
+  - name: storage
+    cardinality: 1
+    min_vms: 1
+    vm_template_contents: |
+      NIC = [
+        NAME = "NIC0",
+        NETWORK_ID = "$Management"
+      ]
+      NIC = [
+        NAME = "NIC1",
+        NETWORK_ID = "$Compute"
+      ]
+      ONEAPP_ROLE = "storage"
+    cooldown: 120
+    elasticity_policies: []
+    scheduled_policies: []
+  - name: portal
+    parents:
+    - storage
+    cardinality: 1
+    min_vms: 1
+    vm_template_contents: |
+      NIC = [
+        NAME = "NIC0",
+        NETWORK_ID = "$Management"
+      ]
+      NIC = [
+        NAME = "NIC1",
+        NETWORK_ID = "$Compute"
+      ]
+      MEMORY = "8192"
+      ONEAPP_ROLE = "portal"
+      ONEAPP_NFS_HOST = "${storage.TEMPLATE.CONTEXT.ETH1_IP}"
+      ONEAPP_CVMFS_PROXY = "http://${storage.TEMPLATE.CONTEXT.ETH1_IP}:3128"
+    cooldown: 120
+    elasticity_policies: []
+    scheduled_policies: []
+  - name: worker
+    parents:
+    - storage
+    - portal
+    cardinality: 1
+    min_vms: 1
+    max_vms: 6
+    vm_template_contents: |
+      NIC = [
+        NAME = "NIC0",
+        NETWORK_ID = "$Management"
+      ]
+      NIC = [
+        NAME = "NIC1",
+        NETWORK_ID = "$Compute"
+      ]
+      ONEAPP_ROLE = "worker"
+      ONEAPP_NFS_HOST = "${storage.TEMPLATE.CONTEXT.ETH1_IP}"
+      ONEAPP_LDAP_HOST = "${portal.TEMPLATE.CONTEXT.ETH1_IP}"
+      ONEAPP_CVMFS_PROXY = "http://${storage.TEMPLATE.CONTEXT.ETH1_IP}:3128"
+    cooldown: 120
+    # Every session is a Slurm job, and the workers publish the queue of the cluster to
+    # OneGate. A job waiting for resources adds a worker: two 30 s periods filter the
+    # seconds between a submit and its allocation, and the 120 s cooldown covers the boot
+    # of the new VM (a job was running on a new worker 50 s after OneFlow created it), so
+    # one pending job adds one worker. OneFlow reads the figures every autoscaler_interval
+    # seconds (90 by default in oneflow-server.conf); 30 makes each period 30 s long.
+    elasticity_policies:
+    - type: CHANGE
+      adjust: 1
+      expression: 'SLURM_PENDING > 0'
+      period_number: 2
+      period: 30
+      cooldown: 120
+    # Scale down one worker at a time. OneFlow evaluates the average of the attribute across
+    # the VMs of the role and when reducing it terminates the oldest one without draining it.
+    # The oldest worker drains its own Slurm node after ONEAPP_WORKER_IDLE_SECONDS without a
+    # job, so nothing more lands on it, and every worker publishes OLDEST_IDLE, 1 only while
+    # that node is drained and empty, so the average is 1 only when the VM OneFlow is about
+    # to remove holds no session and accepts none.
+    - type: CHANGE
+      adjust: -1
+      expression: 'OLDEST_IDLE > 0.99'
+      period_number: 2
+      period: 60
+      cooldown: 300
+    scheduled_policies: []
+  networks:
+    Management: 'M|network|Management network, reaches OneGate and the internet| |id::'
+    Compute: 'M|network|Compute network, reserved for the service| |id::'
+  # Every input is optional, so a first start changes nothing here. The key order is the
+  # order of the tabs in the instantiate wizard, one tab per second token of the name and
+  # one section per third token, with the other inputs of a section shown only while its
+  # _ENABLED switch is on. The portal derives the worker range from its compute interface,
+  # so no range is asked. ONEAPP_WORKER_IDLE_SECONDS, ONEAPP_WORKER_DRAIN_SECONDS,
+  # ONEAPP_POOL_RANGE and the ONEAPP_SLURM_* attributes (the state export, the default
+  # memory per core, and a second Slurm cluster of the site) are advanced attributes for the
+  # vm_template_contents of a role.
+  custom_attrs:
+    ONEAPP_PORTAL_HOST_NAME: 'O|text|Public host name of the portal, empty to use its address||'
+    ONEAPP_PORTAL_LETSENCRYPT_ENABLED: 'O|boolean|Request a Let''s Encrypt certificate for the host name||NO'
+    ONEAPP_PORTAL_CERTIFICATE_ENABLED: 'O|boolean|Use a certificate of your own||NO'
+    ONEAPP_PORTAL_CERTIFICATE_CHAIN: 'O|text64|PEM certificate chain||'
+    ONEAPP_PORTAL_CERTIFICATE_KEY: 'O|text64|PEM private key||'
+    ONEAPP_AUTH_LOCAL_USERS: 'O|text|Initial users, user:password separated by spaces, a uid may follow as user:password:uid||demo1:demo1pass'
+    ONEAPP_AUTH_OIDC_ENABLED: 'O|boolean|Sign in through an OpenID Connect provider as well||NO'
+    ONEAPP_AUTH_OIDC_ISSUER: 'O|text|Issuer URL of the provider||'
+    ONEAPP_AUTH_OIDC_CLIENT_ID: 'O|text|Client id registered at the provider||'
+    ONEAPP_AUTH_OIDC_CLIENT_SECRET: 'O|password|Client secret registered at the provider||'
+    ONEAPP_AUTH_OIDC_NAME: 'O|text|Name of the provider on the login page||Institutional login'
+    ONEAPP_HOME_NFS_ENABLED: 'O|boolean|Use an NFS server of your own instead of the storage role||NO'
+    ONEAPP_HOME_NFS_SERVER: 'O|text|Address of the NFS server||'
+    ONEAPP_HOME_NFS_EXPORT: 'O|text|Path of the home export||/export/home'
+  # Titles of the tabs (APP) and titles and descriptions of the sections (GROUP) of the wizard.
+  # OneFlow keeps this key in the service template body, and FireEdge reads it. A tab carries no
+  # description on purpose, see the image template.
+  user_inputs_metadata:
+  - name: PORTAL
+    type: APP
+    title: Portal
+  - name: HOST
+    type: GROUP
+    title: Host name
+    description: Users open the portal at https://<host name>; with no host name they use the management address
+  - name: LETSENCRYPT
+    type: GROUP
+    title: Let's Encrypt
+    description: Needs a host name that resolves to the portal and ports 80 and 443 reachable from the Internet when the portal boots
+  - name: CERTIFICATE
+    type: GROUP
+    title: Your own certificate
+    description: Paste the chain and the key in PEM, they replace the self-signed one
+  - name: AUTH
+    type: APP
+    title: Users and login
+  - name: LOCAL
+    type: GROUP
+    title: Local users
+    description: Accounts created in the directory of the portal at first boot
+  - name: OIDC
+    type: GROUP
+    title: OpenID Connect
+    description: An institutional login next to the local one, for example MyAccessID or Keycloak
+  - name: HOME
+    type: APP
+    title: Home directories
+  - name: NFS
+    type: GROUP
+    title: NFS server of your own
+    description: By default the storage role exports the home directories; with a server of your own the storage role only keeps the software cache
+logo: logos/openondemand.png
+images: []
