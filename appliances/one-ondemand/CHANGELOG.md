@@ -6,6 +6,12 @@
   `ONEAPP_SOFTWARE_PROXY_ENABLED` with `ONEAPP_SOFTWARE_PROXY_URL`, on a new **Software
   catalogue** tab of the wizard, point the portal and the workers at that proxy, and the
   storage role then runs no Squid. Off by default.
+- The portal loads the JupyterLab module in the background instead of before `READY`. On a
+  fresh site cache that load takes minutes, and the worker waited for it. A module that
+  fails to load is now reported as the `ERROR` attribute of the portal VM.
+- The image no longer carries the munge key that the package generates at install time.
+  The portal creates the key of the service at first boot, so the baked one was never used,
+  but the certification test checks that no key ships in the image.
 
 ## 1.1.1-20260917
 

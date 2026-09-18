@@ -613,6 +613,10 @@ done
 # other two roles it starts, finds no cluster and publishes nothing, which does no harm, so
 # the configure of those roles stops it.
 ok "role services disabled, they are enabled per role at boot"
+# The munge package generated a key at install time. It must not travel inside the image,
+# the portal generates the key of the service at first boot and the workers take it from
+# OneGate.
+rm -f /etc/munge/munge.key
 
 # The packages above can bring a newer kernel than the base image carries. The build runs
 # on the old one, so autoremove keeps it, and both would then travel in every download of
@@ -2410,16 +2414,49 @@ for key in "${!MODULES[@]}"; do
 done
 ok "version, modules and proxy recorded in ${STATE_DIR}/eessi.env"
 
-msg "checking the EESSI Jupyter module from the portal"
-# The output is kept, because a module that fails to load on a cold cache says why on stderr
-# and that is what a reader of the log needs.
+# The first load of JupyterLab fills the site cache and takes minutes on a fresh one, so it
+# runs in the background and the portal publishes READY meanwhile. See 71-eessi-warmup.sh.
+systemctl stop ood-eessi-warmup.service >/dev/null 2>&1 || true
+systemd-run --quiet --unit ood-eessi-warmup --collect \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/71-eessi-warmup.sh" \
+    || die "could not start the EESSI warm up"
+ok "EESSI warm up started in the background, result in /var/log/ood-appliance-configure.log"
+ONEOND_SCRIPTS_70_INSTALL_CVMFS_SH_
+
+install -d -m 755 "${SRC}/scripts"
+cat > "${SRC}/scripts/71-eessi-warmup.sh" <<'ONEOND_SCRIPTS_71_EESSI_WARMUP_SH_'
+#!/usr/bin/env bash
+# Loads the EESSI Jupyter module once on the portal, so the site cache holds its files before
+# the first session asks for them, and checks that the module brings ipykernel.
+#
+# 70-install-cvmfs.sh starts it in the background. On a fresh site cache the load takes
+# minutes, because every file comes from the EESSI servers, and the worker should not wait
+# for it. The result goes to the appliance log, and a failure is published to OneGate as the
+# ERROR attribute of the VM, as the boot checks do.
+#
+# Usage:  ./71-eessi-warmup.sh   (reads /etc/one-ondemand/eessi.env)
+
+source "$(dirname "${BASH_SOURCE[0]}")/00-lib.sh"
+require_root
+export HOME="${HOME:-/root}"
+LOG=/var/log/ood-appliance-configure.log
+[[ -t 1 ]] || exec >> "$LOG" 2>&1
+
+. /etc/one-ondemand/eessi.env
+init="/cvmfs/software.eessi.io/versions/${EESSI_VERSION}/init/bash"
+t0=$(date +%s)
+msg "warming the site cache with ${EESSI_JUPYTER_MODULE} from the portal"
 if out="$(bash -c "source '${init}' >/dev/null 2>&1 && module load '${EESSI_JUPYTER_MODULE}' && python -c 'import ipykernel'" 2>&1)"; then
-    ok "${EESSI_JUPYTER_MODULE} loads and brings ipykernel"
+    ok "${EESSI_JUPYTER_MODULE} loads and brings ipykernel, $(( $(date +%s) - t0 ))s"
 else
     printf '%s\n' "$out" | tail -n 8 | sed 's/^/    /'
+    if . /etc/one-ondemand/onegate-lib.sh 2>/dev/null && onegate_ready; then
+        onegate_call vm update --data "ERROR=\"one-ondemand portal: could not load ${EESSI_JUPYTER_MODULE} from EESSI ${EESSI_VERSION}\"" \
+            >/dev/null 2>&1 || true
+    fi
     die "could not load ${EESSI_JUPYTER_MODULE} from EESSI ${EESSI_VERSION}"
 fi
-ONEOND_SCRIPTS_70_INSTALL_CVMFS_SH_
+ONEOND_SCRIPTS_71_EESSI_WARMUP_SH_
 
 install -d -m 755 "${SRC}/scripts"
 cat > "${SRC}/scripts/80-configure-external-slurm.sh" <<'ONEOND_SCRIPTS_80_CONFIGURE_EXTERNAL_SLURM_SH_'
