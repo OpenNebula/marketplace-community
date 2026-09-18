@@ -169,7 +169,7 @@ opennebula_template:
     ONEAPP_AUTH_OIDC_NAME: 'O|text|Name of the provider on the login page||Institutional login'
     ONEAPP_HOME_NFS_ENABLED: 'O|boolean|Use an NFS server of your own instead of the storage role||NO'
     ONEAPP_HOME_NFS_SERVER: 'O|text|Address of the NFS server||'
-    ONEAPP_HOME_NFS_EXPORT: 'O|text|Path of the home export||/export/home'
+    ONEAPP_HOME_NFS_EXPORT: 'O|text|Path of the home export on that server||/export/home'
     ONEAPP_SOFTWARE_PROXY_ENABLED: 'O|boolean|Use a CernVM-FS proxy of your own instead of the cache on the storage role||NO'
     ONEAPP_SOFTWARE_PROXY_URL: 'O|text|URL of that proxy, for example http://proxy.example.org:3128||'
   # Titles of the tabs (APP) and titles and descriptions of the sections (GROUP) of the wizard.
