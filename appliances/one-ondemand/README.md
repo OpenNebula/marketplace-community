@@ -137,7 +137,7 @@ the inputs of its section only when it is on.
 |---|---|---|
 | `ONEAPP_HOME_NFS_ENABLED` | `NO` | Use an NFS server of your own instead of the storage role. See [Keeping the home](#keeping-the-home). |
 | `ONEAPP_HOME_NFS_SERVER` | empty | Address of that server. Required when the switch is on. |
-| `ONEAPP_HOME_NFS_EXPORT` | `/export/home` | Path of the home export, on the storage role or on that server. |
+| `ONEAPP_HOME_NFS_EXPORT` | `/export/home` | Path of the home export on that server. Ignored while the switch is off, the storage role then exports `/export/home`. |
 
 **Software catalogue**, where the EESSI files come from.
 
