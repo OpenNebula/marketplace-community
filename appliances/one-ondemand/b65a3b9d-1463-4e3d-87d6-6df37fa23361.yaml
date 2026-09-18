@@ -1,6 +1,6 @@
 ---
 name: Open OnDemand
-version: 1.1.1-20260917
+version: 1.1.2-20260918
 publisher: OpenNebula Systems
 publisher_email: contact@opennebula.io
 description: |-
@@ -76,6 +76,8 @@ opennebula_template:
     oneapp_home_nfs_enabled: '$ONEAPP_HOME_NFS_ENABLED'
     oneapp_home_nfs_server: '$ONEAPP_HOME_NFS_SERVER'
     oneapp_home_nfs_export: '$ONEAPP_HOME_NFS_EXPORT'
+    oneapp_software_proxy_enabled: '$ONEAPP_SOFTWARE_PROXY_ENABLED'
+    oneapp_software_proxy_url: '$ONEAPP_SOFTWARE_PROXY_URL'
     oneapp_slurm_controller_enabled: '$ONEAPP_SLURM_CONTROLLER_ENABLED'
     oneapp_slurm_controller_host: '$ONEAPP_SLURM_CONTROLLER_HOST'
     oneapp_worker_idle_seconds: '$ONEAPP_WORKER_IDLE_SECONDS'
@@ -101,7 +103,7 @@ opennebula_template:
   # takes the tab from the second token of the name and the section from the third, and
   # shows the other inputs of a section only while its _ENABLED switch is on.
   inputs_order: >-
-    ONEAPP_PORTAL_HOST_NAME,ONEAPP_PORTAL_LETSENCRYPT_ENABLED,ONEAPP_PORTAL_CERTIFICATE_ENABLED,ONEAPP_PORTAL_CERTIFICATE_CHAIN,ONEAPP_PORTAL_CERTIFICATE_KEY,ONEAPP_AUTH_LOCAL_USERS,ONEAPP_AUTH_OIDC_ENABLED,ONEAPP_AUTH_OIDC_ISSUER,ONEAPP_AUTH_OIDC_CLIENT_ID,ONEAPP_AUTH_OIDC_CLIENT_SECRET,ONEAPP_AUTH_OIDC_NAME,ONEAPP_HOME_NFS_ENABLED,ONEAPP_HOME_NFS_SERVER,ONEAPP_HOME_NFS_EXPORT
+    ONEAPP_PORTAL_HOST_NAME,ONEAPP_PORTAL_LETSENCRYPT_ENABLED,ONEAPP_PORTAL_CERTIFICATE_ENABLED,ONEAPP_PORTAL_CERTIFICATE_CHAIN,ONEAPP_PORTAL_CERTIFICATE_KEY,ONEAPP_AUTH_LOCAL_USERS,ONEAPP_AUTH_OIDC_ENABLED,ONEAPP_AUTH_OIDC_ISSUER,ONEAPP_AUTH_OIDC_CLIENT_ID,ONEAPP_AUTH_OIDC_CLIENT_SECRET,ONEAPP_AUTH_OIDC_NAME,ONEAPP_HOME_NFS_ENABLED,ONEAPP_HOME_NFS_SERVER,ONEAPP_HOME_NFS_EXPORT,ONEAPP_SOFTWARE_PROXY_ENABLED,ONEAPP_SOFTWARE_PROXY_URL
   user_inputs:
     oneapp_portal_host_name: 'O|text|Public host name of the portal, empty to use its address||'
     oneapp_portal_letsencrypt_enabled: 'O|boolean|Request a Let''s Encrypt certificate for the host name||NO'
@@ -117,6 +119,8 @@ opennebula_template:
     oneapp_home_nfs_enabled: 'O|boolean|Use an NFS server of your own instead of the storage role||NO'
     oneapp_home_nfs_server: 'O|text|Address of the NFS server||'
     oneapp_home_nfs_export: 'O|text|Path of the home export||/export/home'
+    oneapp_software_proxy_enabled: 'O|boolean|Use a CernVM-FS proxy of your own instead of the cache on the storage role||NO'
+    oneapp_software_proxy_url: 'O|text|URL of that proxy, for example http://proxy.example.org:3128||'
   # Titles of the tabs (APP) and titles and descriptions of the sections (GROUP) of the wizard.
   # A tab carries no description on purpose: FireEdge paints it as an info alert whose text is
   # unreadable in the dark theme, while a section description shows as a readable tooltip.
@@ -154,6 +158,13 @@ opennebula_template:
     type: GROUP
     title: NFS server of your own
     description: By default the storage role exports the home directories; with a server of your own the storage role only keeps the software cache
+  - name: SOFTWARE
+    type: APP
+    title: Software catalogue
+  - name: PROXY
+    type: GROUP
+    title: CernVM-FS proxy of your own
+    description: By default the storage role caches the EESSI catalogue for the portal and the workers. With a proxy of the site, they use that proxy and the storage role runs no cache
 logo: logos/openondemand.png
 images:
 - name: one-ondemand
@@ -161,7 +172,7 @@ images:
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 1612578816
+  size: 1612644352
   checksum:
-    md5: 8bac7eab4f05431fe7657819e0eee38d
-    sha256: 88d43c020bcbf282c41b794c01815a572e2c84e88425504bf2336a744345df2f
+    md5: 2573c8544ea71b0be6a2acfb302d6129
+    sha256: 9c0a1b0606c13c6dbe3412de8b1c194fb2b471bdeaeacb17794a1a359b87af44

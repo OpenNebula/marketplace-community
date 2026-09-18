@@ -107,7 +107,7 @@ describe it for Sunstone and for the CLI.
 ## Service inputs
 
 Every input is optional, so a first start needs nothing beyond the two networks. The
-instantiate wizard shows them on three tabs. Each optional feature has a switch that shows
+instantiate wizard shows them on four tabs. Each optional feature has a switch that shows
 the inputs of its section only when it is on.
 
 **Portal**, the public name and the TLS certificate of the web portal.
@@ -138,6 +138,13 @@ the inputs of its section only when it is on.
 | `ONEAPP_HOME_NFS_ENABLED` | `NO` | Use an NFS server of your own instead of the storage role. See [Keeping the home](#keeping-the-home). |
 | `ONEAPP_HOME_NFS_SERVER` | empty | Address of that server. Required when the switch is on. |
 | `ONEAPP_HOME_NFS_EXPORT` | `/export/home` | Path of the home export, on the storage role or on that server. |
+
+**Software catalogue**, where the EESSI files come from.
+
+| Input | Default | Description |
+|---|---|---|
+| `ONEAPP_SOFTWARE_PROXY_ENABLED` | `NO` | Use a CernVM-FS proxy of your own instead of the cache on the storage role. The portal and the workers then download the catalogue through that proxy, and the storage role runs no Squid. |
+| `ONEAPP_SOFTWARE_PROXY_URL` | empty | URL of that proxy, for example `http://proxy.example.org:3128`. Required when the switch is on. It has to be reachable from the compute network. |
 
 The roles find each other without fixed addresses. OneFlow gives the storage address to the
 portal and the workers. The storage role asks OneGate which VM plays the portal. It grants
@@ -175,9 +182,9 @@ waiting job on it. OneFlow reads the figures every `autoscaler_interval` seconds
 default in `/etc/one/oneflow-server.conf` on the Front-end. Set it to 30 and restart
 `opennebula-flow` for a faster scale up; it is a setting of the Front-end, made once for
 every service, and the appliance cannot set it. With 30, three 2 core jobs submitted to a
-1 worker pool on the testbed had their second worker 87 seconds after the submit and the
-third 217 seconds after that, and each job ran about 50 seconds after its VM was created. A job that no worker could serve
-never grows the pool, for two reasons. A GPU request on a pool without GPUs is refused when
+1 worker pool on the testbed had their second worker about a minute and a half after the
+submit and the third a few minutes after that, and each job ran under a minute after its VM
+was created. A job that no worker could serve never grows the pool, for two reasons. A GPU request on a pool without GPUs is refused when
 it is submitted. A job that requests more cores than any node has waits with reason
 `PartitionConfig` and is not counted.
 
@@ -521,7 +528,8 @@ So a new service starts with an empty Slurm queue and an empty accounting histor
   long session on the oldest worker holds the pool at its size.
 * GPU workers are prepared but untested, see [GPU workers, prepared](#gpu-workers-prepared).
 * The scientific software comes from EESSI over CernVM-FS. The first load of a module on a
-  fresh deployment downloads it through the site cache on the storage role.
+  fresh deployment downloads it through the site cache on the storage role, or through the
+  proxy given in `ONEAPP_SOFTWARE_PROXY_URL`.
 
 ## Versions and licence
 
