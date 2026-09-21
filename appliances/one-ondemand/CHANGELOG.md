@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0-20260921
+
+- A shared software directory for the whole service. The storage role exports
+  `/export/software`, the portal and the workers mount it at `/opt/eessi`, where the EESSI
+  catalogue looks for the additions of the site, and the EESSI init adds the modules found
+  there to `MODULEPATH`. `ood-site-install <recipe.eb>` on the portal builds a package
+  from an EasyBuild recipe as the `eessi` user, and the package appears in `module avail`
+  for every user on every worker, next to EESSI. The image ships a recipe for GNU Hello as
+  an example, and the acceptance script builds it and loads it from a job.
+
 ## 1.1.2-20260918
 
 - A CernVM-FS proxy of the site instead of the cache on the storage role.

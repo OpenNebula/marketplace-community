@@ -1,6 +1,6 @@
 ---
 name: Open OnDemand
-version: 1.1.2-20260918
+version: 1.2.0-20260921
 publisher: OpenNebula Systems
 publisher_email: contact@opennebula.io
 description: |-
@@ -172,7 +172,7 @@ images:
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 1612840960
+  size: 1611988992
   checksum:
-    md5: eb9ca53ac38474a4fb28c03b6e1ad39c
-    sha256: e4b6b1d52490f6f31997a09ba1921299edd7d0736cbe120e106d34506f3087c7
+    md5: e29ef3529f269c8da66a45634924bbcf
+    sha256: dfc62d189d0c1bbb7e7b9711c185b7309595f0bffeb2a751dc8a36722a0ef29f
