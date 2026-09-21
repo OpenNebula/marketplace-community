@@ -38,7 +38,7 @@ os-id: Ubuntu
 os-release: '24.04 LTS'
 os-arch: x86_64
 hypervisor: KVM
-opennebula_version: 6.10, 7.0, 7.2, 7.4
+opennebula_version: 6.10, 7.4
 opennebula_template:
   # Every variable a role reads is declared here, as the Lithops appliance does, because a
   # value the service template sets at the top level of vm_template_contents only reaches
