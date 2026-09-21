@@ -56,6 +56,13 @@ describe 'Appliance Certification' do
         @info[:vm].ssh('test -x /opt/one-ondemand/scripts/30-configure-portal.sh').expect_success
     end
 
+    it 'carries the shared software directory pieces: the eessi user, the operator command and a recipe' do
+        @info[:vm].ssh('id -u eessi').expect_success
+        @info[:vm].ssh('test -x /opt/one-ondemand/scripts/ood-site-install.sh').expect_success
+        @info[:vm].ssh('test -x /opt/one-ondemand/scripts/75-mount-software.sh').expect_success
+        @info[:vm].ssh('test -f /opt/one-ondemand/config/easybuild/hello-2.12.1-GCCcore-14.3.0.eb').expect_success
+    end
+
     it 'refuses a role it does not implement' do
         # A typo in ONEAPP_ROLE has to fail loudly. Silently doing nothing would leave a VM
         # that looks deployed and serves nothing, which is the worst outcome of the three.
