@@ -221,7 +221,7 @@ msg "removing the configuration of this deployment"
 umount -l /home 2>/dev/null || true
 umount -l /cvmfs/software.eessi.io 2>/dev/null || true
 umount -l /var/lib/one-ondemand/slurm 2>/dev/null || true
-sed -i '\#:/export/home /home nfs4 #d;\# /cvmfs/software.eessi.io cvmfs #d;\# /var/lib/one-ondemand/slurm nfs4 #d' /etc/fstab
+sed -i '\#:/export/home /home nfs4 #d;\# /cvmfs/software.eessi.io cvmfs #d;\#:/export/software /opt/eessi nfs4 #d;\# /var/lib/one-ondemand/slurm nfs4 #d' /etc/fstab
 rm -f /etc/cvmfs/default.local
 rm -rf /var/lib/cvmfs/shared /var/lib/cvmfs/software.eessi.io
 ok "fstab, CernVM-FS proxy and cache cleaned"
@@ -449,6 +449,8 @@ portal)
     run "portal configuration"  bash "${DIR}/scripts/30-configure-portal.sh"
     run "application catalog"   bash "${DIR}/scripts/60-install-apps.sh"
     run "EESSI on the portal"   bash "${DIR}/scripts/70-install-cvmfs.sh"
+    run "shared software directory" bash "${DIR}/scripts/75-mount-software.sh"
+    install -m 755 "${DIR}/scripts/ood-site-install.sh" /usr/local/bin/ood-site-install
     run "Slurm target"          bash "${DIR}/scripts/90-configure-slurm-target.sh"
     run "external Slurm cluster" bash "${DIR}/scripts/80-configure-external-slurm.sh"
     ;;
@@ -545,6 +547,13 @@ apt_install apt-transport-https ca-certificates wget curl gnupg python3
 msg "=== Slurm ==="
 APT_NO_RECOMMENDS=1 apt_install slurmd slurm-client munge slurmctld slurmdbd mariadb-server libpmix2t64
 ok "slurm $(dpkg-query -W -f='${Version}' slurmd 2>/dev/null), munge $(dpkg-query -W -f='${Version}' munge 2>/dev/null), mariadb $(dpkg-query -W -f='${Version}' mariadb-server 2>/dev/null)"
+
+# --- the site software user ---------------------------------------------------------------
+# The shared software directory is written by this user on the portal and read by every
+# worker over NFS, so it has the same uid on every role and the export keeps root_squash.
+id eessi >/dev/null 2>&1 || useradd -r -u 9999 -d /var/lib/eessi -m -s /bin/bash eessi \
+    || die "could not create the eessi user"
+ok "user eessi (uid 9999) for the shared software directory"
 
 # --- worker role --------------------------------------------------------------------------
 # It installs the most and it was already written, so it is reused as is, with packages,
@@ -721,6 +730,35 @@ v2:
       websockify_cmd: "/usr/bin/websockify"
     ssh_allow: false
 ONEOND_CONFIG_CLUSTERS_D_SLURM_YML_
+
+install -d -m 755 "${SRC}/config/easybuild"
+cat > "${SRC}/config/easybuild/hello-2.12.1-GCCcore-14.3.0.eb" <<'ONEOND_CONFIG_EASYBUILD_HELLO_2_12_1_GCCCORE_14_3_0_EB_'
+# GNU Hello, the smallest package that goes through a full EasyBuild build. It is the recipe
+# ood-site-install uses in the acceptance test, and an example for a recipe of your own.
+easyblock = 'ConfigureMake'
+
+name = 'hello'
+version = '2.12.1'
+
+homepage = 'https://www.gnu.org/software/hello/'
+description = "The GNU Hello program produces a familiar, friendly greeting."
+
+toolchain = {'name': 'GCCcore', 'version': '14.3.0'}
+
+source_urls = [GNU_SOURCE]
+sources = [SOURCE_TAR_GZ]
+
+builddependencies = [('binutils', '2.44')]
+
+sanity_check_paths = {
+    'files': ['bin/hello'],
+    'dirs': [],
+}
+
+sanity_check_commands = ['hello --version']
+
+moduleclass = 'tools'
+ONEOND_CONFIG_EASYBUILD_HELLO_2_12_1_GCCCORE_14_3_0_EB_
 
 install -d -m 755 "${SRC}/config/slurm"
 cat > "${SRC}/config/slurm/cgroup.conf" <<'ONEOND_CONFIG_SLURM_CGROUP_CONF_'
@@ -2490,6 +2528,43 @@ fi
 ONEOND_SCRIPTS_71_EESSI_WARMUP_SH_
 
 install -d -m 755 "${SRC}/scripts"
+cat > "${SRC}/scripts/75-mount-software.sh" <<'ONEOND_SCRIPTS_75_MOUNT_SOFTWARE_SH_'
+#!/usr/bin/env bash
+# Mounts the shared software directory of the service at /opt/eessi, on the portal and on
+# every worker. The EESSI catalogue looks there for the additions of the site
+# (host_injections), and its init adds the modules found there to MODULEPATH, so a
+# package the operator builds once with ood-site-install appears in module avail for every
+# user on every worker. Only the eessi user writes, from the portal.
+#
+# Variables:
+#   ONEAPP_NFS_HOST   address of the storage role (optional, without it nothing is mounted)
+#
+# Usage:  ONEAPP_NFS_HOST=172.20.0.222 ./75-mount-software.sh
+
+source "$(dirname "${BASH_SOURCE[0]}")/00-lib.sh"
+require_root
+
+NFS_HOST="${ONEAPP_NFS_HOST:-}"
+SOFTWARE_EXPORT=/export/software
+MOUNT=/opt/eessi
+
+install -d -m 755 "$MOUNT"
+if [[ -z "$NFS_HOST" ]]; then
+    warn "no ONEAPP_NFS_HOST: ${MOUNT} stays local, site software is not shared"
+    exit 0
+fi
+msg "mounting ${NFS_HOST}:${SOFTWARE_EXPORT} on ${MOUNT}"
+backup_once /etc/fstab
+sed -i "\#^[^ ]*:[^ ]* ${MOUNT} nfs4 #d" /etc/fstab
+printf '%s:%s %s nfs4 _netdev,hard,noatime 0 0\n' "$NFS_HOST" "$SOFTWARE_EXPORT" "$MOUNT" >> /etc/fstab
+systemctl daemon-reload >/dev/null 2>&1 || true
+findmnt -n "$MOUNT" >/dev/null 2>&1 \
+    || wait_for 180 mount "$MOUNT" \
+    || die "could not mount ${NFS_HOST}:${SOFTWARE_EXPORT} after 180s"
+ok "shared software directory mounted at ${MOUNT}"
+ONEOND_SCRIPTS_75_MOUNT_SOFTWARE_SH_
+
+install -d -m 755 "${SRC}/scripts"
 cat > "${SRC}/scripts/80-configure-external-slurm.sh" <<'ONEOND_SCRIPTS_80_CONFIGURE_EXTERNAL_SLURM_SH_'
 #!/usr/bin/env bash
 # Declares a Slurm cluster of the site as a second target of the portal, for batch jobs.
@@ -2863,6 +2938,41 @@ if __name__ == "__main__":
 ONEOND_SCRIPTS_OOD_METRICS_EXPORTER_PY_
 
 install -d -m 755 "${SRC}/scripts"
+cat > "${SRC}/scripts/ood-site-install.sh" <<'ONEOND_SCRIPTS_OOD_SITE_INSTALL_SH_'
+#!/usr/bin/env bash
+# Builds a package for every user of the service from an EasyBuild recipe.
+#
+# Runs on the portal as the eessi user, which owns the shared software directory mounted
+# at /opt/eessi. EESSI-extend in site mode installs there, under the path of the CPU family
+# of this VM, and the EESSI init of every session and every worker adds that path to
+# MODULEPATH, so the package shows in module avail right after the build.
+#
+# Usage:  ood-site-install <recipe.eb | name-version-toolchain.eb> [eb options]
+#         ood-site-install --search hello        (finds recipes EasyBuild ships)
+
+set -uo pipefail
+[[ $# -ge 1 ]] || { echo "usage: ood-site-install <recipe.eb> [eb options]" >&2; exit 1; }
+[[ "$(id -u)" -eq 0 ]] || { echo "run it as root, it switches to the eessi user" >&2; exit 1; }
+findmnt -n /opt/eessi >/dev/null 2>&1 || { echo "/opt/eessi is not mounted, the storage role must be up" >&2; exit 1; }
+. /etc/one-ondemand/eessi.env
+recipe="$1"; shift
+# A recipe given as a file is copied where the eessi user can read it.
+if [[ -f "$recipe" ]]; then
+    tmp="$(mktemp -d /tmp/ood-site-install.XXXXXX)"; chmod 755 "$tmp"
+    cp "$recipe" "$tmp/"; recipe="$tmp/$(basename "$recipe")"
+fi
+# runuser keeps the working directory of root, which the eessi user cannot enter.
+cd /var/lib/eessi || cd /tmp
+exec runuser -u eessi -- bash -lc '
+    cd "$HOME" 2>/dev/null || cd /tmp
+    source "/cvmfs/software.eessi.io/versions/'"$EESSI_VERSION"'/init/bash" >/dev/null 2>&1 || exit 1
+    export EESSI_SITE_INSTALL=1
+    module load EESSI-extend >/dev/null 2>&1 || { echo "EESSI-extend is not in the catalogue" >&2; exit 1; }
+    export EASYBUILD_PREFIX=/tmp/eessi-build
+    eb --robot "$@"' _ "$recipe" "$@"
+ONEOND_SCRIPTS_OOD_SITE_INSTALL_SH_
+
+install -d -m 755 "${SRC}/scripts"
 cat > "${SRC}/scripts/slurm-backup.sh" <<'ONEOND_SCRIPTS_SLURM_BACKUP_SH_'
 #!/usr/bin/env bash
 # Dumps the Slurm accounting database to the storage VM.
@@ -3052,6 +3162,11 @@ install -d -m 755 "$HOME_EXPORT"
 # The Slurm state is a few files the portal writes, so it lives on the root disk of this VM
 # and not on the home disk; what has to survive a new portal is here either way.
 install -d -m 755 "$SLURM_EXPORT"
+# The shared software directory, written by the eessi user on the portal with EasyBuild and
+# read by every worker. It is mounted at /opt/eessi, where the EESSI catalogue looks for
+# site additions (host_injections).
+SOFTWARE_EXPORT=/export/software
+install -d -m 755 -o eessi -g eessi "$SOFTWARE_EXPORT"
 
 # --- home disk ------------------------------------------------------------------------
 # The first disk that is not the root disk and has no partitions is the home disk. The
@@ -3099,6 +3214,7 @@ install -d -m 755 /etc/exports.d "$STATE_DIR"
     printf 'NFS_NET=%s\n' "$NFS_NET"
     printf 'HOME_EXPORT=%s\n' "$HOME_EXPORT"
     printf 'SLURM_EXPORT=%s\n' "$SLURM_EXPORT"
+    printf 'SOFTWARE_EXPORT=%s\n' "$SOFTWARE_EXPORT"
     printf 'NFS_ADMIN_IPS=%s\n' "$NFS_ADMIN_IPS"
 } > "${STATE_DIR}/nfs.env"
 chmod 644 "${STATE_DIR}/nfs.env"
@@ -3248,6 +3364,7 @@ ONEGATE_LIB="${ONEGATE_LIB:-/etc/one-ondemand/onegate-lib.sh}"
 . "$ENV_FILE"
 : "${NFS_NET:?}" "${HOME_EXPORT:?}"
 SLURM_EXPORT="${SLURM_EXPORT:-/export/slurm}"
+SOFTWARE_EXPORT="${SOFTWARE_EXPORT:-/export/software}"
 
 admin="${NFS_ADMIN_IPS:-}"
 if [[ -r "$ONEGATE_LIB" ]]; then
@@ -3285,6 +3402,7 @@ content="$({
     for ip in $admin; do
         [[ -d "$SLURM_EXPORT" ]] && printf '%s %s(rw,sync,no_subtree_check,no_root_squash,fsid=2)\n' "$SLURM_EXPORT" "$ip"
     done
+    [[ -d "$SOFTWARE_EXPORT" ]] && printf '%s %s(rw,sync,no_subtree_check,root_squash,fsid=3)\n' "$SOFTWARE_EXPORT" "$NFS_NET"
 })"
 
 if [[ "$content" != "$(cat "$EXPORTS_FILE" 2>/dev/null)" ]]; then
@@ -3337,7 +3455,7 @@ msg "removing the configuration of this deployment"
 # server does not answer.
 umount -l /home 2>/dev/null || true
 umount -l /cvmfs/software.eessi.io 2>/dev/null || true
-sed -i '\#:/export/home /home nfs4 #d;\# /cvmfs/software.eessi.io cvmfs #d' /etc/fstab
+sed -i '\#:/export/home /home nfs4 #d;\# /cvmfs/software.eessi.io cvmfs #d;\#:/export/software /opt/eessi nfs4 #d' /etc/fstab
 rm -f /etc/cvmfs/default.local
 rm -rf /var/lib/cvmfs/shared /var/lib/cvmfs/software.eessi.io
 ok "fstab, CernVM-FS proxy and cache cleaned"
@@ -3548,6 +3666,8 @@ if [[ -n "$CVMFS_PROXY" ]]; then
 else
     warn "no ONEAPP_CVMFS_PROXY: the EESSI catalogue is not mounted, the sessions will not have its modules"
 fi
+# The site additions of the service, built on the portal, mounted where EESSI looks for them.
+ONEAPP_NFS_HOST="${ONEAPP_NFS_HOST:-}" bash "${HERE}/../scripts/75-mount-software.sh" || die "the shared software directory could not be mounted"
 
 # --- identity: the same users as the portal ---------------------------------------------------
 if [[ -n "$LDAP_HOST" ]]; then

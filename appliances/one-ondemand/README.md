@@ -14,7 +14,7 @@ boot which role a VM plays, and the OneFlow template sets it per role.
 
 | Role | What it runs | Cardinality |
 |---|---|---|
-| `storage` | NFS server for the shared home and for the Slurm controller state, and site cache for the software catalogue | 1 |
+| `storage` | NFS server for the shared home, the Slurm controller state and the shared software directory, and site cache for the software catalogue | 1 |
 | `portal` | Open OnDemand, its own LDAP directory and Dex authentication, the Slurm controller and its accounting | 1 |
 | `worker` | A Slurm node, where the user sessions and the batch jobs run | 1 to 6, elastic |
 
@@ -426,6 +426,25 @@ and the workers then mount that export instead of the storage role. The server h
 export it with `no_root_squash` for the portal address, because the portal creates each
 home on first login. It can keep `root_squash` for the workers. The storage role still
 runs the software cache and keeps the Slurm state export, so it stays in the service.
+
+## Adding software for every user
+
+The scientific software comes from the EESSI catalogue, and a user can build in their home
+what EESSI lacks, because EasyBuild is a module of the catalogue. To build a package once
+for every user, the service has a shared software directory. The storage role exports it,
+the portal and the workers mount it at `/opt/eessi`, and the EESSI catalogue looks there
+for the additions of the site. On the portal, as root:
+
+```shell
+$ ood-site-install /opt/one-ondemand/config/easybuild/hello-2.12.1-GCCcore-14.3.0.eb
+```
+
+The command builds the recipe as the `eessi` user with EasyBuild from EESSI, and the
+package appears in `module avail` for every user, in every session and on every worker,
+next to the EESSI modules. `ood-site-install --search <name>` lists the recipes EasyBuild
+ships, and a recipe of your own is a text file like the one above. A build takes minutes,
+it compiles from source. The directory is part of the service and is deleted with it, so
+keep the recipes.
 
 ## Removing the service
 
