@@ -498,6 +498,12 @@ Because the home is shared, that file is readable from the portal and from every
    indicates a problem with the export.
 5. On the worker, `journalctl -t ood-slurm-elastic` shows what the health check found and
    what the publisher sent. `journalctl -u slurmd` shows what the node did with the job.
+6. When the pool does not grow or shrink although the workers publish `SLURM_PENDING` or
+   `OLDEST_IDLE`, look for `[AE] Checking policies` lines in `/var/log/one/oneflow.log`
+   on the Front-end. When they stop, the evaluation thread of OneFlow has died, and
+   `systemctl restart opennebula-flow` starts it again without touching the service. In
+   OpenNebula 7.4.0 this happens within a minute of a Front-end reboot while the VMs are
+   still in `POWEROFF`, so after a reboot resume the VMs and then restart `opennebula-flow`.
    `runuser -u <user> -- ls /cvmfs/software.eessi.io/versions` shows whether the catalogue
    is reachable as that user.
 
