@@ -51,7 +51,7 @@ ONE_SERVICE_PARAMS=(
     'ONEAPP_AUTH_OIDC_NAME'              'configure' 'Name of the provider on the login page'                       'O|text'
     'ONEAPP_HOME_NFS_ENABLED'            'configure' 'Use an NFS server of your own instead of the storage role'    'O|boolean'
     'ONEAPP_HOME_NFS_SERVER'             'configure' 'Address of the NFS server'                                    'O|text'
-    'ONEAPP_HOME_NFS_EXPORT'             'configure' 'Path of the home export'                                      'O|text'
+    'ONEAPP_HOME_NFS_EXPORT'             'configure' 'Path of the home export on that server'                                   'O|text'
     'ONEAPP_SOFTWARE_PROXY_ENABLED'      'configure' 'Use a CernVM-FS proxy of your own instead of the storage role' 'O|boolean'
     'ONEAPP_SOFTWARE_PROXY_URL'          'configure' 'URL of that proxy'                                             'O|text'
     # Advanced attributes, set in the vm_template_contents of a role or in the CONTEXT of a
@@ -366,10 +366,28 @@ printf '\n===== %s =====\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 [[ -r /var/run/one-context/one_env ]] && . /var/run/one-context/one_env
 
 DIR="${ONEAPP_APPLIANCE_DIR:-/opt/one-ondemand}"
+ROLE="${ONEAPP_ROLE:-}"
+
+# A check that stops the role is reported through OneGate as well, as the ERROR attribute of
+# the VM, so the operator reads it in Sunstone or in onevm show without opening a console.
+# The message is the last ERROR line of the log, which is what the failing script printed.
+# The onegate client splits its data on commas and a double quote would end the value, so
+# both are replaced before publishing. The trap goes before the library is loaded, because
+# the library itself stops the role when a wizard field is not valid.
+report_failure() {
+    local rc=$? msg
+    (( rc == 0 )) && return 0
+    msg="$(grep -E '\] ERROR: ' "$LOG" | tail -1 | sed 's/^\[[^]]*\] ERROR: //; s/"/'"'"'/g; s/,/;/g')"
+    if . /etc/one-ondemand/onegate-lib.sh 2>/dev/null && onegate_ready; then
+        onegate_call vm update --data "ERROR=\"one-ondemand ${ROLE:-?}: ${msg:-configuration failed, see ${LOG}}\"" \
+            >/dev/null 2>&1 || true
+    fi
+}
+trap report_failure EXIT
+
 source "${DIR}/scripts/00-lib.sh"
 require_root
 
-ROLE="${ONEAPP_ROLE:-}"
 if [[ -z "$ROLE" ]]; then
     echo "ONEAPP_ROLE is missing from the CONTEXT, there is no role to configure"
     exit 0
@@ -384,21 +402,6 @@ run() {
 }
 
 t0=$(date +%s)
-# A check that stops the role is reported through OneGate as well, as the ERROR attribute of
-# the VM, so the operator reads it in Sunstone or in onevm show without opening a console.
-# The message is the last ERROR line of the log, which is what the failing script printed.
-# The onegate client splits its data on commas and a double quote would end the value, so
-# both are replaced before publishing.
-report_failure() {
-    local rc=$? msg
-    (( rc == 0 )) && return 0
-    msg="$(grep -E '\] ERROR: ' "$LOG" | tail -1 | sed 's/^\[[^]]*\] ERROR: //; s/"/'"'"'/g; s/,/;/g')"
-    if . /etc/one-ondemand/onegate-lib.sh 2>/dev/null && onegate_ready; then
-        onegate_call vm update --data "ERROR=\"one-ondemand ${ROLE}: ${msg:-configuration failed, see ${LOG}}\"" \
-            >/dev/null 2>&1 || true
-    fi
-}
-trap report_failure EXIT
 # The portal and the storage VM take their role as host name, so logs, certificates and the
 # prompt say what the machine is instead of carrying the name of the VM the image was built
 # on. The worker derives its own from its address in worker/configure.sh.
@@ -866,7 +869,7 @@ ONEAPP_AUTH_OIDC_NAME="${ONEAPP_AUTH_OIDC_NAME:-Institutional login}"
 # --- home parameters (tab HOME of the wizard) ----------------------------------------
 # The home comes from the storage role of the service, ONEAPP_NFS_HOST, unless the switch
 # points the portal and the workers at an NFS server the site already runs. The export path
-# is both what the storage role exports and what the portal and the workers mount.
+# is the one on that server; with the switch off the storage role exports /export/home.
 ONEAPP_HOME_NFS_ENABLED="${ONEAPP_HOME_NFS_ENABLED:-NO}"
 ONEAPP_HOME_NFS_SERVER="${ONEAPP_HOME_NFS_SERVER:-}"
 ONEAPP_HOME_NFS_EXPORT="${ONEAPP_HOME_NFS_EXPORT:-/export/home}"
@@ -910,6 +913,34 @@ warn() { printf '[%s]   warning: %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 die()  { printf '[%s] ERROR: %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; exit 1; }
 
 require_root() { [[ "$(id -u)" -eq 0 ]] || die "it has to be run as root"; }
+
+# --- a switch that is off empties the fields of its section -----------------------------
+# The wizard hides the fields of a section while its switch is off, but it still sends what
+# was typed in them before. No script reads a field of a section whose switch is off, and a
+# field of a section whose switch is on is checked here before any script uses it.
+if ! is_yes "$ONEAPP_PORTAL_CERTIFICATE_ENABLED"; then
+    ONEAPP_PORTAL_CERTIFICATE_CHAIN=""; ONEAPP_PORTAL_CERTIFICATE_KEY=""
+fi
+if ! is_yes "$ONEAPP_AUTH_OIDC_ENABLED"; then
+    ONEAPP_AUTH_OIDC_ISSUER=""; ONEAPP_AUTH_OIDC_CLIENT_ID=""; ONEAPP_AUTH_OIDC_CLIENT_SECRET=""
+    ONEAPP_AUTH_OIDC_NAME="Institutional login"
+fi
+if is_yes "$ONEAPP_HOME_NFS_ENABLED"; then
+    [[ "$ONEAPP_HOME_NFS_EXPORT" == /* && "$ONEAPP_HOME_NFS_EXPORT" != *[[:space:]]* ]] \
+        || die "ONEAPP_HOME_NFS_EXPORT has to be an absolute path without spaces, not '${ONEAPP_HOME_NFS_EXPORT}'"
+else
+    ONEAPP_HOME_NFS_SERVER=""; ONEAPP_HOME_NFS_EXPORT="/export/home"
+fi
+if is_yes "$ONEAPP_SOFTWARE_PROXY_ENABLED"; then
+    [[ "$ONEAPP_SOFTWARE_PROXY_URL" == http://* || "$ONEAPP_SOFTWARE_PROXY_URL" == https://* ]] \
+        && [[ "$ONEAPP_SOFTWARE_PROXY_URL" != *[[:space:]]* ]] \
+        || die "ONEAPP_SOFTWARE_PROXY_URL has to be an http:// or https:// URL, not '${ONEAPP_SOFTWARE_PROXY_URL}'"
+else
+    ONEAPP_SOFTWARE_PROXY_URL=""
+fi
+if ! is_yes "$ONEAPP_SLURM_CONTROLLER_ENABLED"; then
+    ONEAPP_SLURM_CONTROLLER_HOST=""; ONEAPP_SLURM_TITLE="External Slurm"
+fi
 
 # wait_apt_lock [SECS]: wait until unattended-upgrades releases the dpkg lock.
 # On a freshly booted image the automatic updates process is usually running,
@@ -2981,8 +3012,8 @@ cat > "${SRC}/storage/10-install-nfs.sh" <<'ONEOND_STORAGE_10_INSTALL_NFS_SH_'
 #                           last NIC
 #   ONEAPP_NFS_ADMIN_IPS    IPs with no_root_squash, space separated; in the service the
 #                           portal address comes from OneGate instead, see export-refresh.sh
-#   ONEAPP_HOME_NFS_EXPORT  path of the export (/export/home), the same path the portal and
-#                           the workers mount
+#   (the home export is always /export/home, the path the portal and the workers mount
+#   unless ONEAPP_HOME_NFS_ENABLED points them at a server of the site)
 #   ONEAPP_SLURM_STATE_EXPORT  export that keeps the Slurm controller state, the munge key
 #                           and the accounting dumps of the portal (/export/slurm); the
 #                           portal alone mounts it, with root
@@ -2996,7 +3027,9 @@ require_root
 # address comes from OneGate later, or from ONEAPP_NFS_ADMIN_IPS on a VM outside a service.
 NFS_NET="${ONEAPP_NFS_NET:-$(compute_net_cidr)}"
 NFS_ADMIN_IPS="${ONEAPP_NFS_ADMIN_IPS:-}"
-HOME_EXPORT="$ONEAPP_HOME_NFS_EXPORT"
+# The storage role always exports /export/home. ONEAPP_HOME_NFS_EXPORT is the path on a
+# server of the site, read by the portal and the workers when that switch is on.
+HOME_EXPORT=/export/home
 SLURM_EXPORT="${ONEAPP_SLURM_STATE_EXPORT:-/export/slurm}"
 EXPORTS_FILE=/etc/exports.d/one-ondemand.exports
 STATE_DIR=/etc/one-ondemand

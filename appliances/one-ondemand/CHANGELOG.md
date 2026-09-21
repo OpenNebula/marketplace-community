@@ -12,6 +12,9 @@
 - The image no longer carries the munge key that the package generates at install time.
   The portal creates the key of the service at first boot, so the baked one was never used,
   but the certification test checks that no key ships in the image.
+- A switch that is off empties the fields of its section, whatever the wizard sent. The
+  export path was the one field read with its switch off, so text left in it broke the
+  storage role. A path or a URL of a section whose switch is on is checked before use.
 
 ## 1.1.1-20260917
 

@@ -118,7 +118,7 @@ opennebula_template:
     oneapp_auth_oidc_name: 'O|text|Name of the provider on the login page||Institutional login'
     oneapp_home_nfs_enabled: 'O|boolean|Use an NFS server of your own instead of the storage role||NO'
     oneapp_home_nfs_server: 'O|text|Address of the NFS server||'
-    oneapp_home_nfs_export: 'O|text|Path of the home export||/export/home'
+    oneapp_home_nfs_export: 'O|text|Path of the home export on that server||/export/home'
     oneapp_software_proxy_enabled: 'O|boolean|Use a CernVM-FS proxy of your own instead of the cache on the storage role||NO'
     oneapp_software_proxy_url: 'O|text|URL of that proxy, for example http://proxy.example.org:3128||'
   # Titles of the tabs (APP) and titles and descriptions of the sections (GROUP) of the wizard.
@@ -172,7 +172,7 @@ images:
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 1612316672
+  size: 1612840960
   checksum:
-    md5: c811598fee0f5bfa062a62c9c2c24fcc
-    sha256: 191adf9cb255ed413a39fa01a399798eff67c0586c06313635492720a255e32d
+    md5: eb9ca53ac38474a4fb28c03b6e1ad39c
+    sha256: e4b6b1d52490f6f31997a09ba1921299edd7d0736cbe120e106d34506f3087c7
