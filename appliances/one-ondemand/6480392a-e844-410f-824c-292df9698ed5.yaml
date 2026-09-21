@@ -44,7 +44,7 @@ os-id: Ubuntu
 os-release: '24.04 LTS'
 os-arch: x86_64
 hypervisor: KVM
-opennebula_version: 6.10, 7.0, 7.2, 7.4
+opennebula_version: 6.10, 7.4
 type: 'SERVICE_TEMPLATE'
 roles:
   storage: 'Open OnDemand'
