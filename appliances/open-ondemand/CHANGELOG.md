@@ -1,7 +1,13 @@
 # Changelog
 
-## 1.2.0-20260921
+## 1.2.0-20260922
 
+- The technical name of the appliance is `open-ondemand` everywhere, in the appliance and
+  packer directories, the Makefile target, the image, the logo and the paths inside the
+  image (`/opt/open-ondemand`, `/etc/open-ondemand`). It was `one-ondemand`. The name shown
+  to users is still Open OnDemand.
+- A custom or Let's Encrypt certificate is installed on every run of the portal script, so
+  a switch turned on later replaces the self-signed certificate.
 - A shared software directory for the whole service. The storage role exports
   `/export/software`, the portal and the workers mount it at `/opt/eessi`, where the EESSI
   catalogue looks for the additions of the site, and the EESSI init adds the modules found
@@ -146,7 +152,7 @@ First release.
 - A worker created from the image reaches `READY` in well under a minute.
 - The image ships no directory and no password. The portal creates its LDAP directory at
   first boot with an administrator password it generates and keeps in
-  `/etc/one-ondemand/ldap-admin.pass`, readable by root only.
+  `/etc/open-ondemand/ldap-admin.pass`, readable by root only.
 - `ONEAPP_OOD_SSL_MODE` accepts `custom`, with the certificate chain and the private key
   given in `ONEAPP_OOD_SSL_CERT` and `ONEAPP_OOD_SSL_KEY`.
 - Each role names its VM after itself, `ood-portal`, `ood-storage` and `ood-worker-<octet>`.

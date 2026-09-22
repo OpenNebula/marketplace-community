@@ -1,7 +1,7 @@
 ---
 :tests:
-  'one-ondemand':
-    :image_name: one-ondemand.qcow2
+  'open-ondemand':
+    :image_name: open-ondemand.qcow2
     :type: linux
     :microenvs: ['context-kvm']
     # The image carries the packages for the three roles, Apptainer and the session SIF

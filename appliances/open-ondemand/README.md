@@ -198,7 +198,7 @@ other workers are untouched. The last worker never drains. A drain is undone whe
 job makes it pointless, or when OneFlow does not remove the worker within
 `ONEAPP_WORKER_DRAIN_SECONDS`. A long session on the oldest worker holds the pool at its
 size until it ends. `sinfo` on the portal shows a draining node with the reason
-`one-ondemand scale-down`.
+`open-ondemand scale-down`.
 
 To change the pool manually:
 
@@ -347,7 +347,7 @@ To declare a controller that exists before the service, set the same attributes 
 user. They use the key the portal keeps in the home of each user, the same mechanism the
 AWS and Azure integrations use. Accounting history in `sacct` needs `slurmdbd` on that
 controller, and the default OneSlurm deployment does not run it. `docs/slurmdbd-setup.sh`
-in the one-ondemand repository adds it to the controller (MariaDB, `slurmdbd`, the
+in the open-ondemand repository adds it to the controller (MariaDB, `slurmdbd`, the
 accounting lines in `slurm.conf` and the cluster registration). With it, `sacct` from the
 portal lists the finished jobs of the user.
 
@@ -367,11 +367,11 @@ sends no `preferred_username`, where the email fallback mapped the user.
 
 Users live in the LDAP directory of the portal role, and adding one is one entry in it.
 The portal generates the administrator password of the directory when it first configures
-itself and keeps it in `/etc/one-ondemand/ldap-admin.pass`, readable by root only. On the
+itself and keeps it in `/etc/open-ondemand/ldap-admin.pass`, readable by root only. On the
 portal VM:
 
 ```shell
-$ ldapadd -x -D cn=admin,dc=ood,dc=local -y /etc/one-ondemand/ldap-admin.pass <<EOF
+$ ldapadd -x -D cn=admin,dc=ood,dc=local -y /etc/open-ondemand/ldap-admin.pass <<EOF
 dn: cn=alice,ou=Groups,dc=ood,dc=local
 objectClass: posixGroup
 cn: alice
@@ -436,7 +436,7 @@ the portal and the workers mount it at `/opt/eessi`, and the EESSI catalogue loo
 for the additions of the site. On the portal, as root:
 
 ```shell
-$ ood-site-install /opt/one-ondemand/config/easybuild/hello-2.12.1-GCCcore-14.3.0.eb
+$ ood-site-install /opt/open-ondemand/config/easybuild/hello-2.12.1-GCCcore-14.3.0.eb
 ```
 
 The command builds the recipe as the `eessi` user with EasyBuild from EESSI, and the
@@ -488,7 +488,7 @@ with the service, logs as `journalctl -t ood-slurm-reconcile`. The accounting du
 written to the storage VM under `/export/slurm/backup/` every 30 minutes.
 
 Each role logs what it did at boot in `/var/log/ood-appliance-configure.log`.
-`/etc/one-ondemand/build.env` records what the image was built from. A role that failed to
+`/etc/open-ondemand/build.env` records what the image was built from. A role that failed to
 configure shows it in its `motd` and in `/etc/one-appliance/status`. OneFlow does not set
 the service to `RUNNING` until every role has declared itself ready.
 
@@ -505,7 +505,7 @@ Because the home is shared, that file is readable from the portal and from every
    `/var/log/ood-appliance-configure.log` says at which step it stopped.
 2. On the portal, `sinfo -N -l` lists the workers that Slurm knows, with their state. A
    worker missing from the list has not registered, and its `journalctl -u slurmd` says
-   why. A node `drained` with reason `one-ondemand scale-down` is about to be removed and
+   why. A node `drained` with reason `open-ondemand scale-down` is about to be removed and
    takes no job. A node `down` means the controller lost contact with it. `journalctl -t
    ood-slurm-reconcile` shows what the reconciler did with it.
 3. `squeue -u <user>` shows the job of the session and, while it waits, the reason.

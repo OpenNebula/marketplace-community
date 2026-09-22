@@ -54,7 +54,7 @@ check "munge, mariadb, slurmdbd and slurmctld active on the portal" \
 check "reconcile and backup timers active on the portal" \
     vsh "$portal" 'systemctl is-active --quiet ood-slurm-reconcile.timer ood-slurm-backup.timer'
 check "controller state mounted from the storage VM" \
-    vsh "$portal" 'findmnt -n -t nfs4 /var/lib/one-ondemand/slurm >/dev/null && test -s /var/lib/one-ondemand/slurm/state/clustername'
+    vsh "$portal" 'findmnt -n -t nfs4 /var/lib/open-ondemand/slurm >/dev/null && test -s /var/lib/open-ondemand/slurm/state/clustername'
 check "munge key kept on the storage export, root only" \
     vsh "$storage" 'test "$(stat -c %a%U /export/slurm/etc/munge.key)" = 600root'
 check "cluster ood registered in the accounting" \
@@ -76,7 +76,7 @@ check "reconciler wrote the roles and the shape for the forms" \
     vsh "$portal" 'grep -qx worker /var/lib/ood-slurm/roles && python3 -c "import json; d=json.load(open(\"/var/lib/ood-slurm/shape\")); assert d[\"cpus\"] > 0 and d[\"mem_mb\"] > 0"'
 
 # --- jobs ------------------------------------------------------------------------------------
-vsh "$portal" "/opt/one-ondemand/bin/pun_prehook --user ${user}" >/dev/null 2>&1
+vsh "$portal" "/opt/open-ondemand/bin/pun_prehook --user ${user}" >/dev/null 2>&1
 job="$(vsh "$portal" "su - ${user} -c 'sbatch --parsable -c 1 --mem=256M -t 5 --wrap \"hostname; sleep 15\"'" 2>/dev/null)"
 if [[ "$job" =~ ^[0-9]+$ ]]; then
     for _ in $(seq 1 30); do st="$(vsh "$portal" "sacct -n -X -j $job -o State" 2>/dev/null | awk '{print $1}')"; [[ "$st" == COMPLETED ]] && break; sleep 3; done
@@ -103,7 +103,7 @@ check "queue empty afterwards" bash -c "[[ -z \"\$(vsh $portal 'squeue -h' 2>/de
 check "shared software directory mounted on the portal and the workers" \
     bash -c "vsh $portal 'findmnt -n /opt/eessi' >/dev/null && vsh $(role_vms 'worker*' | head -1) 'findmnt -n /opt/eessi' >/dev/null"
 check "ood-site-install builds hello from the shipped recipe" \
-    bash -c "vsh $portal 'ood-site-install /opt/one-ondemand/config/easybuild/hello-2.12.1-GCCcore-14.3.0.eb' >/dev/null 2>&1"
+    bash -c "vsh $portal 'ood-site-install /opt/open-ondemand/config/easybuild/hello-2.12.1-GCCcore-14.3.0.eb' >/dev/null 2>&1"
 check "a job on a worker loads the hello module built by the operator" \
     bash -c "vsh $portal \"su - ${user} -c 'srun -N1 -c1 --mem=256M -t 3 bash -lc \\\"module load hello && hello\\\"'\" 2>/dev/null | grep -q 'Hello, world'"
 
