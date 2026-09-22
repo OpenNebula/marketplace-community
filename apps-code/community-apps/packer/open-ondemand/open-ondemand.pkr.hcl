@@ -17,7 +17,7 @@ build {
 # The build VM has more memory and more disk than most appliances, because this image
 # carries the software of the three roles: Open OnDemand with its Dex and its LDAP, the
 # NFS server and the site Squid, and Apptainer with the session SIF image.
-source "qemu" "one-ondemand" {
+source "qemu" "open-ondemand" {
   cpus        = 2
   memory      = 4096
   accelerator = "kvm"
@@ -52,7 +52,7 @@ source "qemu" "one-ondemand" {
 }
 
 build {
-  sources = ["source.qemu.one-ondemand"]
+  sources = ["source.qemu.open-ondemand"]
 
   # Undoes the insecure SSH options left by the context start_script.
   provisioner "shell" {
@@ -89,7 +89,7 @@ build {
   }
 
   provisioner "file" {
-    sources     = ["../../appliances/one-ondemand/appliance.sh"]
+    sources     = ["../../appliances/open-ondemand/appliance.sh"]
     destination = "/etc/one-appliance/service.d/"
   }
 

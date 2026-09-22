@@ -1,6 +1,6 @@
 ---
 name: Open OnDemand Service
-version: 1.2.0-20260921
+version: 1.2.0-20260922
 publisher: OpenNebula Systems
 publisher_email: contact@opennebula.io
 description: |-
@@ -216,5 +216,5 @@ opennebula_template:
     type: GROUP
     title: CernVM-FS proxy of your own
     description: By default the EESSI software reaches the portal and the workers through a cache on the storage role. Turn this on to use a CernVM-FS proxy of your site instead, and the storage role starts no cache
-logo: logos/openondemand.png
+logo: logos/open-ondemand.png
 images: []

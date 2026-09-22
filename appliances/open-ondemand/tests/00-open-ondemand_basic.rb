@@ -17,7 +17,7 @@ describe 'Appliance Certification' do
     it 'carries the worker software: Apptainer, the session image and code-server' do
         @info[:vm].ssh('command -v apptainer').expect_success
         @info[:vm].ssh('test -s /opt/ood/linuxhost.sif').expect_success
-        @info[:vm].ssh('test -s /etc/one-ondemand/code-server.env').expect_success
+        @info[:vm].ssh('test -s /etc/open-ondemand/code-server.env').expect_success
     end
 
     it 'carries the CernVM-FS client that serves the EESSI catalogue' do
@@ -41,8 +41,8 @@ describe 'Appliance Certification' do
         %w[slurmctld slurmdbd slurmd slurm-client munge mariadb-server].each do |pkg|
             @info[:vm].ssh("dpkg -s #{pkg}").expect_success
         end
-        @info[:vm].ssh('test -x /opt/one-ondemand/scripts/40-configure-slurm-controller.sh').expect_success
-        @info[:vm].ssh('test -x /opt/one-ondemand/worker/slurm-task-prolog.sh').expect_success
+        @info[:vm].ssh('test -x /opt/open-ondemand/scripts/40-configure-slurm-controller.sh').expect_success
+        @info[:vm].ssh('test -x /opt/open-ondemand/worker/slurm-task-prolog.sh').expect_success
         @info[:vm].ssh('test -x /usr/local/bin/ood-slurm-elastic.sh').expect_success
         # The key of a service is generated at boot and must never travel inside the image.
         @info[:vm].ssh('test -e /etc/munge/munge.key').expect_fail
@@ -51,16 +51,16 @@ describe 'Appliance Certification' do
 
     it 'has the role switch and its own copy of the appliance code' do
         @info[:vm].ssh('test -x /usr/local/sbin/ood-appliance-configure').expect_success
-        @info[:vm].ssh('test -x /opt/one-ondemand/worker/configure.sh').expect_success
-        @info[:vm].ssh('test -x /opt/one-ondemand/storage/10-install-nfs.sh').expect_success
-        @info[:vm].ssh('test -x /opt/one-ondemand/scripts/30-configure-portal.sh').expect_success
+        @info[:vm].ssh('test -x /opt/open-ondemand/worker/configure.sh').expect_success
+        @info[:vm].ssh('test -x /opt/open-ondemand/storage/10-install-nfs.sh').expect_success
+        @info[:vm].ssh('test -x /opt/open-ondemand/scripts/30-configure-portal.sh').expect_success
     end
 
     it 'carries the shared software directory pieces: the eessi user, the operator command and a recipe' do
         @info[:vm].ssh('id -u eessi').expect_success
-        @info[:vm].ssh('test -x /opt/one-ondemand/scripts/ood-site-install.sh').expect_success
-        @info[:vm].ssh('test -x /opt/one-ondemand/scripts/75-mount-software.sh').expect_success
-        @info[:vm].ssh('test -f /opt/one-ondemand/config/easybuild/hello-2.12.1-GCCcore-14.3.0.eb').expect_success
+        @info[:vm].ssh('test -x /opt/open-ondemand/scripts/ood-site-install.sh').expect_success
+        @info[:vm].ssh('test -x /opt/open-ondemand/scripts/75-mount-software.sh').expect_success
+        @info[:vm].ssh('test -f /opt/open-ondemand/config/easybuild/hello-2.12.1-GCCcore-14.3.0.eb').expect_success
     end
 
     it 'refuses a role it does not implement' do
@@ -80,8 +80,8 @@ describe 'Appliance Certification' do
     end
 
     it 'records what it was built from' do
-        out = @info[:vm].ssh('cat /etc/one-ondemand/build.env').stdout
-        expect(out).to match(/^APPLIANCE=one-ondemand$/)
+        out = @info[:vm].ssh('cat /etc/open-ondemand/build.env').stdout
+        expect(out).to match(/^APPLIANCE=open-ondemand$/)
         expect(out).to match(/^APPLIANCE_ROLES=portal,storage,worker$/)
         expect(out).to match(/^BUILD_DATE=/)
     end
