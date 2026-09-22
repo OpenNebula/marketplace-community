@@ -1,0 +1,72 @@
+---
+name: grafana-alpine-lxc
+version: 1.0
+publisher: Pablo
+
+description: |-
+  Grafana Dashboard on Alpine Linux 320.aarch64.
+
+  LXC container appliance optimized for edge and IoT deployments.
+
+  **Features:**
+  - Lightweight Alpine Linux base
+  - Pre-configured grafana
+  - contextless deployment
+  - Compatible with embedded devices (Arduino, Raspberry Pi)
+
+  **Services:**
+    - Port 3000: Grafana Dashboard
+
+  **Network Access:**
+  - For Arduino/embedded hosts: Configure Tailscale subnet router or port forwarding
+  - For standard hosts: Direct container IP access
+
+  **Default Credentials:**
+  - Username: root
+  - SSH: Key-based authentication (from OpenNebula context)
+
+  This is a community-contributed appliance. Please report issues at:
+  https://github.com/OpenNebula/one/issues
+
+short_description: Grafana Dashboard on Alpine Linux for LXC
+
+tags:
+- alpine
+- lxc
+- grafana
+- lightweight
+- edge
+- iot
+
+format: raw
+creation_time: 1768998607
+
+os-id: Alpine
+os-release: "3.20.aarch64"
+os-arch: aarch64
+hypervisor: lxc
+
+opennebula_version: 6.10, 7.0
+
+opennebula_template:
+  cpu: '1'
+  vcpu: '1'
+  memory: '256'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+
+  sched_requirements: 'HYPERVISOR="lxc" & ARCH="aarch64"'
+
+logo: alpine.png
+
+images:
+- name: grafana-alpine-lxc
+  url: https://d38nm155miqkyg.cloudfront.net/grafana-alpine-lxc.raw
+  type: OS
+  dev_prefix: sd
+  driver: raw
+  size: 609222656
+  checksum:
+    md5: c02b04c27ec33133b515bb4d6e266336
+    sha256: f19884ee65c68ecf5a7681793d3dccc624cd8caa1030d72af8cf7f543ea74d3c
