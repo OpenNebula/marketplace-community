@@ -161,7 +161,8 @@ opennebula_template:
 logo: logos/open-ondemand.png
 images:
 - name: open-ondemand
-  url: 'https://d38nm155miqkyg.cloudfront.net/open-ondemand-1.2.0-20260922.qcow2'
+  url: >-
+    http://opennebula-community-marketplace.s3.amazonaws.com/open-ondemand-1.2.0-20260922.qcow2
   type: OS
   dev_prefix: vd
   driver: qcow2
