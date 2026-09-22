@@ -162,7 +162,7 @@ logo: logos/open-ondemand.png
 images:
 - name: open-ondemand
   url: >-
-    http://opennebula-community-marketplace.s3.amazonaws.com/open-ondemand-1.2.0-20260922.qcow2
+    https://opennebula-community-marketplace.s3.amazonaws.com/open-ondemand-1.2.0-20260922.qcow2
   type: OS
   dev_prefix: vd
   driver: qcow2
