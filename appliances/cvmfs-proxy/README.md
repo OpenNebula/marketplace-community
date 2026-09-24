@@ -1,7 +1,8 @@
 # CernVM-FS Proxy
 
-[CernVM-FS](https://cernvm.cern.ch/fs/) delivers software to many machines over HTTP. Every
-client keeps a local cache, and the
+[CernVM-FS](https://cernvm.cern.ch/fs/), the CernVM File System, is a read-only file system
+developed at CERN to distribute software to many machines over HTTP. Every client keeps a local
+cache, and the
 [CernVM-FS documentation](https://cvmfs.readthedocs.io/en/stable/cpt-squid.html) asks a site
 to put an HTTP proxy between its clients and the internet. This appliance is that proxy, one
 VM with [Squid](https://www.squid-cache.org/) on port 3128. A file comes from the internet
