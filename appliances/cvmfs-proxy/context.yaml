@@ -1,0 +1,10 @@
+---
+:tests:
+  'cvmfs-proxy':
+    :image_name: cvmfs-proxy.qcow2
+    :type: linux
+    :microenvs: ['context-kvm']
+    # The proxy fetches a file from the EESSI servers before it declares itself ready.
+    :slow: true
+    :enable_netcfg_common: true
+    :enable_netcfg_ip_methods: true
