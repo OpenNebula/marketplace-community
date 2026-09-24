@@ -129,6 +129,9 @@ cvmfs_config stat -v software.eessi.io
 
 The last command shows `Connection: http://... through proxy http://<address of the proxy>:3128 (online)`.
 
+For the workers of a OneSlurm cluster, `clients/oneslurm-start.sh` in this directory does the
+same at boot, and holds each job until `/cvmfs` works on its node. Its header says how to use it.
+
 For two proxies, deploy two VMs and join their URLs with `|`, for example
 `CVMFS_HTTP_PROXY="http://10.0.0.5:3128|http://10.0.0.6:3128"`. The clients share the load
 between the two proxies and use the other one when one fails. Add `;DIRECT` at the end only
