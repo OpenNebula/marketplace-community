@@ -47,12 +47,12 @@ cache of 20000 MB with room for the system.
 
 | Parameter | Default | Description |
 |---|---|---|
-| `ONEAPP_ACCESS_CLIENTS_NETWORKS` | empty | Networks that may use the proxy, in CIDR notation, separated by spaces. Empty allows the subnet of the first NIC. |
+| `ONEAPP_ACCESS_CLIENTS_NETWORKS` | empty | Networks that may use the proxy, in CIDR notation, separated by spaces, for example `10.0.0.0/24 192.168.1.0/24`. Empty allows only the network of the first NIC of the proxy. |
 | `ONEAPP_ACCESS_DESTINATIONS_DOMAINS` | `.cern.ch .gridpp.rl.ac.uk .opensciencegrid.org .eessi.science` | Domains of the CernVM-FS servers the proxy may download from. A leading dot also allows every host under the domain. Empty takes the default. |
 | `ONEAPP_CACHE_SIZE_DISK` | `20000` | Size of the disk cache in MB. |
 | `ONEAPP_CACHE_SIZE_MEMORY` | `1024` | Size of the memory cache (`cache_mem`) in MB. |
 | `ONEAPP_CACHE_DISK_ENABLED` | `NO` | Keep the disk cache on a second disk. |
-| `ONEAPP_CACHE_DISK_DEVICE` | `/dev/vdb` | Device of the second disk. |
+| `ONEAPP_CACHE_DISK_DEVICE` | empty | Device of the second disk. Empty finds it automatically. |
 
 The VM checks every value before it writes `/etc/squid/squid.conf`, and a wrong value stops
 the boot. The reason appears in the `ERROR` attribute of the VM and in
@@ -76,8 +76,12 @@ from `openhtc.io` servers instead, so add `.openhtc.io` to the list for them.
 
 ## Cache on a second disk
 
-Attach a second disk to the VM in the Storage tab of the wizard, turn on
-`ONEAPP_CACHE_DISK_ENABLED`, and check that `ONEAPP_CACHE_DISK_DEVICE` names that disk.
+In the Sunstone wizard, turn on `ONEAPP_CACHE_DISK_ENABLED` in the Cache tab, and add the disk
+in the Storage tab of the Advanced options step, for example an empty volatile disk of the size
+you want. The proxy looks for the only disk of the VM that is not the system disk, so the disk
+works whatever name it gets inside the VM, `/dev/sda` with the default device prefix or
+`/dev/vdb` with the `vd` prefix. With more than one extra disk, name the cache disk in
+`ONEAPP_CACHE_DISK_DEVICE`.
 
 * A blank disk is formatted as ext4 and mounted at `/var/spool/squid`, with `nosuid`,
   `nodev` and `noexec`.

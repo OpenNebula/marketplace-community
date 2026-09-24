@@ -10,6 +10,7 @@ First version of the CernVM-FS Proxy appliance.
   are added in the wizard.
 - Only the subnet of the first NIC may use the proxy by default. Other networks are added in
   the wizard.
-- Disk and memory cache sizes in the wizard, and an optional second disk for the cache.
+- Disk and memory cache sizes in the wizard, and an optional second disk for the cache, which
+  the proxy finds by itself.
 - The VM publishes `CVMFS_PROXY_URL` and `READY=YES` to OneGate once a CernVM-FS file of
   EESSI downloads through the proxy, and the reason in `ERROR` when a check fails.

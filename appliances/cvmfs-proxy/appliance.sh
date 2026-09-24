@@ -17,12 +17,12 @@ ONE_SERVICE_SETUP_DIR="/opt/one-appliance"          ### Install location. Requir
 ### CONTEXT SECTION ###########################################################
 
 ONE_SERVICE_PARAMS=(
-    'ONEAPP_ACCESS_CLIENTS_NETWORKS'     'configure' 'Networks that may use the proxy, in CIDR notation, separated by spaces'  'O|text'
+    'ONEAPP_ACCESS_CLIENTS_NETWORKS'     'configure' 'Networks that may use the proxy, empty for the network of the first NIC' 'O|text'
     'ONEAPP_ACCESS_DESTINATIONS_DOMAINS' 'configure' 'Domains of the CernVM-FS servers the proxy may download from'          'O|text'
     'ONEAPP_CACHE_SIZE_DISK'             'configure' 'Size of the disk cache in MB'                                         'O|number'
     'ONEAPP_CACHE_SIZE_MEMORY'           'configure' 'Size of the memory cache in MB'                                       'O|number'
     'ONEAPP_CACHE_DISK_ENABLED'          'configure' 'Keep the disk cache on a second disk'                                 'O|boolean'
-    'ONEAPP_CACHE_DISK_DEVICE'           'configure' 'Device of the second disk, formatted only when it is blank'           'O|text'
+    'ONEAPP_CACHE_DISK_DEVICE'           'configure' 'Device of the second disk, empty to find it automatically'           'O|text'
 )
 
 # An empty value takes the default, so a VM instantiated without the wizard still gets a
@@ -34,7 +34,7 @@ ONEAPP_ACCESS_DESTINATIONS_DOMAINS="${ONEAPP_ACCESS_DESTINATIONS_DOMAINS:-.cern.
 ONEAPP_CACHE_SIZE_DISK="${ONEAPP_CACHE_SIZE_DISK:-20000}"
 ONEAPP_CACHE_SIZE_MEMORY="${ONEAPP_CACHE_SIZE_MEMORY:-1024}"
 ONEAPP_CACHE_DISK_ENABLED="${ONEAPP_CACHE_DISK_ENABLED:-NO}"
-ONEAPP_CACHE_DISK_DEVICE="${ONEAPP_CACHE_DISK_DEVICE:-/dev/vdb}"
+ONEAPP_CACHE_DISK_DEVICE="${ONEAPP_CACHE_DISK_DEVICE:-}"
 
 ### Appliance metadata ########################################################
 
@@ -266,21 +266,19 @@ setup_cache_disk()
         return 0
     fi
 
-    [[ "$ONEAPP_CACHE_DISK_DEVICE" =~ ^/dev/[A-Za-z0-9/_-]+$ ]] \
-        || { fail "ONEAPP_CACHE_DISK_DEVICE must be a device path, it is ${ONEAPP_CACHE_DISK_DEVICE}"; return 1; }
-    dev="$(readlink -f "$ONEAPP_CACHE_DISK_DEVICE")"
+    dev="$(find_cache_disk)" || return 1
     [[ -b "$dev" ]] \
-        || { fail "the cache disk ${ONEAPP_CACHE_DISK_DEVICE} does not exist, attach a second disk to the VM"; return 1; }
+        || { fail "the cache disk ${dev} does not exist, add a second disk to the VM"; return 1; }
 
     # Already in place, for example on a reboot.
     [[ "$(findmnt -rno SOURCE "$CACHE_DIR")" == "$dev" ]] && return 0
 
     root_disk="$(lsblk -ndo PKNAME "$(findmnt -rno SOURCE /)")"
     [[ "$(basename "$dev")" != "$root_disk" ]] \
-        || { fail "${ONEAPP_CACHE_DISK_DEVICE} is the system disk, choose the second disk"; return 1; }
+        || { fail "${dev} is the system disk, choose the second disk"; return 1; }
     mounted_at="$(findmnt -rno TARGET -S "$dev" | head -1)"
     [[ -z "$mounted_at" ]] \
-        || { fail "${ONEAPP_CACHE_DISK_DEVICE} is already mounted at ${mounted_at}"; return 1; }
+        || { fail "${dev} is already mounted at ${mounted_at}"; return 1; }
 
     # blkid returns 2 only when it finds no signature at all. Any other code, including the
     # one for two conflicting signatures, means the disk holds something.
@@ -291,7 +289,7 @@ setup_cache_disk()
     fi
     fstype="$(blkid -o value -s TYPE "$dev")"
     [[ "$fstype" == "ext4" ]] \
-        || { fail "${ONEAPP_CACHE_DISK_DEVICE} holds ${fstype:-a partition table}, the appliance only formats a blank disk"; return 1; }
+        || { fail "${dev} holds ${fstype:-a partition table}, the appliance only formats a blank disk"; return 1; }
 
     # The old cache on the system disk would stay hidden under the mount point, so it goes.
     systemctl stop squid >/dev/null 2>&1
@@ -303,6 +301,34 @@ setup_cache_disk()
     mount "$CACHE_DIR" || { fail "could not mount ${dev} at ${CACHE_DIR}"; return 1; }
     chown proxy:proxy "$CACHE_DIR"
     msg info "the cache lives on ${dev}"
+}
+
+# Prints the device of the second disk. It is the one the admin named, or else the only disk
+# of the VM that is not the system disk. A disk added in Sunstone shows up as /dev/sda or
+# /dev/vdb inside the VM depending on its device prefix, so the appliance does not assume a name.
+find_cache_disk()
+{
+    local root_disk name type ro disks=()
+
+    if [[ -n "$ONEAPP_CACHE_DISK_DEVICE" ]]; then
+        [[ "$ONEAPP_CACHE_DISK_DEVICE" =~ ^/dev/[A-Za-z0-9/_-]+$ ]] \
+            || { fail "ONEAPP_CACHE_DISK_DEVICE must be a device path, it is ${ONEAPP_CACHE_DISK_DEVICE}"; return 1; }
+        readlink -f "$ONEAPP_CACHE_DISK_DEVICE"
+        return 0
+    fi
+
+    root_disk="$(lsblk -ndo PKNAME "$(findmnt -rno SOURCE /)")"
+    while read -r name type ro; do
+        [[ "$type" == "disk" && "$ro" == "0" && "$(basename "$name")" != "$root_disk" ]] && disks+=("$name")
+    done < <(lsblk -dnpo NAME,TYPE,RO)
+
+    case ${#disks[@]} in
+        1) printf '%s\n' "${disks[0]}" ;;
+        0) fail "the VM has no second disk, add one in the Storage tab of the wizard or turn off ONEAPP_CACHE_DISK_ENABLED"
+           return 1 ;;
+        *) fail "the VM has several extra disks (${disks[*]}), name the cache disk in ONEAPP_CACHE_DISK_DEVICE"
+           return 1 ;;
+    esac
 }
 
 cache_disk_label()

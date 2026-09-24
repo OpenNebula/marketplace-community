@@ -31,7 +31,7 @@ tags:
 - ubuntu
 - service
 format: qcow2
-creation_time: 1790237695
+creation_time: 1790259301
 os-id: Ubuntu
 os-release: '24.04 LTS'
 os-arch: x86_64
@@ -65,12 +65,12 @@ opennebula_template:
   inputs_order: >-
     ONEAPP_ACCESS_CLIENTS_NETWORKS,ONEAPP_ACCESS_DESTINATIONS_DOMAINS,ONEAPP_CACHE_SIZE_DISK,ONEAPP_CACHE_SIZE_MEMORY,ONEAPP_CACHE_DISK_ENABLED,ONEAPP_CACHE_DISK_DEVICE
   user_inputs:
-    oneapp_access_clients_networks: 'O|text|Networks in CIDR notation separated by spaces, empty for the subnet of the first NIC||'
+    oneapp_access_clients_networks: 'O|text|Networks that may use the proxy, for example 10.0.0.0/24 192.168.1.0/24||'
     oneapp_access_destinations_domains: 'O|text|Domains separated by spaces, a leading dot also allows every host under the domain||.cern.ch .gridpp.rl.ac.uk .opensciencegrid.org .eessi.science'
     oneapp_cache_size_disk: 'O|number|Disk cache in MB||20000'
     oneapp_cache_size_memory: 'O|number|Memory cache in MB||1024'
     oneapp_cache_disk_enabled: 'O|boolean|Keep the disk cache on a second disk||NO'
-    oneapp_cache_disk_device: 'O|text|Device of the second disk||/dev/vdb'
+    oneapp_cache_disk_device: 'O|text|Device of the second disk, empty to find it automatically||'
   # Titles of the tabs (APP) and titles and descriptions of the sections (GROUP) of the wizard.
   user_inputs_metadata:
   - name: ACCESS
@@ -79,7 +79,7 @@ opennebula_template:
   - name: CLIENTS
     type: GROUP
     title: Clients
-    description: Only these networks may use the proxy. Localhost is always allowed
+    description: Leave the field empty to allow only the network of the first NIC of the proxy. Separate several networks with spaces. The proxy itself is always allowed
   - name: DESTINATIONS
     type: GROUP
     title: CernVM-FS servers
@@ -94,7 +94,7 @@ opennebula_template:
   - name: DISK
     type: GROUP
     title: Second disk
-    description: Attach a second disk in the Storage tab. A blank disk is formatted as ext4, a disk that already has ext4 keeps its cache, and any other disk stops the boot
+    description: Add the disk in this same wizard, in the Storage tab of the Advanced options step, for example an empty volatile disk. The proxy finds it by itself. A blank disk is formatted as ext4, a disk that already has ext4 keeps its cache, and a disk with anything else stops the boot
 logo: logos/cvmfs-proxy.png
 images:
 - name: cvmfs-proxy
@@ -103,7 +103,7 @@ images:
   type: OS
   dev_prefix: vd
   driver: qcow2
-  size: 604045312
+  size: 603979776
   checksum:
-    md5: fc89b64c6498444f625fb0a078fbeb45
-    sha256: 1e96cb72b94643644f29cf9e8e8bbc4373fc92bf126bbc590ed9afbf6589b30a
+    md5: e4c035b142605661a7582098523e16bb
+    sha256: def484be0fdfa054c9bc6f1eb958f32fe5f05d7828d4f404f3ce1a157f714db4
