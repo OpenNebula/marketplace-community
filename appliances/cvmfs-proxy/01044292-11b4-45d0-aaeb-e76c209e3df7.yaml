@@ -1,0 +1,109 @@
+---
+name: CernVM-FS Proxy
+version: 1.0.0-20260924
+publisher: OpenNebula Systems
+publisher_email: contact@opennebula.io
+description: |-
+  A [Squid](https://www.squid-cache.org/) proxy for the
+  [CernVM-FS](https://cernvm.cern.ch/fs/) clients of a site, configured as the
+  [CernVM-FS documentation](https://cvmfs.readthedocs.io/en/stable/cpt-squid.html) describes.
+
+  Each file comes from the internet once, and the next clients read it from the cache of the
+  proxy. The clients can be plain VMs, the nodes of a Slurm or Kubernetes cluster, or an Open
+  OnDemand service. Each client sets `CVMFS_HTTP_PROXY="http://<address of the proxy>:3128"`.
+
+  - The [EESSI](https://www.eessi.io/) software catalogue works by default. Add the domain of
+    another public repository to use that repository too.
+  - Only the subnet of the first NIC may use the proxy by default. Add other networks in the
+    wizard.
+  - The cache can live on a second disk, which the appliance formats when it is blank.
+
+  The URL of the proxy is published to
+  [OneGate](https://docs.opennebula.io/7.4/product/virtual_machines_operation/multi-vm_workflows/onegate_usage/)
+  as `CVMFS_PROXY_URL`, and written to `/etc/one-appliance/config` on the VM.
+short_description: CernVM-FS site proxy that caches EESSI and other public repositories
+tags:
+- cvmfs
+- cernvm-fs
+- eessi
+- squid
+- hpc
+- ubuntu
+- service
+format: qcow2
+creation_time: 1790237695
+os-id: Ubuntu
+os-release: '24.04 LTS'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.10, 7.4
+opennebula_template:
+  context:
+    network: 'YES'
+    report_ready: 'YES'
+    token: 'YES'
+    # Locks the password of the image build, so the VM only accepts SSH keys.
+    username_password_reset: 'YES'
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    oneapp_access_clients_networks: '$ONEAPP_ACCESS_CLIENTS_NETWORKS'
+    oneapp_access_destinations_domains: '$ONEAPP_ACCESS_DESTINATIONS_DOMAINS'
+    oneapp_cache_size_disk: '$ONEAPP_CACHE_SIZE_DISK'
+    oneapp_cache_size_memory: '$ONEAPP_CACHE_SIZE_MEMORY'
+    oneapp_cache_disk_enabled: '$ONEAPP_CACHE_DISK_ENABLED'
+    oneapp_cache_disk_device: '$ONEAPP_CACHE_DISK_DEVICE'
+  cpu: '1'
+  vcpu: '2'
+  memory: '2048'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  os:
+    arch: x86_64
+  # The order of the inputs is the order of the tabs in the instantiate wizard. FireEdge
+  # takes the tab from the second token of the name and the section from the third, and
+  # shows the other inputs of a section only while its _ENABLED switch is on.
+  inputs_order: >-
+    ONEAPP_ACCESS_CLIENTS_NETWORKS,ONEAPP_ACCESS_DESTINATIONS_DOMAINS,ONEAPP_CACHE_SIZE_DISK,ONEAPP_CACHE_SIZE_MEMORY,ONEAPP_CACHE_DISK_ENABLED,ONEAPP_CACHE_DISK_DEVICE
+  user_inputs:
+    oneapp_access_clients_networks: 'O|text|Networks in CIDR notation separated by spaces, empty for the subnet of the first NIC||'
+    oneapp_access_destinations_domains: 'O|text|Domains separated by spaces, a leading dot also allows every host under the domain||.cern.ch .gridpp.rl.ac.uk .opensciencegrid.org .eessi.science'
+    oneapp_cache_size_disk: 'O|number|Disk cache in MB||20000'
+    oneapp_cache_size_memory: 'O|number|Memory cache in MB||1024'
+    oneapp_cache_disk_enabled: 'O|boolean|Keep the disk cache on a second disk||NO'
+    oneapp_cache_disk_device: 'O|text|Device of the second disk||/dev/vdb'
+  # Titles of the tabs (APP) and titles and descriptions of the sections (GROUP) of the wizard.
+  user_inputs_metadata:
+  - name: ACCESS
+    type: APP
+    title: Access
+  - name: CLIENTS
+    type: GROUP
+    title: Clients
+    description: Only these networks may use the proxy. Localhost is always allowed
+  - name: DESTINATIONS
+    type: GROUP
+    title: CernVM-FS servers
+    description: The proxy only downloads from these domains. The default covers EESSI, the repositories of CERN and the Open Science Grid, and the servers of the configuration repository that every client reads
+  - name: CACHE
+    type: APP
+    title: Cache
+  - name: SIZE
+    type: GROUP
+    title: Size
+    description: The disk cache must fit in the disk that holds it, with a tenth of the space left free. The memory cache needs half a GB of free memory next to it
+  - name: DISK
+    type: GROUP
+    title: Second disk
+    description: Attach a second disk in the Storage tab. A blank disk is formatted as ext4, a disk that already has ext4 keeps its cache, and any other disk stops the boot
+logo: logos/cvmfs-proxy.png
+images:
+- name: cvmfs-proxy
+  url: >-
+    https://opennebula-community-marketplace.s3.amazonaws.com/cvmfs-proxy-1.0.0-20260924.qcow2
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 604045312
+  checksum:
+    md5: fc89b64c6498444f625fb0a078fbeb45
+    sha256: 1e96cb72b94643644f29cf9e8e8bbc4373fc92bf126bbc590ed9afbf6589b30a
