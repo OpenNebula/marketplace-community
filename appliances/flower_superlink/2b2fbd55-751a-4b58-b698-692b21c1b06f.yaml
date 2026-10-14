@@ -1,0 +1,67 @@
+---
+name: Flower SuperLink 1.31.0 OS disk
+version: 1.31.0-1.0.0
+publisher: OpenNebula Systems
+description: |-
+  OS disk image for the [Flower](https://flower.ai/) SuperLink appliance
+  (federated learning coordinator). Docs: [flower.ai/docs](https://flower.ai/docs/).
+
+  Ubuntu 24.04 LTS with Docker CE and the `flwr/superlink:1.31.0` container
+  pre-pulled. At boot, OpenNebula contextualization configures the SuperLink:
+  TLS is enabled by default, the Control API is bound to localhost, and a
+  default-deny firewall blocks outbound SMTP. The SuperLink publishes its
+  endpoint to OneGate so SuperNodes discover it automatically. The aggregation
+  strategy and round count come from the Flower App Bundle you submit at run
+  time with flwr run.
+
+  Part of the **Flower Federated Learning** appliance set.
+  Imported automatically when you export the
+  [Service Flower FL 1.31.0](8b437ffe-7b90-4dc0-a453-f0646b11ab09) service.
+short_description: Flower SuperLink appliance OS disk (Ubuntu 24.04 + Docker + flwr 1.31.0)
+tags:
+- flower
+- federated-learning
+- superlink
+- ubuntu
+- service
+format: qcow2
+creation_time: 1770822863
+os-id: Ubuntu
+os-release: '24.04 LTS'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.8, 6.10, 7.0, 7.2
+opennebula_template:
+  context:
+    token: 'YES'
+    network: 'YES'
+    report_ready: 'YES'
+    username_password_reset: 'YES'
+    ssh_public_key: "$USER[SSH_PUBLIC_KEY]"
+    oneapp_flower_version: "$ONEAPP_FLOWER_VERSION"
+    oneapp_fl_tls_enabled: "$ONEAPP_FL_TLS_ENABLED"
+    oneapp_fl_log_level: "$ONEAPP_FL_LOG_LEVEL"
+  cpu: '2'
+  memory: '4096'
+  graphics:
+    listen: 0.0.0.0
+    type: vnc
+  inputs_order: >-
+    ONEAPP_FL_TLS_ENABLED,ONEAPP_FL_LOG_LEVEL,ONEAPP_FLOWER_VERSION
+  os:
+    arch: x86_64
+  user_inputs:
+    oneapp_flower_version: "O|text|Flower Docker image version tag||1.31.0"
+    oneapp_fl_tls_enabled: "O|boolean|Enable TLS encryption||YES"
+    oneapp_fl_log_level: "O|list|Log verbosity|DEBUG,INFO,WARNING,ERROR|INFO"
+logo: flower.png
+images:
+- name: flower_superlink_os
+  url: 'https://PUBLISH_URL/flower-superlink-1.31.0.qcow2'
+  type: OS
+  dev_prefix: vd
+  driver: qcow2
+  size: 10737418240
+  checksum:
+    md5: '3055031da0bf326bf9f375bd0b9c296c'
+    sha256: '4cba28d51942a6d64104fe3351003d44b704b8ecb9a1a407d03cd7b7a71216fb'

@@ -1,0 +1,79 @@
+---
+name: Service Flower FL 1.31.0
+version: 1.31.0-1.0.0
+publisher: OpenNebula Systems
+description: |-
+  [Flower](https://flower.ai/) is a federated learning framework: train one
+  shared model across many sites while each node keeps its own data private.
+  This appliance runs a complete Flower cluster on OpenNebula, orchestrated by
+  OneFlow: a SuperLink coordinator plus a scalable pool of SuperNode training
+  clients that auto-discover it through OneGate. Only model weights are shared,
+  so raw training data never leaves a SuperNode.
+
+  **Features**
+  - Secure by default: TLS between SuperLink and SuperNodes, plus a default-deny host firewall
+  - Multi-framework: PyTorch pre-baked, TensorFlow and scikit-learn built on demand
+  - Bring any Flower app and strategy (FedAvg, FedProx, FedAdam, and more) with `flwr run`
+  - Auto-scaling from 2 to 10 SuperNodes
+
+  **Flower resources**
+  - Website: [flower.ai](https://flower.ai/)
+  - Documentation: [flower.ai/docs](https://flower.ai/docs/)
+
+  Requires the OpenNebula
+  [OneFlow](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/overview.html)
+  and
+  [OneGate](https://docs.opennebula.io/stable/management_and_operations/multivm_service_management/onegate_usage.html)
+  components.
+
+  Based on VM templates:
+  - [Flower SuperLink 1.31.0](49da1d48-717e-44c2-856b-850687afd73a)
+  - [Flower SuperNode 1.31.0](b4d08fae-f02d-4061-b130-870e4a9a93f8)
+short_description: Flower federated learning cluster (SuperLink + SuperNodes) orchestrated by OneFlow
+tags:
+- flower
+- federated-learning
+- service
+- ubuntu
+creation_time: 1770822863
+os-id: Ubuntu
+os-release: '24.04 LTS'
+os-arch: x86_64
+hypervisor: KVM
+opennebula_version: 6.8, 6.10, 7.0, 7.2
+type: 'SERVICE_TEMPLATE'
+roles:
+  superlink: 'Flower SuperLink 1.31.0'
+  supernode: 'Flower SuperNode 1.31.0'
+opennebula_template:
+  name: Service Flower FL
+  deployment: straight
+  ready_status_gate: true
+  shutdown_action: shutdown
+  custom_attrs:
+    ONEAPP_FL_FRAMEWORK: 'O|list|Machine learning framework|pytorch,tensorflow,sklearn|pytorch'
+    ONEAPP_FL_TLS_ENABLED: 'O|boolean|Encrypt communication between SuperLink and SuperNodes||YES'
+  networks:
+    Private: 'M|network|Private network for FL cluster| |id::'
+  roles:
+  - name: superlink
+    cardinality: 1
+    min_vms: 1
+    max_vms: 1
+    cooldown: 60
+    vm_template_contents: |
+      NIC = [ NETWORK_ID = "$Private" ]
+      ONEAPP_FL_TLS_ENABLED = "$ONEAPP_FL_TLS_ENABLED"
+  - name: supernode
+    parents:
+    - superlink
+    cardinality: 2
+    min_vms: 2
+    max_vms: 10
+    cooldown: 30
+    vm_template_contents: |
+      NIC = [ NETWORK_ID = "$Private" ]
+      ONEAPP_FL_FRAMEWORK = "$ONEAPP_FL_FRAMEWORK"
+      ONEAPP_FL_TLS_ENABLED = "$ONEAPP_FL_TLS_ENABLED"
+logo: flower.png
+images: []
