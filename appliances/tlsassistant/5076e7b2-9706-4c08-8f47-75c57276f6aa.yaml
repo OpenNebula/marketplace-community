@@ -89,7 +89,7 @@ opennebula_template:
 logo: logos/tlsassistant.png
 
 images:
-- name: tlsassistant 
+- name: tlsassistant
   url: >-
     http://opennebula-community-marketplace.s3.amazonaws.com/tlsassistant-1.0.0.qcow2
   type: OS
