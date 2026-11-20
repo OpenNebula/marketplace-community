@@ -1,0 +1,8 @@
+---
+tests:
+  - name: basic_boot
+    description: Verify container boots successfully
+    script: tests/test_boot.sh
+  - name: service_check
+    description: Verify grafana service is running
+    script: tests/test_service.sh
